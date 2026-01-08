@@ -1,12 +1,13 @@
-# ISAAC Sim Setup and Build Instructions
+# ISAAC Sim Robotics Projects
 
-This repository contains the ISAAC Sim simulator built from source for robotics simulation and development.
+This repository contains robotics simulation projects using NVIDIA Isaac Sim for control systems, manipulation, and dynamics research.
 
 ## Table of Contents
 - [System Requirements](#system-requirements)
+- [Isaac Sim Installation](#isaac-sim-installation)
 - [Environment Setup](#environment-setup)
-- [Building ISAAC Sim](#building-isaac-sim)
-- [Running ISAAC Sim](#running-isaac-sim)
+- [Running Examples](#running-examples)
+- [Project Structure](#project-structure)
 - [Troubleshooting](#troubleshooting)
 
 ## System Requirements
@@ -14,264 +15,165 @@ This repository contains the ISAAC Sim simulator built from source for robotics 
 ### Hardware
 - **GPU**: NVIDIA RTX series or better (RTX 2060 or higher recommended)
 - **RAM**: 32GB+ recommended (minimum 16GB)
-- **Storage**: 50GB+ free space for build artifacts and cache
+- **Storage**: 50GB+ free space for Isaac Sim installation
 - **CPU**: Multi-core processor (8+ cores recommended)
 
 ### Software
 - **OS**: Ubuntu 20.04/22.04/24.04 (or compatible Linux distribution)
-- **GCC/G++**: Version 11 (higher versions not yet supported - see note below)
-- **Git**: With Git LFS support
-- **Python**: 3.10 or 3.11 (managed by conda)
 - **NVIDIA Driver**: Latest stable driver (535+ recommended)
-- **build-essential**: Required for make and other build tools
+- **Python**: 3.10 or 3.11 (managed by conda)
 
-## Environment Setup
+## Isaac Sim Installation
 
-### 1. Install System Dependencies
+### Step 1: Check System Compatibility
+
+Before installing Isaac Sim, **run the compatibility checker** to ensure your system meets all requirements:
+
+**From binary installation (Workstation or Open-Source repository setup):**
+
+1. Install/build Isaac Sim according to the target setup workflow.
+2. Run the `isaac-sim.compatibility_check.sh` script on Linux, or the `isaac-sim.compatibility_check.bat` script on Windows.
+
+This will verify:
+- NVIDIA driver version
+- GPU compatibility
+- Operating system requirements
+- Required dependencies
+
+### Step 2: Download Isaac Sim
+
+Download Isaac Sim standalone binary from the official NVIDIA documentation:
+
+**📥 Download Link:** [Isaac Sim 5.1.0 Download Page](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/download.html)
+
+### Step 3: Install Isaac Sim (Binary Installation)
+
+For Linux (x86_64), execute the following commands:
 
 ```bash
-# Update system packages
-sudo apt-get update
+# Create installation directory
+mkdir ~/isaacsim
+cd ~/Downloads
 
-# Install build essentials (required for make and build tools)
-sudo apt-get install -y build-essential
+# Extract the downloaded archive
+unzip "isaac-sim-standalone-5.1.0-linux-x86_64.zip" -d ~/isaacsim
 
-# Install Git LFS (required for large files)
-sudo apt-get install -y git-lfs
+# Navigate to installation directory
+cd ~/isaacsim
 
-# Verify GCC/G++ version (should be 11)
-gcc --version
-g++ --version
+# Run post-installation script
+./post_install.sh
+
+# Launch Isaac Sim selector
+./isaac-sim.selector.sh
 ```
 
-**⚠️ Important - GCC/G++ Version 11 Required:**
-
-ISAAC Sim currently supports **GCC/G++ 11 only**. Higher versions are not yet supported. If you have a different version, install GCC 11:
-
-```bash
-# Install GCC/G++ 11
-sudo apt-get install gcc-11 g++-11
-
-# Set GCC 11 as default using update-alternatives
-sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 200
-sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 200
-
-# Verify the version (should show 11.x.x)
-gcc --version
-g++ --version
+**Final load message example:**
+```
+2025-03-31 23:15:34 [105,275ms] [Warning] [omni.isaac.range_sensor.ui.menu] omni.isaac.range_sensor.ui.menu has been deprecated
+Please update your code accordingly.
+[105.5s][ext: isaacsim.robot.wheeled_robots.ui-2.1.5] startup
 ```
 
-**Note:** If you want to skip the compiler version check (at your own risk), you can add `--skip-compiler-version-check` to the build command.
+### Step 4: Create Conda Environment for Development
 
-### 2. Create Conda Environment
-
-The project uses a conda environment with Python 3.11:
+Set up a Python environment for your robotics projects:
 
 ```bash
 # Create conda environment
-conda create -n isac_sim python=3.11 -y
+conda create -n env_isaacsim python=3.11 -y
 
 # Activate the environment
-conda activate isac_sim
+conda activate env_isaacsim
 
-# Install the isaacsim launcher package (stub/launcher only)
+# Install the isaacsim Python package (for API access)
 pip install isaacsim
 ```
-### 2. Run the Build Script
 
-The build process will download dependencies and compile ISAAC Sim:
+**Note:** The `pip install isaacsim` installs Python bindings and API interfaces to interact with Isaac Sim programmatically from your scripts.
 
-```bash
-# Make the build script executable (if needed)
-chmod +x build.sh
+## Running Examples
 
-# Run the build
-./build.sh
-```
+### Set Environment Variable (Recommended)
 
-**Alternative: Skip Compiler Version Check** (if you have GCC > 11):
-```bash
-./build.sh --skip-compiler-version-check
-```
-⚠️ Use at your own risk - unsupported build environments may cause issues.
-
-**Important Notes:**
-- On first run, you'll be prompted to accept the NVIDIA Omniverse License Agreement (type "yes" to accept)
-- The build process takes **1-2 hours** depending on your system and internet speed
-- Downloads several GB of dependencies from NVIDIA servers
-- Creates build artifacts in `_build/` directory
-- **Note:** The build script was executed outside VS Code terminal in this setup
-```
-
-### 2. Run the Build Script
-
-The build process will download dependencies and compile ISAAC Sim:
-
-```bash
-# Make the build script executable (if needed)
-chmod +x build.sh
-
-# Run the build
-./build.sh
-```
-### 3. Monitor Build Progress
-
-You can check the build status using the provided helper script:
-
-```bash
-bash ~/Documents/isac_sim_pydrake/check_build_status.sh
-```
-
-Or manually check:
-
-```bash
-# Check if build directory exists
-ls -lh _build/linux-x86_64/release/
-
-# Monitor packman cache size (build caches packages here)
-du -sh ~/.cache/packman
-
-# Check for running build processes
-ps aux | grep build.sh
-```
-
-**Build Process Overview:**
-1. **License Acceptance**: You'll be prompted to accept NVIDIA's terms (type "yes")
-2. **Package Manager Setup**: Installs packman and downloads Python environments
-3. **Dependency Download**: Fetches Kit kernel, physics engine, USD libraries (~5-15 GB)
-4. **Compilation**: Builds the actual simulator binaries
-5. **Finalization**: Creates the executable in `_build/linux-x86_64/release/`
-
-**Note:** Initial build is run in a system terminal (outside VS Code) for better stability with long-running processes.-lh _build/linux-x86_64/release/
-
-# Monitor packman cache size
-du -sh ~/.cache/packman
-
-# Check for running build processes
-ps aux | grep build.sh
-```
-
-## Running ISAAC Sim
-
-### After Successful Build
-
-Once the build completes successfully, navigate to the binary directory and run the executable:
-
-```bash
-cd ~/Documents/isac_sim_pydrake/isaacsim/_build/linux-x86_64/release
-./isaac-sim.sh
-```
-
-### Set Environment Variable (Optional but Recommended)
-
-For easier access, set the `ISAAC_SIM_PATH` environment variable:
+Set the `ISAAC_SIM_PATH` environment variable to point to your Isaac Sim installation:
 
 ```bash
 # Add to your ~/.bashrc or ~/.zshrc
-export ISAAC_SIM_PATH="$HOME/Documents/isac_sim_pydrake/isaacsim/_build/linux-x86_64/release"
+export ISAAC_SIM_PATH="$HOME/isaacsim"
 
 # Reload your shell configuration
 source ~/.bashrc
 ```
 
-Then you can run from anywhere:
+### Launch Isaac Sim
 
 ```bash
-$ISAAC_SIM_PATH/isaac-sim.sh
-```
+# Navigate to Isaac Sim directory
+cd ~/isaacsim
 
-### Run Example Simulations
+# Launch the simulator
+./isaac-sim.sh
 
-```bash
-cd ~/Documents/isac_sim_pydrake/isaacsim/_build/linux-x86_64/release
-
-# Launch with Python script
+# Or launch with a Python script
 ./isaac-sim.sh --python-script /path/to/your/script.py
-
-# Or use the test script
-./isaac-sim.sh --python-script ~/Documents/isac_sim_pydrake/test_isac_sim.py
 ```
 
-## Testing the Installation
+### Run Project Examples
 
-Use the provided test script to verify the installation:
+This repository contains various robotics examples:
+
+For easier access, set the `ISAAC_SIM_PATH` environment variable:
 
 ```bash
-# Activate conda environment
-conda activate isac_sim
+# Add to your ~/.bashrc or ~/.zshrc
+This repository contains various robotics examples:
 
-# Run the installation checker
-python ~/Documents/isac_sim_pydrake/test_isac_sim.py
+```bash
+# Activate your environment
+conda activate env_isaacsim
+
+# Run examples from this repository
+cd ~/Documents/isaac_sim_robotics
+
+# Test cart-pendulum 2DOF system
+python test_cart_pendulum_2dof.py
+
+# Test ball-plate manipulator
+python test_ball_plate_manipulator_so101.py
+
+# Test dynamic simulation
+python test_cube_ball_dynamic_simulation.py
 ```
-
-This script will:
-- Check if the isaacsim package is installed
-- Verify if SimulationApp is available
-- Provide detailed installation instructions if needed
-- Optionally test launching the simulator
 
 ## Project Structure
 
 ```
-isac_sim_pydrake/
-├── isaacsim/                    # ISAAC Sim source code (cloned repo)
-│   ├── build.sh                 # Main build script
-│   ├── source/                  # Source code
-│   ├── deps/                    # Dependencies
-│   ├── _build/                  # Build output (created after build)
-│   │   └── linux-x86_64/
-│   │       └── release/
-│   │           └── isaac-sim.sh # Executable to run ISAAC Sim
-│   └── ...
-├── test_isac_sim.py            # Installation checker and test script
-├── check_build_status.sh       # Build status monitoring script
-└── README.md                   # This file
+isaac_sim_robotics/
+├── example_interactive/          # Interactive examples
+├── examples_selected_from_standalone_examples/
+├── model/                        # Robot models (URDF, USD)
+│   ├── manipulators/
+│   ├── plate/
+│   └── plate_dips/
+├── notes_ball_plate/            # Documentation and notes
+├── standalone_examples/         # Standalone example scripts
+├── tests/                       # Test scripts
+├── test_cart_pendulum_2dof.py  # 2DOF cart-pendulum simulation
+├── test_ball_plate_*.py        # Ball-plate control examples
+├── README.md                   # This file
+└── .gitignore
 ```
 
 ## Troubleshooting
 
-### Build Fails with "No such file or directory"
+### Isaac Sim Won't Launch
 
-**Solution**: Ensure you're in the correct directory and the build script has execute permissions:
-### GCC/G++ Version Issues
-
-**Problem**: ISAAC Sim requires exactly GCC/G++ 11. Higher versions are not yet supported.
-
-**Solution for older versions**: Update to GCC 11:
+**Solution**: Verify your system compatibility first:
 ```bash
-sudo apt-get install gcc-11 g++-11
-sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 200
-sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 200
+cd ~/isaacsim
+./isaac-sim.compatibility_check.sh
 ```
-
-**Solution for newer versions**: Either install GCC 11 as above, or use the skip flag:
-```bash
-./build.sh --skip-compiler-version-check
-```
-⚠️ Warning: Using unsupported compiler versions may lead to build failures or runtime issues.
-**Solution**: Install Git LFS:
-```bash
-sudo apt-get install git-lfs
-git lfs install
-cd ~/Documents/isac_sim_pydrake/isaacsim
-git lfs pull
-```
-
-### GCC/G++ Version Too Old
-
-**Solution**: Update to GCC 11 or higher:
-```bash
-sudo apt-get install gcc-11 g++-11
-sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100
-sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 100
-```
-
-### Out of Disk Space During Build
-
-**Solution**: 
-- Free up space or use a different drive
-- The build requires ~50GB including cache and build artifacts
-- Check cache size: `du -sh ~/.cache/packman`
 
 ### NVIDIA Driver Issues
 
@@ -285,59 +187,46 @@ sudo apt-get install nvidia-driver-535
 sudo reboot
 ```
 
-### Slow Download Speeds
+### Python Import Errors
+
+**Solution**: Ensure the environment is properly activated and isaacsim package is installed:
+```bash
+conda activate env_isaacsim
+pip install isaacsim
+```
+
+### Slow Performance
 
 **Solution**: 
-- The build downloads several GB from NVIDIA servers
-- Be patient - first build takes longest
-- Subsequent builds reuse cached packages in `~/.cache/packman`
+- Ensure you're using an NVIDIA RTX GPU
+- Check GPU utilization: `nvidia-smi`
+- Close other GPU-intensive applications
+- Reduce simulation complexity or rendering quality
 
-### Python Version Mismatch
-
-**Solution**: 
-- ISAAC Sim requires Python 3.10 or 3.11
 ## Quick Reference Commands
 
 ```bash
 # Activate environment
-conda activate isac_sim
+conda activate env_isaacsim
 
-# Build ISAAC Sim (run in system terminal for best results)
-cd ~/Documents/isac_sim_pydrake/isaacsim
-./build.sh
-
-# Build with compiler version check skip (if using GCC > 11)
-./build.sh --skip-compiler-version-check
-
-# Check build status
-bash ~/Documents/isac_sim_pydrake/check_build_status.sh
-
-# Run ISAAC Sim
-cd ~/Documents/isac_sim_pydrake/isaacsim/_build/linux-x86_64/release
+# Launch Isaac Sim
+cd ~/isaacsim
 ./isaac-sim.sh
 
-# Test installation
-python ~/Documents/isac_sim_pydrake/test_isac_sim.py
+# Run with a Python script
+./isaac-sim.sh --python-script /path/to/script.py
+
+# Run examples from this repository
+cd ~/Documents/isaac_sim_robotics
+python test_cart_pendulum_2dof.py
 ```
 
-**💡 Tip:** For long-running builds, use a system terminal (Ctrl+Alt+T) rather than VS Code's integrated terminal to avoid interruptions.bash
-# Activate environment
-conda activate isac_sim
+## Additional Resources
 
-# Build ISAAC Sim
-cd ~/Documents/isac_sim_pydrake/isaacsim
-./build.sh
-
-# Check build status
-bash ~/Documents/isac_sim_pydrake/check_build_status.sh
-
-# Run ISAAC Sim
-cd ~/Documents/isac_sim_pydrake/isaacsim/_build/linux-x86_64/release
-./isaac-sim.sh
-
-# Test installation
-python ~/Documents/isac_sim_pydrake/test_isac_sim.py
-```
+- **Official Documentation**: [Isaac Sim Documentation](https://docs.isaacsim.omniverse.nvidia.com/)
+- **Download Page**: [Isaac Sim 5.1.0](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/download.html)
+- **API Reference**: Check the installed package documentation
+- **Community Forum**: NVIDIA Developer Forums
 
 ## Development Workflow
 
