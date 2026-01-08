@@ -3,12 +3,26 @@
 This repository contains robotics simulation projects using NVIDIA Isaac Sim for control systems, manipulation, and dynamics research.
 
 ## Table of Contents
+- [Overview](#overview)
 - [System Requirements](#system-requirements)
-- [Isaac Sim Installation](#isaac-sim-installation)
-- [Environment Setup](#environment-setup)
+- [Installation Guide](#installation-guide)
+  - [Python Package Installation](#python-package-installation)
+  - [Binary Installation](#binary-installation)
 - [Running Examples](#running-examples)
 - [Project Structure](#project-structure)
 - [Troubleshooting](#troubleshooting)
+
+---
+
+## Overview
+
+This repository demonstrates various robotics applications using NVIDIA Isaac Sim, including:
+- **Cart-Pendulum Systems**: 2DOF control and dynamics
+- **Ball-Plate Manipulator**: Vision-based control systems
+- **Dynamic Simulations**: Physics-based robot interactions
+- **Custom Robot Models**: URDF and USD model integration
+
+---
 
 ## System Requirements
 
@@ -23,30 +37,85 @@ This repository contains robotics simulation projects using NVIDIA Isaac Sim for
 - **NVIDIA Driver**: Latest stable driver (535+ recommended)
 - **Python**: 3.10 or 3.11 (managed by conda)
 
-## Isaac Sim Installation
+---
 
-### Step 1: Check System Compatibility
+## Installation Guide
 
-Before installing Isaac Sim, **run the compatibility checker** to ensure your system meets all requirements:
+### Python Package Installation
 
-**From binary installation (Workstation or Open-Source repository setup):**
+#### Why Install `pip install isaacsim`?
 
-1. Install/build Isaac Sim according to the target setup workflow.
-2. Run the `isaac-sim.compatibility_check.sh` script on Linux, or the `isaac-sim.compatibility_check.bat` script on Windows.
+The `isaacsim` Python package is **essential for programmatic access** to Isaac Sim. It provides:
 
-This will verify:
+**Core Components:**
+- **Python API Bindings**: Access to `SimulationApp`, `World`, `Scene`, and all Isaac Sim APIs
+- **Standalone Script Support**: Run simulations without the GUI (headless mode)
+- **Development Tools**: Utilities for robot control, sensors, and environment setup
+
+**Two Operating Modes:**
+
+1. **Headed Mode (GUI/Interactive)**:
+   - Full Isaac Sim GUI application with 3D viewport
+   - Interactive scene editing and visualization
+   - Real-time parameter tuning and debugging
+   - Best for: Development, debugging, visualization
+
+2. **Headless Mode (No GUI/Batch)**:
+   - Runs simulations without graphical interface
+   - Faster execution and lower resource usage
+   - Perfect for: Training AI agents, batch simulations, CI/CD pipelines, remote servers
+   - Enabled with: `experience=""` or `headless=True` in `SimulationApp`
+
+**Installation Steps:**
+
+```bash
+# Create a conda environment
+conda create -n env_isaacsim python=3.11 -y
+
+# Activate the environment
+conda activate env_isaacsim
+
+# Install the isaacsim Python package
+pip install isaacsim
+```
+
+**What This Package Does:**
+- Installs Python bindings to interact with Isaac Sim from code
+- Enables writing standalone Python scripts that control simulations
+- Provides API access for sensors, robots, physics, and rendering
+- Works with **both** binary installation and from-source builds
+
+**Important:** This package **requires** a full Isaac Sim installation (binary or built from source) to be present on your system. The `pip install` alone does **not** include the actual simulator - you must also complete the binary installation below.
+
+---
+
+### Binary Installation
+
+Download and install the complete Isaac Sim application for full simulator functionality.
+
+#### Step 1: Check System Compatibility
+
+Before installing, **run the compatibility checker** to ensure your system meets all requirements:
+
+After downloading Isaac Sim, run:
+```bash
+cd ~/isaacsim
+./isaac-sim.compatibility_check.sh
+```
+
+This verifies:
 - NVIDIA driver version
 - GPU compatibility
 - Operating system requirements
 - Required dependencies
 
-### Step 2: Download Isaac Sim
+#### Step 2: Download Isaac Sim
 
 Download Isaac Sim standalone binary from the official NVIDIA documentation:
 
 **📥 Download Link:** [Isaac Sim 5.1.0 Download Page](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/download.html)
 
-### Step 3: Install Isaac Sim (Binary Installation)
+#### Step 3: Install Isaac Sim
 
 For Linux (x86_64), execute the following commands:
 
@@ -64,7 +133,7 @@ cd ~/isaacsim
 # Run post-installation script
 ./post_install.sh
 
-# Launch Isaac Sim selector
+# Launch Isaac Sim selector (GUI mode)
 ./isaac-sim.selector.sh
 ```
 
@@ -75,22 +144,7 @@ Please update your code accordingly.
 [105.5s][ext: isaacsim.robot.wheeled_robots.ui-2.1.5] startup
 ```
 
-### Step 4: Create Conda Environment for Development
-
-Set up a Python environment for your robotics projects:
-
-```bash
-# Create conda environment
-conda create -n env_isaacsim python=3.11 -y
-
-# Activate the environment
-conda activate env_isaacsim
-
-# Install the isaacsim Python package (for API access)
-pip install isaacsim
-```
-
-**Note:** The `pip install isaacsim` installs Python bindings and API interfaces to interact with Isaac Sim programmatically from your scripts.
+---
 
 ## Running Examples
 
