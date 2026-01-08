@@ -1,0 +1,237 @@
+<?xml version="1.0" ?>
+<!-- Generated using onshape-to-robot -->
+<!-- Onshape https://cad.onshape.com/documents/02830e503a1c2626d58e0780/w/62db7934caa01effe231f1a9/e/4d4867fcb5ca80ef5736211e -->
+<robot name="manipulator_cart_pendulum">
+  <!-- Link base_mount_manipulator -->
+  <link name="base_mount_manipulator">
+    <inertial>
+      <origin xyz="0.0572879 2.62995e-09 -0.0294743" rpy="0 0 0"/>
+      <mass value="1526.22"/>
+      <inertia ixx="146.649" ixy="-6.9833e-14" ixz="-20.5116" iyy="1338.71" iyz="-3.60822e-16" izz="1207.93"/>
+    </inertial>
+    <!-- Part mount_rail_1 -->
+    <visual>
+      <origin xyz="-0.342742 2.62995e-09 -0.549139" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/mount_rail_1.stl"/>
+      </geometry>
+      <material name="mount_rail_1_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.342742 2.62995e-09 -0.549139" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/mount_rail_1.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part rail_1 -->
+    <visual>
+      <origin xyz="-0.342742 2.62995e-09 -0.549139" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/rail_1.stl"/>
+      </geometry>
+      <material name="rail_1_material">
+        <color rgba="0.231373 0.380392 0.705882 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.342742 2.62995e-09 -0.549139" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/rail_1.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part base_mount_manipulator -->
+    <visual>
+      <origin xyz="0.782258 2.62995e-09 -0.549139" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/base_mount_manipulator.stl"/>
+      </geometry>
+      <material name="base_mount_manipulator_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.782258 2.62995e-09 -0.549139" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/base_mount_manipulator.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part mount_rail_2 -->
+    <visual>
+      <origin xyz="-0.342742 2.62995e-09 -0.549139" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/mount_rail_2.stl"/>
+      </geometry>
+      <material name="mount_rail_2_material">
+        <color rgba="0.647059 0.647059 0.647059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.342742 2.62995e-09 -0.549139" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/mount_rail_2.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part rail_2 -->
+    <visual>
+      <origin xyz="-0.342742 2.62995e-09 -0.549139" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/rail_2.stl"/>
+      </geometry>
+      <material name="rail_2_material">
+        <color rgba="0.917647 0.917647 0.917647 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.342742 2.62995e-09 -0.549139" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/rail_2.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link link1 -->
+  <link name="link1">
+    <inertial>
+      <origin xyz="-0.549225 2.72753e-17 -0.0251674" rpy="0 0 0"/>
+      <mass value="10.8153"/>
+      <inertia ixx="0.0128988" ixy="-7.16029e-19" ixz="-0.0266598" iyy="0.981141" iyz="1.47991e-18" izz="0.983505"/>
+    </inertial>
+    <!-- Part link1 -->
+    <visual>
+      <origin xyz="0 0 -1.21437" rpy="0 -0 -5.55112e-17"/>
+      <geometry>
+        <mesh filename="package://assets/link1.stl"/>
+      </geometry>
+      <material name="link1_material">
+        <color rgba="0.647059 0.647059 0.647059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -1.21437" rpy="0 -0 -5.55112e-17"/>
+      <geometry>
+        <mesh filename="package://assets/link1.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link link2 -->
+  <link name="link2">
+    <inertial>
+      <origin xyz="-0.502678 -8.77743e-18 -0.0190625" rpy="0 0 0"/>
+      <mass value="9.69735"/>
+      <inertia ixx="0.00835887" ixy="0" ixz="0" iyy="0.773334" iyz="0" izz="0.779344"/>
+    </inertial>
+    <!-- Part link2 -->
+    <visual>
+      <origin xyz="0.953 0 1.05812" rpy="3.14159 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/link2.stl"/>
+      </geometry>
+      <material name="link2_material">
+        <color rgba="0.231373 0.380392 0.705882 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.953 0 1.05812" rpy="3.14159 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/link2.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Joint from link1 to link2 -->
+  <joint name="jt_link1_link2" type="revolute">
+    <origin xyz="-0.953 1.11022e-16 -0.118125" rpy="3.14159 -0 -0.66515"/>
+    <parent link="link1"/>
+    <child link="link2"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+  <!-- Joint from base_mount_manipulator to link1 -->
+  <joint name="jt_mount_link1" type="revolute">
+    <origin xyz="0.782258 2.62995e-09 0.627111" rpy="0 -0 -0.678409"/>
+    <parent link="base_mount_manipulator"/>
+    <child link="link1"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+  <!-- Link cart -->
+  <link name="cart">
+    <inertial>
+      <origin xyz="0.07 -0.013772 -0.1" rpy="0 0 0"/>
+      <mass value="1.33415"/>
+      <inertia ixx="0.00938506" ixy="0" ixz="0" iyy="0.0115655" iyz="0" izz="0.00924538"/>
+    </inertial>
+    <!-- Part cart -->
+    <visual>
+      <origin xyz="0.07 1 0" rpy="1.5708 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/cart.stl"/>
+      </geometry>
+      <material name="cart_material">
+        <color rgba="0.972549 0.529412 0.00392157 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.07 1 0" rpy="1.5708 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/cart.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link pendulum -->
+  <link name="pendulum">
+    <inertial>
+      <origin xyz="-1.24655e-09 0.604326 -0.0578763" rpy="0 0 0"/>
+      <mass value="4.48985"/>
+      <inertia ixx="0.0146803" ixy="-1.66939e-09" ixz="2.83631e-11" iyy="0.00446751" iyz="0.000335541" izz="0.0146595"/>
+    </inertial>
+    <!-- Part pendulum -->
+    <visual>
+      <origin xyz="-0.1 0.9406 -0.03" rpy="1.5708 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/pendulum.stl"/>
+      </geometry>
+      <material name="pendulum_material">
+        <color rgba="0.972549 0.529412 0.00392157 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.1 0.9406 -0.03" rpy="1.5708 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/pendulum.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part pendulum_bob -->
+    <visual>
+      <origin xyz="-0.1 0.9406 -0.03" rpy="1.5708 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/pendulum_bob.stl"/>
+      </geometry>
+      <material name="pendulum_bob_material">
+        <color rgba="0.498039 0.498039 0.498039 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.1 0.9406 -0.03" rpy="1.5708 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/pendulum_bob.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Joint from cart to pendulum -->
+  <joint name="jt_cart_pendulum" type="revolute">
+    <origin xyz="0.085 0.0594 -0.1" rpy="-0 1.5708 0"/>
+    <parent link="cart"/>
+    <child link="pendulum"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+  <!-- Joint from base_mount_manipulator to cart -->
+  <joint name="jt_rail_cart" type="prismatic">
+    <origin xyz="-0.653506 -0.07 0.450861" rpy="-1.5708 -0 1.5708"/>
+    <parent link="base_mount_manipulator"/>
+    <child link="cart"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-1" upper="1"/>
+  </joint>
+</robot>

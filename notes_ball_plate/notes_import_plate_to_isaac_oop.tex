@@ -1,0 +1,1022 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+
+% Code listing style
+\lstset{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    showstringspaces=false,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    captionpos=b,
+    tabsize=4
+}
+
+% Header and footer
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Isaac Sim OOP Implementation}
+\lhead{Ball-Plate Simulation}
+\rfoot{Page \thepage}
+
+\title{\textbf{Object-Oriented Ball and Plate Simulation in Isaac Sim}}
+\author{Documentation for import\_plate\_to\_isaac\_oop.py}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Overview}
+
+This document describes the object-oriented implementation of a ball and plate simulation in NVIDIA Isaac Sim. The program demonstrates clean software architecture principles applied to physics simulation.
+
+\subsection{What This Program Does}
+
+The simulation shows a red ball falling from 1 meter height and landing on a green plate. The physics engine calculates:
+\begin{itemize}
+    \item Gravity pulling the ball downward
+    \item Collision detection when ball meets plate
+    \item Friction and bounce when they interact
+    \item Realistic motion based on mass, force, and momentum
+\end{itemize}
+
+\subsection{Key Features}
+
+\begin{itemize}
+    \item \textbf{Parameter management} using Python dataclasses - organized containers for related settings
+    \item \textbf{Inheritance hierarchy} with base PhysicsObject class - shared code for common functionality
+    \item \textbf{Specialized classes} for Plate and Ball objects - each knows how to set up its specific physics
+    \item \textbf{Scene orchestration} through SceneManager - coordinates world setup and simulation loop
+    \item \textbf{User-friendly configuration} with constants at the top - change behavior without editing code
+\end{itemize}
+
+\subsection{Architecture Benefits}
+
+\begin{enumerate}
+    \item \textbf{Separation of Concerns}: Configuration (parameters), physics (forces/collisions), and visualization (colors/materials) are separated into distinct classes. Each class has one clear responsibility.
+    
+    \item \textbf{Reusability}: Base class methods are shared across all physics objects. Write code once, use it everywhere. For example, \texttt{create\_visual\_material()} works for both ball and plate.
+    
+    \item \textbf{Extensibility}: Easy to add new object types (cube, cylinder, car, etc.) by inheriting from PhysicsObject and implementing \texttt{apply\_physics()}. No need to modify existing code.
+    
+    \item \textbf{Maintainability}: Changes to one aspect don't affect others. Want to change lighting? Only modify SceneManager. Want different friction? Only change parameters.
+    
+    \item \textbf{Type Safety}: Dataclasses provide clear parameter structures with type hints. IDE can catch errors before running. Self-documenting code - you can see what parameters are expected.
+\end{enumerate}
+
+\subsection{For Beginners: Understanding OOP}
+
+\textbf{Object-Oriented Programming (OOP)} is like organizing a kitchen:
+\begin{itemize}
+    \item \textbf{Classes} are recipes (templates for creating objects)
+    \item \textbf{Objects} are dishes made from recipes (actual instances)
+    \item \textbf{Inheritance} is like variations - "Chocolate Cake" inherits from "Cake" recipe
+    \item \textbf{Methods} are steps in the recipe (functions that belong to a class)
+    \item \textbf{Attributes} are ingredients (data that belongs to an object)
+\end{itemize}
+
+In our code:
+\begin{itemize}
+    \item \texttt{PhysicsObject} is the base recipe for any physics-enabled object
+    \item \texttt{Plate} and \texttt{Ball} are specialized variations
+    \item Each object knows how to set up its own physics, materials, and appearance
+    \item SceneManager is the chef that coordinates everything
+\end{itemize}
+
+\section{User Configuration Section}
+
+\subsection{Easy Customization}
+
+All simulation parameters are defined as \textbf{constants} at the beginning of the file. This design pattern means you can customize the simulation without understanding the code - just change numbers at the top!
+
+\textbf{Why constants at the top?}
+\begin{itemize}
+    \item \textbf{Discoverability}: All settings in one place, easy to find
+    \item \textbf{No code diving}: Don't need to search through hundreds of lines
+    \item \textbf{Safe experimentation}: Change values, see what happens, easy to reset
+    \item \textbf{Documentation}: Comments explain what each parameter does
+\end{itemize}
+
+\begin{lstlisting}[caption={User Configuration Constants}]
+# Plate Configuration
+PLATE_POSITION = (0.0, 0.0, 0.0)
+PLATE_SCALE = (0.1, 0.1, 0.1)
+PLATE_ROTATION_X = None
+PLATE_COLOR = (0.0, 1.0, 0.0)  # Green
+PLATE_STATIC_FRICTION = 0.6
+PLATE_DYNAMIC_FRICTION = 0.5
+PLATE_RESTITUTION = 0.1
+PLATE_IS_DYNAMIC = True
+PLATE_COLLISION_TYPE = "convexDecomposition"
+
+# Ball Configuration
+BALL_POSITION = (0.0, 0.0, 1.0)
+BALL_SCALE = (0.25, 0.25, 0.25)
+BALL_RADIUS = 0.5
+BALL_COLOR = (1.0, 0.0, 0.0)  # Red
+BALL_STATIC_FRICTION = 0.6
+BALL_DYNAMIC_FRICTION = 0.5
+BALL_RESTITUTION = 0.3
+BALL_MASS = 0.1
+BALL_IS_DYNAMIC = True
+
+# Scene Configuration
+DISTANT_LIGHT_INTENSITY = 1000.0
+\section{Parameter Classes (Dataclasses)}
+
+\subsection{What Are Dataclasses?}
+
+\textbf{Dataclasses} are Python's way of creating simple container objects. Think of them as structured forms with labeled fields.
+
+\textbf{Traditional approach (messy):}
+\begin{lstlisting}
+# Parameters passed as individual variables - confusing!
+create_object(stage, 0.0, 0.0, 1.0, 0.1, 0.1, 0.1, 
+              1.0, 0.0, 0.0, 0.4, 0.0, 0.6, 0.5, 0.1)
+# What does each number mean? Hard to remember!
+\end{lstlisting}
+
+\textbf{Dataclass approach (clean):}
+\begin{lstlisting}
+# Parameters grouped logically - self-documenting!
+transform = TransformParams(
+    position=(0.0, 0.0, 1.0),
+    scale=(0.1, 0.1, 0.1)
+)
+visual = VisualMaterialParams(
+    color=(1.0, 0.0, 0.0),  # Red
+    roughness=0.4
+)
+# Clear what each parameter does!
+\end{lstlisting}
+
+\subsection{TransformParams}
+
+Encapsulates spatial transformation parameters (where, how big, rotation):
+ENABLE_CCD = True
+CONTACT_OFFSET = 0.02
+REST_OFFSET = 0.0
+\end{lstlisting}
+
+\section{Parameter Classes (Dataclasses)}
+
+\subsection{TransformParams}
+
+\subsection{PhysicsMaterialParams}
+
+Defines surface interaction properties (friction and bounciness).
+
+\textbf{Real-world analogy:}
+\begin{itemize}
+    \item \textbf{Ice}: Low friction (0.1), low restitution (0.05) - slippery, doesn't bounce
+    \item \textbf{Rubber}: High friction (0.9), high restitution (0.8) - grippy, very bouncy
+    \item \textbf{Wood}: Medium friction (0.6), low restitution (0.2) - moderate grip, slight bounce
+\end{itemize}rams Dataclass}]
+@dataclass
+class TransformParams:
+    """Parameters for USD transform operations"""
+    position: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    scale: Tuple[float, float, float] = (1.0, 1.0, 1.0)
+    rotateX: Optional[float] = None
+\end{lstlisting}
+
+\textbf{Mathematical Representation:}
+
+The transformation matrix $T$ combines translation, rotation, and scale:
+
+\begin{equation}
+    T = T_{translate} \cdot R_{x} \cdot S
+\end{equation}
+
+where:
+\begin{align}
+    T_{translate} &= \begin{bmatrix} 1 & 0 & 0 & t_x \\ 0 & 1 & 0 & t_y \\ 0 & 0 & 1 & t_z \\ 0 & 0 & 0 & 1 \end{bmatrix} \\
+    R_{x}(\theta) &= \begin{bmatrix} 1 & 0 & 0 & 0 \\ 0 & \cos\theta & -\sin\theta & 0 \\ 0 & \sin\theta & \cos\theta & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix} \\
+    S &= \begin{bmatrix} s_x & 0 & 0 & 0 \\ 0 & s_y & 0 & 0 \\ 0 & 0 & s_z & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix}
+\end{align}
+
+\subsection{PhysicsMaterialParams}
+
+Defines surface interaction properties:
+
+\begin{lstlisting}[caption={PhysicsMaterialParams Dataclass}]
+@dataclass
+class PhysicsMaterialParams:
+    """Parameters for physics material properties"""
+    static_friction: float = 0.6
+    dynamic_friction: float = 0.5
+    restitution: float = 0.1
+\end{lstlisting}
+
+\textbf{Physics Formulas:}
+
+\begin{itemize}
+    \item \textbf{Friction force}: $F_f = \mu N$, where $\mu$ is friction coefficient, $N$ is normal force
+    \item \textbf{Coefficient of restitution}: $e = \frac{v_{separation}}{v_{approach}}$
+    \item For elastic collision: $e = 1$, for perfectly inelastic: $e = 0$
+\end{itemize}
+
+\subsection{VisualMaterialParams}
+
+Controls PBR (Physically Based Rendering) appearance:
+
+\begin{lstlisting}[caption={VisualMaterialParams Dataclass}]
+@dataclass
+class VisualMaterialParams:
+    """Parameters for PBR visual material"""
+    color: Tuple[float, float, float] = (1.0, 1.0, 1.0)
+    roughness: float = 0.4
+    metallic: float = 0.0
+\end{lstlisting}
+
+\subsection{PhysicsBodyParams}
+
+Rigid body dynamics configuration:
+
+\begin{lstlisting}[caption={PhysicsBodyParams Dataclass}]
+@dataclass
+class PhysicsBodyParams:
+    """Parameters for rigid body physics"""
+\textbf{Continuous Collision Detection (CCD)}:
+
+CCD prevents \textit{tunneling} - when fast objects pass through walls instead of bouncing off.
+
+\textbf{Without CCD:}
+\begin{itemize}
+    \item Simulation checks positions at discrete time steps
+    \item If object moves too fast, it can "jump" through thin obstacles
+    \item Like a flipbook animation skipping frames
+\end{itemize}
+
+\textbf{With CCD:}
+\begin{itemize}
+    \item Checks the entire path between frames (swept volume)
+    \item Catches collisions even for very fast objects
+    \item Essential for bullets, fast-moving projectiles, small objects
+\end{itemize}
+
+In our simulation: Ball falls fast, plate is thin - CCD ensures collision is detected.
+    rest_offset: float = 0.0
+    mass: Optional[float] = None
+\end{lstlisting}
+
+\textbf{Continuous Collision Detection (CCD)}:
+\section{Base Class: PhysicsObject}
+
+\subsection{Understanding Inheritance}
+
+The \texttt{PhysicsObject} class is the \textbf{parent class} (or \textit{base class}) that provides common functionality for all physics-enabled objects.
+
+\textbf{Inheritance hierarchy:}
+\begin{verbatim}
+PhysicsObject (parent/base)
+    |-- Plate (child)
+    +-- Ball (child)
+\end{verbatim}
+
+\textbf{What does inheritance mean?}
+\begin{itemize}
+    \item Plate and Ball automatically get all methods from PhysicsObject
+    \item They can \textit{override} methods to customize behavior
+    \item They can add new methods specific to their type
+    \item Avoids duplicating code - write once in parent, use in all children
+\end{itemize}
+
+\textbf{Example:}
+\begin{itemize}
+    \item \texttt{create\_visual\_material()} - same for all objects, defined in parent
+    \item \texttt{apply\_physics()} - different for each object, defined in children
+    \item \texttt{import\_model()} - only Plate needs this, defined only in Plate class
+\end{itemize}
+
+The \texttt{PhysicsObject} class provides common functionality:
+\subsection{CollisionParams}
+
+Collision shape approximation settings:
+
+\begin{lstlisting}[caption={CollisionParams Dataclass}]
+@dataclass
+class CollisionParams:
+    """Parameters for collision configuration"""
+    approximation: str = "convexDecomposition"
+    enable_collision: bool = True
+\end{lstlisting}
+
+\textbf{Approximation Types}:
+\begin{itemize}
+    \item \texttt{convexDecomposition}: VHACD algorithm, accurate for concave meshes
+    \item \texttt{convexHull}: Single convex hull, faster but less accurate
+    \item \texttt{boundingCube}: Axis-aligned bounding box
+    \item \texttt{boundingSphere}: Bounding sphere
+\end{itemize}
+
+\section{Base Class: PhysicsObject}
+
+The \texttt{PhysicsObject} class provides common functionality for all physics-enabled objects:
+
+\begin{lstlisting}[caption={PhysicsObject Constructor}]
+class PhysicsObject:
+    """Base class for physics-enabled objects in Isaac Sim"""
+    
+    def __init__(
+        self,
+        stage,
+        prim_path: str,
+        transform_params: TransformParams,
+        visual_material_params: VisualMaterialParams,
+        physics_material_params: PhysicsMaterialParams,
+        physics_body_params: PhysicsBodyParams
+    ):
+        self.stage = stage
+        self.prim_path = prim_path
+        self.transform_params = transform_params
+        self.visual_material_params = visual_material_params
+        self.physics_material_params = physics_material_params
+        self.physics_body_params = physics_body_params
+        self.prim = None
+\end{lstlisting}
+
+\subsection{Key Methods}
+
+\subsubsection{apply\_transform()}
+
+Applies USD transform operations in the correct order:
+
+\begin{lstlisting}[caption={Transform Application}]
+def apply_transform(self):
+    """Apply transformation to the prim"""
+    prim = self.get_prim()
+    xform = UsdGeom.Xformable(prim)
+    xform.ClearXformOpOrder()
+    
+    # Match USD xformOpOrder structure
+    translate_op = xform.AddTranslateOp()
+    translate_op.Set(Gf.Vec3d(*self.transform_params.position))
+    
+    orient_op = xform.AddOrientOp()
+    orient_op.Set(Gf.Quatf(1, 0, 0, 0))
+    
+    scale_op = xform.AddScaleOp()
+    scale_op.Set(Gf.Vec3f(1, 1, 1))
+    
+    if self.transform_params.rotateX is not None:
+        rotate_x_op = xform.AddRotateXOp(opSuffix="unitsResolve")
+        rotate_x_op.Set(self.transform_params.rotateX)
+    
+    scale_units_op = xform.AddScaleOp(opSuffix="unitsResolve")
+    scale_units_op.Set(Gf.Vec3d(*self.transform_params.scale))
+\end{lstlisting}
+
+\textbf{Transform Order}: translate $\rightarrow$ orient $\rightarrow$ scale $\rightarrow$ rotateX $\rightarrow$ scale (units)
+
+\subsubsection{create\_visual\_material()}
+
+Creates UsdPreviewSurface shader for PBR rendering:
+
+\begin{lstlisting}[caption={Visual Material Creation}]
+def create_visual_material(self):
+    """Create and apply PBR visual material"""
+    material_path = f"{self.prim_path}/Material"
+    material = UsdShade.Material.Define(self.stage, material_path)
+    
+    shader_path = f"{material_path}/Shader"
+    shader = UsdShade.Shader.Define(self.stage, shader_path)
+\section{Derived Class: Plate}
+
+\subsection{Why a Separate Plate Class?}
+
+The \texttt{Plate} class \textbf{extends} (inherits from) \texttt{PhysicsObject} to add plate-specific functionality:
+
+\begin{enumerate}
+    \item \textbf{Model Loading}: Plate is a complex 3D shape loaded from a file (not a simple sphere/cube)
+    \item \textbf{Convex Decomposition}: Complex shapes need special collision handling
+    \item \textbf{Recursive Physics}: Multi-part meshes need physics applied to each part
+\end{enumerate}
+
+\textbf{What makes Plate special:}
+\begin{itemize}
+    \item Loads external USD model file (created in 3D modeling software)
+    \item Uses VHACD (V-HACD) algorithm to break concave shape into convex pieces
+    \item Applies physics recursively to all mesh children in the model
+\end{itemize}
+
+The \texttt{Plate} class code:
+        self.visual_material_params.color
+    )
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(
+        self.visual_material_params.roughness
+    )
+    shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(
+        self.visual_material_params.metallic
+    )
+    
+    material.CreateSurfaceOutput().ConnectToSource(
+        shader.ConnectableAPI(), "surface"
+    )
+    
+    self._bind_material_to_meshes(self.get_prim(), material)
+\end{lstlisting}
+
+\subsubsection{apply\_physics\_material()}
+
+Sets friction and restitution properties:
+
+\begin{lstlisting}[caption={Physics Material Application}]
+def apply_physics_material(self):
+    """Apply physics material for friction and restitution"""
+    material_path = f"{self.prim_path}/PhysicsMaterial"
+    physics_material = UsdPhysics.MaterialAPI.Apply(
+        self.stage.DefinePrim(material_path, "Material")
+    )
+    
+    physics_material.CreateStaticFrictionAttr(
+        self.physics_material_params.static_friction
+    )
+    physics_material.CreateDynamicFrictionAttr(
+        self.physics_material_params.dynamic_friction
+    )
+    physics_material.CreateRestitutionAttr(
+        self.physics_material_params.restitution
+    )
+\end{lstlisting}
+
+\section{Derived Class: Plate}
+
+The \texttt{Plate} class extends \texttt{PhysicsObject} for mesh-based objects:
+
+\begin{lstlisting}[caption={Plate Class Constructor}]
+class Plate(PhysicsObject):
+    """Plate object with convex decomposition collision"""
+    
+    def __init__(
+        self,
+        stage,
+        prim_path: str,
+        model_file: Path,
+        transform_params: TransformParams,
+        visual_material_params: VisualMaterialParams,
+        physics_material_params: PhysicsMaterialParams,
+        physics_body_params: PhysicsBodyParams,
+        collision_params: CollisionParams
+    ):
+        super().__init__(
+            stage, prim_path, transform_params, 
+            visual_material_params,
+            physics_material_params, physics_body_params
+        )
+        self.model_file = model_file
+        self.collision_params = collision_params
+\end{lstlisting}
+
+\subsection{Model Import}
+
+\begin{lstlisting}[caption={USD Model Import}]
+def import_model(self):
+    """Import USD model as reference"""
+\section{Derived Class: Ball}
+
+\subsection{Why a Separate Ball Class?}
+
+The \texttt{Ball} class creates a simple sphere with \textbf{analytic collision} - using exact mathematical formulas instead of mesh approximation.
+
+\textbf{Advantages of analytic collision for spheres:}
+\begin{itemize}
+    \item \textbf{Perfect accuracy}: Math formula for sphere is exact
+    \item \textbf{Much faster}: Simple distance calculation vs. complex mesh checks
+    \item \textbf{No approximation errors}: Convex decomposition not needed
+    \item \textbf{Simpler setup}: Create geometry programmatically, no file loading
+\end{itemize}
+
+\textbf{Sphere collision formula:}
+
+Two spheres collide when distance between centers $< r_1 + r_2$
+
+\begin{equation}
+    \text{collision} = \|\vec{p}_1 - \vec{p}_2\| < r_1 + r_2
+\end{equation}
+
+This is much simpler than checking thousands of mesh triangles!
+
+The \texttt{Ball} class code:
+        usd_context=usd_context,
+        path_to=self.prim_path,
+        asset_path=str(self.model_file.absolute()),
+        instanceable=False
+    )
+\end{lstlisting}
+
+\subsection{Physics Application}
+
+Applies physics recursively to mesh children:
+
+\begin{lstlisting}[caption={Recursive Physics Application}]
+def _apply_physics_recursive(self, p):
+    """Recursively apply physics to mesh prims"""
+    if p.IsA(UsdGeom.Mesh):
+        # Apply rigid body
+        UsdPhysics.RigidBodyAPI.Apply(p)
+        p.CreateAttribute("physics:rigidBodyEnabled", 
+                         Sdf.ValueTypeNames.Bool).Set(True)
+        p.CreateAttribute("physics:kinematicEnabled", 
+                         Sdf.ValueTypeNames.Bool).Set(
+            not self.physics_body_params.is_dynamic
+        )
+        
+        # Apply collision
+        UsdPhysics.CollisionAPI.Apply(p)
+        p.CreateAttribute("physics:collisionEnabled", 
+                         Sdf.ValueTypeNames.Bool).Set(True)
+        
+        # Mesh collision with approximation
+        UsdPhysics.MeshCollisionAPI.Apply(p)
+        mesh_collision = UsdPhysics.MeshCollisionAPI(p)
+        mesh_collision.CreateApproximationAttr(
+            self.collision_params.approximation
+        )
+        
+        # PhysX settings
+        PhysxSchema.PhysxRigidBodyAPI.Apply(p)
+        if self.physics_body_params.enable_ccd:
+            p.CreateAttribute("physxRigidBody:enableCCD", 
+                            Sdf.ValueTypeNames.Bool).Set(True)
+        
+        PhysxSchema.PhysxCollisionAPI.Apply(p)
+        p.CreateAttribute("physxCollision:contactOffset", 
+                         Sdf.ValueTypeNames.Float).Set(
+            self.physics_body_params.contact_offset
+        )
+        p.CreateAttribute("physxCollision:restOffset", 
+                         Sdf.ValueTypeNames.Float).Set(
+            self.physics_body_params.rest_offset
+        )
+    
+    for child in p.GetChildren():
+        self._apply_physics_recursive(child)
+\end{lstlisting}
+
+\section{Derived Class: Ball}
+
+The \texttt{Ball} class creates a sphere with analytic collision:
+
+\begin{lstlisting}[caption={Ball Class Constructor}]
+class Ball(PhysicsObject):
+    """Spherical ball object with analytic collision"""
+    
+    def __init__(
+        self,
+\section{SceneManager Class}
+
+\subsection{The Role of SceneManager}
+
+SceneManager is like the \textbf{director} of a play - it coordinates all the actors (objects) and manages the overall flow.
+
+\textbf{Responsibilities:}
+\begin{enumerate}
+    \item \textbf{World Setup}: Initialize physics engine with gravity, timestep, units
+    \item \textbf{Scene Assembly}: Add ground plane, lighting, objects
+    \item \textbf{Object Management}: Keep track of all physics objects in a dictionary
+    \item \textbf{Simulation Loop}: Run physics steps, render frames, print status
+\end{enumerate}
+
+\textbf{Why separate SceneManager?}
+\begin{itemize}
+    \item Separates scene management from object details
+    \item Easy to add/remove objects without changing simulation logic
+    \item Centralized control of lighting, camera, environment
+    \item Could easily swap in different scenes (multiple balls, different plates, etc.)
+\end{itemize}
+
+SceneManager code:
+        transform_params: TransformParams,
+        visual_material_params: VisualMaterialParams,
+        physics_material_params: PhysicsMaterialParams,
+        physics_body_params: PhysicsBodyParams
+    ):
+        super().__init__(
+            stage, prim_path, transform_params, 
+            visual_material_params,
+            physics_material_params, physics_body_params
+        )
+        self.radius = radius
+\end{lstlisting}
+
+\subsection{Geometry Creation}
+
+\begin{lstlisting}[caption={Sphere Geometry}]
+def create_geometry(self):
+    """Create sphere geometry"""
+    sphere = UsdGeom.Sphere.Define(self.stage, self.prim_path)
+    sphere.CreateRadiusAttr(self.radius)
+    
+    sphere.AddTranslateOp().Set(
+        Gf.Vec3d(*self.transform_params.position)
+    )
+    sphere.AddScaleOp().Set(
+        Gf.Vec3f(*self.transform_params.scale)
+    )
+    
+    extent = [(-self.radius, -self.radius, -self.radius),
+              (self.radius, self.radius, self.radius)]
+    sphere.CreateExtentAttr(extent)
+\end{lstlisting}
+
+\subsection{Physics Setup}
+
+\begin{lstlisting}[caption={Ball Physics}]
+def apply_physics(self):
+    """Apply physics with analytic sphere collision"""
+    prim = self.get_prim()
+    
+    UsdPhysics.RigidBodyAPI.Apply(prim)
+    UsdPhysics.CollisionAPI.Apply(prim)
+    
+    prim.CreateAttribute("physics:rigidBodyEnabled", 
+                        Sdf.ValueTypeNames.Bool).Set(True)
+    prim.CreateAttribute("physics:kinematicEnabled", 
+                        Sdf.ValueTypeNames.Bool).Set(False)
+    prim.CreateAttribute("physics:collisionEnabled", 
+                        Sdf.ValueTypeNames.Bool).Set(True)
+    
+    PhysxSchema.PhysxRigidBodyAPI.Apply(prim)
+    PhysxSchema.PhysxCollisionAPI.Apply(prim)
+    
+\subsection{Understanding the Simulation Loop}
+
+\textbf{What is a simulation loop?}
+
+Like frames in a movie, the simulation advances in tiny time steps. Each step:
+\begin{enumerate}
+    \item Calculate forces (gravity, friction, collisions)
+    \item Update velocities based on forces
+    \item Update positions based on velocities
+    \item Check for new collisions
+    \item Render the updated scene
+\end{enumerate}
+
+\textbf{Key concepts:}
+\begin{itemize}
+    \item \textbf{dt (delta time)}: Time per step, typically 1/60 second (60 FPS)
+    \item \textbf{Deterministic}: Same inputs always produce same outputs
+    \item \textbf{Real-time}: Tries to run at screen refresh rate (60 Hz)
+    \item \textbf{Physics substeps}: May calculate physics multiple times per visual frame for accuracy
+\end{itemize}
+
+\subsection{Simulation Loop Code}ams.enable_ccd:
+        prim.CreateAttribute("physxRigidBody:enableCCD", 
+                           Sdf.ValueTypeNames.Bool).Set(True)
+    
+    if self.physics_body_params.mass is not None:
+        mass_api = UsdPhysics.MassAPI.Apply(prim)
+        mass_api.CreateMassAttr(self.physics_body_params.mass)
+\end{lstlisting}
+
+\section{SceneManager Class}
+
+Orchestrates the entire simulation:
+
+\begin{lstlisting}[caption={SceneManager Initialization}]
+class SceneManager:
+    """Manages the complete Isaac Sim scene setup and simulation"""
+    
+    def __init__(
+        self,
+        lighting_params: LightingParams,
+        simulation_params: SimulationParams
+    ):
+        self.lighting_params = lighting_params
+        self.simulation_params = simulation_params
+        self.world = None
+        self.stage = None
+        self.objects = {}
+    
+    def initialize(self):
+        """Initialize world and get stage"""
+        self.world = World(stage_units_in_meters=1.0)
+        self.world.scene.add_default_ground_plane()
+        self.stage = omni.usd.get_context().get_stage()
+\end{lstlisting}
+
+\subsection{Lighting Setup}
+
+\begin{lstlisting}[caption={Scene Lighting}]
+def add_lighting(self):
+    """Add scene lighting"""
+    # Distant light
+    light_path = "/World/DistantLight"
+    distant_light = UsdLux.DistantLight.Define(self.stage, light_path)
+    distant_light.CreateIntensityAttr(
+        self.lighting_params.distant_intensity
+    )
+    distant_light.CreateAngleAttr(0.5)
+    distant_light.AddRotateXYZOp().Set(
+        Gf.Vec3f(self.lighting_params.distant_angle, 0, 0)
+    )
+    
+    # Dome light
+    dome_light_path = "/World/DomeLight"
+    dome_light = UsdLux.DomeLight.Define(self.stage, dome_light_path)
+    dome_light.CreateIntensityAttr(
+        self.lighting_params.dome_intensity
+    )
+\end{lstlisting}
+
+\subsection{Simulation Loop}
+
+\begin{lstlisting}[caption={Physics Simulation Loop}]
+def run_simulation(self):
+    """Run the physics simulation loop"""
+    self.world.reset()
+    
+    ball = self.objects.get('ball')
+    plate = self.objects.get('plate')
+    
+    ball_prim = ball.get_prim()
+    plate_prim = plate.get_prim()
+    
+    step_count = 0
+    dt = self.world.get_physics_dt()
+    
+    try:
+        while simulation_app.is_running():
+            self.world.step(render=True)
+            step_count += 1
+            
+            if step_count % self.simulation_params.print_interval == 0:
+                t = step_count * dt
+                
+                # Get positions
+                ball_xform = UsdGeom.Xformable(ball_prim)
+                ball_matrix = ball_xform.ComputeLocalToWorldTransform(0)
+                ball_center = ball_matrix.ExtractTranslation()
+                
+                plate_xform = UsdGeom.Xformable(plate_prim)
+                plate_matrix = plate_xform.ComputeLocalToWorldTransform(0)
+                plate_pos = plate_matrix.ExtractTranslation()
+                
+                print(f"Step {step_count:5d} | Time {t:6.2f}s | "
+                      f"Plate: {plate_pos} | Ball: {ball_center}")
+    
+    except KeyboardInterrupt:
+        print("Stopping simulation...")
+\end{lstlisting}
+
+\section{Main Function}
+
+The main function ties everything together:
+
+\begin{lstlisting}[caption={Main Execution Flow}]
+def main():
+    """Main execution flow using OOP architecture"""
+    # Initialize scene
+    scene = SceneManager(
+        lighting_params=LightingParams(
+\section{Physics Theory}
+
+\subsection{What is Rigid Body Dynamics?}
+
+\textbf{Rigid body} means the object doesn't deform - it stays solid. Real objects bend slightly, but we ignore that for performance.
+
+\textbf{Assumptions:}
+\begin{itemize}
+    \item Object shape never changes
+    \item Mass is evenly distributed
+    \item No internal vibrations or deformations
+    \item Perfect solids (like ideal billiard balls)
+\end{itemize}
+
+This is a good approximation for hard objects: balls, plates, rocks, furniture, etc.
+
+\subsection{Newton's Laws Applied}
+
+The motion of a rigid body is governed by Newton's second law:
+            print_interval=PRINT_INTERVAL,
+            run_interactive=True
+        )
+    )
+    scene.initialize()
+    scene.add_lighting()
+    
+    # Find plate model file
+    model_file = Path(__file__).parent / "plate" / "plate.usdc"
+    
+    # Create plate
+    plate = Plate(
+        stage=scene.stage,
+        prim_path="/World/Plate",
+        model_file=model_file,
+        transform_params=TransformParams(
+\subsection{Collision Response}
+
+\textbf{What happens when objects collide?}
+
+The physics engine must:
+\begin{enumerate}
+    \item Detect collision (are they touching?)
+    \item Calculate collision normal (which direction to push them apart?)
+    \item Apply impulse (instantaneous force) to separate them
+    \item Account for friction (sliding along surface)
+    \item Account for restitution (bounciness)
+\end{enumerate}
+
+For two colliding bodies with velocities $\vec{v}_1$ and $\vec{v}_2$, the post-collision velocities are:
+        ),
+        visual_material_params=VisualMaterialParams(
+            color=PLATE_COLOR,
+            roughness=ROUGHNESS,
+            metallic=METALLIC
+        ),
+        physics_material_params=PhysicsMaterialParams(
+            static_friction=PLATE_STATIC_FRICTION,
+            dynamic_friction=PLATE_DYNAMIC_FRICTION,
+            restitution=PLATE_RESTITUTION
+        ),
+        physics_body_params=PhysicsBodyParams(
+            is_dynamic=PLATE_IS_DYNAMIC,
+\section{Summary and Learning Path}
+
+\subsection{What You've Learned}
+
+This object-oriented implementation demonstrates professional software engineering principles:
+
+\begin{itemize}
+    \item \textbf{Clean architecture} with separation of concerns - each class has one job
+    \item \textbf{Easy configuration} through top-level constants - no code diving required
+    \item \textbf{Reusable components} via inheritance - write once, use many times
+    \item \textbf{Type-safe parameters} using dataclasses - catch errors early
+    \item \textbf{Extensible design} for adding new object types - add features without breaking existing code
+\end{itemize}
+
+\subsection{Key Takeaways for Beginners}
+
+\begin{enumerate}
+    \item \textbf{OOP organizes complexity}: Classes group related data and functions
+    \item \textbf{Inheritance prevents duplication}: Common code in parent, specific code in children
+    \item \textbf{Dataclasses improve clarity}: Named parameters instead of mysterious numbers
+    \item \textbf{Constants at top aid experimentation}: Change behavior without understanding internals
+    \item \textbf{Comments explain the "why"}: Code shows "what", comments show "why"
+\end{enumerate}
+
+\subsection{Next Steps for Learning}
+
+\textbf{Beginner exercises:}
+\begin{enumerate}
+    \item Change ball color to blue - find the constant and modify
+    \item Make ball start higher - change BALL\_POSITION
+    \item Add more friction - increase friction constants
+    \item Make it bouncier - increase restitution values
+\end{enumerate}
+
+\textbf{Intermediate exercises:}
+\begin{enumerate}
+    \item Create a Cube class inheriting from PhysicsObject
+    \item Add multiple balls with different properties
+    \item Implement a ramp instead of a plate
+    \item Add keyboard controls to launch the ball
+\end{enumerate}
+
+\textbf{Advanced exercises:}
+\begin{enumerate}
+    \item Implement a PID controller to balance ball on plate
+    \item Add actuators to tilt the plate dynamically
+    \item Create a robot arm that picks up the ball
+    \item Build a complete ball-plate balancing system
+\end{enumerate}
+
+\subsection{Understanding the Code Structure}
+
+\textbf{Reading order for beginners:}
+\begin{enumerate}
+    \item Start with USER CONFIGURATION - see what's customizable
+    \item Read main() function - understand overall flow
+    \item Study dataclasses - see how parameters are organized
+    \item Examine SceneManager - see how scene is set up
+    \item Look at Ball class - simplest physics object
+    \item Study Plate class - more complex with model loading
+    \item Finally PhysicsObject - understand shared functionality
+\end{enumerate}
+
+\textbf{Don't read linearly!} Jump to what interests you. Use comments as a guide.
+    # Create ball
+    ball = Ball(
+        stage=scene.stage,
+        prim_path="/World/Ball",
+        radius=BALL_RADIUS,
+        transform_params=TransformParams(
+            position=BALL_POSITION,
+            scale=BALL_SCALE
+        ),
+        visual_material_params=VisualMaterialParams(
+            color=BALL_COLOR,
+            roughness=ROUGHNESS,
+            metallic=METALLIC
+        ),
+        physics_material_params=PhysicsMaterialParams(
+            static_friction=BALL_STATIC_FRICTION,
+            dynamic_friction=BALL_DYNAMIC_FRICTION,
+            restitution=BALL_RESTITUTION
+        ),
+        physics_body_params=PhysicsBodyParams(
+            is_dynamic=BALL_IS_DYNAMIC,
+            enable_ccd=ENABLE_CCD,
+            mass=BALL_MASS
+        )
+    )
+    scene.add_object('ball', ball)
+    
+    # Run simulation
+    scene.enable_collision_visualization()
+    scene.run_simulation()
+\end{lstlisting}
+
+\section{Physics Theory}
+
+\subsection{Rigid Body Dynamics}
+
+The motion of a rigid body is governed by Newton's second law:
+
+\begin{equation}
+    \vec{F} = m\vec{a} = m\frac{d\vec{v}}{dt}
+\end{equation}
+
+For rotation:
+
+\begin{equation}
+    \vec{\tau} = I\vec{\alpha} = I\frac{d\vec{\omega}}{dt}
+\end{equation}
+
+where $\vec{\tau}$ is torque, $I$ is moment of inertia, $\vec{\omega}$ is angular velocity.
+
+\subsection{Collision Response}
+
+For two colliding bodies with velocities $\vec{v}_1$ and $\vec{v}_2$:
+
+\begin{equation}
+    \vec{v}_1' = \vec{v}_1 - \frac{(1+e)m_2}{m_1 + m_2}(\vec{v}_1 - \vec{v}_2)
+\end{equation}
+
+\begin{equation}
+    \vec{v}_2' = \vec{v}_2 + \frac{(1+e)m_1}{m_1 + m_2}(\vec{v}_1 - \vec{v}_2)
+\end{equation}
+
+where $e$ is the coefficient of restitution.
+
+\subsection{Friction Model}
+
+Coulomb friction model:
+
+\begin{equation}
+    F_f = \begin{cases}
+        \mu_s N & \text{if static} \\
+        \mu_d N & \text{if sliding}
+    \end{cases}
+\end{equation}
+
+where $\mu_s$ is static friction, $\mu_d$ is dynamic friction, $N$ is normal force.
+
+\section{Summary}
+
+This object-oriented implementation provides:
+
+\begin{itemize}
+    \item \textbf{Clean architecture} with separation of concerns
+    \item \textbf{Easy configuration} through top-level constants
+    \item \textbf{Reusable components} via inheritance
+    \item \textbf{Type-safe parameters} using dataclasses
+    \item \textbf{Extensible design} for adding new object types
+\end{itemize}
+
+\subsection{Key Parameters Summary}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Parameter} & \textbf{Default} & \textbf{Description} \\
+\hline
+PLATE\_SCALE & (0.1, 0.1, 0.1) & Plate size multiplier \\
+BALL\_POSITION & (0.0, 0.0, 1.0) & Initial ball height \\
+BALL\_RADIUS & 0.5 & Ball radius in meters \\
+BALL\_MASS & 0.1 & Ball mass in kg \\
+ENABLE\_CCD & True & Continuous collision detection \\
+PRINT\_INTERVAL & 100 & Status print frequency \\
+\hline
+\end{tabular}
+\caption{Key Simulation Parameters}
+\end{table}
+
+\end{document}

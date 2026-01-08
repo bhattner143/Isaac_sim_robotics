@@ -1,0 +1,157 @@
+<?xml version="1.0" ?>
+<!-- Generated using onshape-to-robot -->
+<!-- Onshape https://cad.onshape.com/documents/02830e503a1c2626d58e0780/w/62db7934caa01effe231f1a9/e/7a54001999a01ae1aa1652f0 -->
+<robot name="cart_pendulum">
+  <!-- Link mount_rail_2 -->
+  <link name="mount_rail_2">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1e-09"/>
+      <inertia ixx="1e-09" ixy="0" ixz="0" iyy="1e-09" iyz="0" izz="1e-09"/>
+    </inertial>
+    <!-- Part mount_rail_2 -->
+    <visual>
+      <origin xyz="-1.86924 0.133974 -0.253271" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/mount_rail_2.stl"/>
+      </geometry>
+      <material name="mount_rail_2_material">
+        <color rgba="0.647059 0.647059 0.647059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-1.86924 0.133974 -0.253271" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/mount_rail_2.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part rail_1 -->
+    <visual>
+      <origin xyz="-0.119243 0.133974 -0.253271" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/rail_1.stl"/>
+      </geometry>
+      <material name="rail_1_material">
+        <color rgba="0.231373 0.380392 0.705882 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.119243 0.133974 -0.253271" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/rail_1.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part mount_rail_2_2 -->
+    <visual>
+      <origin xyz="-0.119243 0.133974 -0.253271" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/mount_rail_2.stl"/>
+      </geometry>
+      <material name="mount_rail_2_2_material">
+        <color rgba="0.647059 0.647059 0.647059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.119243 0.133974 -0.253271" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/mount_rail_2.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part rail_1_2 -->
+    <visual>
+      <origin xyz="-0.119243 -0.00602567 -0.253271" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/rail_1.stl"/>
+      </geometry>
+      <material name="rail_1_2_material">
+        <color rgba="0.231373 0.380392 0.705882 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.119243 -0.00602567 -0.253271" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/rail_1.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link cart -->
+  <link name="cart">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1e-09"/>
+      <inertia ixx="1e-09" ixy="0" ixz="0" iyy="1e-09" iyz="0" izz="1e-09"/>
+    </inertial>
+    <!-- Part cart -->
+    <visual>
+      <origin xyz="0.07 1 0" rpy="1.5708 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/cart.stl"/>
+      </geometry>
+      <material name="cart_material">
+        <color rgba="0.972549 0.529412 0.00392157 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.07 1 0" rpy="1.5708 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/cart.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link pendulum -->
+  <link name="pendulum">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1e-09"/>
+      <inertia ixx="1e-09" ixy="0" ixz="0" iyy="1e-09" iyz="0" izz="1e-09"/>
+    </inertial>
+    <!-- Part pendulum_bob -->
+    <visual>
+      <origin xyz="-0.1 0.9406 -0.03" rpy="1.5708 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/pendulum_bob.stl"/>
+      </geometry>
+      <material name="pendulum_bob_material">
+        <color rgba="0.498039 0.498039 0.498039 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.1 0.9406 -0.03" rpy="1.5708 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/pendulum_bob.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part pendulum -->
+    <visual>
+      <origin xyz="-0.1 0.9406 -0.03" rpy="1.5708 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/pendulum.stl"/>
+      </geometry>
+      <material name="pendulum_material">
+        <color rgba="0.972549 0.529412 0.00392157 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.1 0.9406 -0.03" rpy="1.5708 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/pendulum.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Joint from cart to pendulum -->
+  <joint name="cart_pendulum" type="revolute">
+    <origin xyz="0.085 0.0594 -0.1" rpy="-1.5708 1.4987 -1.5708"/>
+    <parent link="cart"/>
+    <child link="pendulum"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+  <!-- Joint from mount_rail_2 to cart -->
+  <joint name="jt_rail_cart" type="prismatic">
+    <origin xyz="-0.247489 0.0639743 0.746729" rpy="-1.5708 -0 1.5708"/>
+    <parent link="mount_rail_2"/>
+    <child link="cart"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-1" upper="1"/>
+  </joint>
+</robot>

@@ -1,0 +1,122 @@
+ONSHAPE-TO-ROBOT CONFIG.JSON OPTIONS REFERENCE
+===============================================
+
+CURRENTLY ACTIVE (in your config.json):
+---------------------------------------
+✓ url - OnShape assembly link
+✓ output_format - "urdf"
+✓ output_filename - "robot"
+✓ assets_directory - "assets"
+✓ robot_name - "my_robot"
+✓ ignore - {} (no parts ignored)
+✓ no_dynamics - false (dynamics ENABLED - includes mass/inertia)
+✓ ignore_limits - false (joint limits ENABLED)
+✓ draw_frames - false (frame visualization OFF)
+✓ draw_collisions - false (collision visualization OFF)
+
+
+ADDITIONAL OPTIONS YOU CAN ADD:
+================================
+
+1. IGNORE PARTS (visual/collision/both)
+   -------------------------------------
+   "ignore": {
+       "screw*": "both",           // Ignore parts matching "screw*"
+       "bolt*": "visual",          // Keep collision, hide visual
+       "decorative*": "collision", // Keep visual, remove collision
+       "*": "collision",           // Ignore all collision
+       "!important_part": "collision"  // Except this one
+   }
+
+2. CONFIGURATION (OnShape variants)
+   ---------------------------------
+   "configuration": "Size=Large;Color=Red"
+
+3. DYNAMICS CONTROL
+   -----------------
+   "no_dynamics": true     // Disable all mass/inertia (faster, no physics)
+   
+4. JOINT LIMITS
+   -------------
+   "ignore_limits": true   // Remove joint limits (unlimited motion)
+
+5. VISUALIZATION
+   --------------
+   "draw_frames": true     // Show coordinate frames (debugging)
+   "draw_collisions": true // Show collision geometry
+   "color": [1.0, 0.0, 0.0]  // Override all colors (R,G,B)
+
+6. POST-PROCESSING
+   ----------------
+   "post_import_commands": [
+       "echo 'Import complete'",
+       "python process_urdf.py"
+   ]
+
+7. ADVANCED (if not using url)
+   ----------------------------
+   "document_id": "..."
+   "version_id": "..."
+   "workspace_id": "..."
+   "element_id": "..."
+   "assembly_name": "robot"
+
+8. STL FILENAMES
+   --------------
+   "include_configuration_suffix": false  // Don't add config to STL names
+
+
+USAGE EXAMPLES:
+===============
+
+Example 1: Lightweight robot (no small parts)
+----------------------------------------------
+{
+    "url": "...",
+    "output_format": "urdf",
+    "robot_name": "my_robot",
+    "ignore": {
+        "screw*": "both",
+        "bolt*": "both",
+        "washer*": "both"
+    },
+    "no_dynamics": false,
+    "draw_frames": false
+}
+
+Example 2: Debug mode (see everything)
+---------------------------------------
+{
+    "url": "...",
+    "output_format": "urdf",
+    "robot_name": "my_robot",
+    "draw_frames": true,
+    "draw_collisions": true
+}
+
+Example 3: Static model (no physics)
+-------------------------------------
+{
+    "url": "...",
+    "output_format": "urdf",
+    "robot_name": "my_robot",
+    "no_dynamics": true,
+    "ignore_limits": true
+}
+
+Example 4: Specific configuration
+----------------------------------
+{
+    "url": "...",
+    "output_format": "urdf",
+    "robot_name": "my_robot",
+    "configuration": "ArmLength=500mm;GripperType=Parallel"
+}
+
+
+TO ACTIVATE ANY OPTION:
+=======================
+1. Copy the option from above
+2. Add it to your config.json
+3. Set appropriate value
+4. Run: onshape-to-robot my-robot

@@ -1,0 +1,927 @@
+\UseRawInputEncoding
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+% Code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny\color{gray}
+}
+
+\title{Notes: Import Plate with Dips to Isaac Sim\\
+\large Object-Oriented Python Script with Sinusoidal Motion}
+\author{Script: \texttt{import\_plate\_dips\_to\_isaac\_oop.py}}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Overview}
+This script demonstrates an object-oriented approach to importing a USD model (plate with dips) into NVIDIA Isaac Sim, adding a ball, configuring physics properties, and implementing sinusoidal horizontal motion. The script uses:
+\begin{itemize}
+    \item OOP architecture with inheritance (PhysicsObject base class)
+    \item Dataclasses for parameter management
+    \item Pre-rotated USD model (\texttt{part\_dips\_coarse\_rot.usd})
+    \item \textbf{Kinematic rigid body} with angular locks to prevent rotation
+    \item \textbf{Position-controlled} sinusoidal motion with 90° rotation correction
+    \item Physics parameter monitoring (velocity, rotation, position)
+\end{itemize}
+
+\section{Key Configuration Parameters}
+
+\subsection{Plate Configuration}
+\begin{lstlisting}[language=Python]
+PLATE_POSITION = (0.0, 0.0, 0.1)  # Position in meters
+PLATE_SCALE = (10.0, 10.0, 10.0)  # 10x scale multiplier
+PLATE_ROTATION_X = 0               # Base rotation (90° applied in loop)
+PLATE_COLOR = (0.0, 1.0, 0.0)     # Green
+PLATE_STATIC_FRICTION = 0.6
+PLATE_DYNAMIC_FRICTION = 0.5
+PLATE_RESTITUTION = 0.1           # Low bounce
+PLATE_MECHANICS = "kinematic"     # Kinematic control mode
+PLATE_COLLISION_TYPE = "convexDecomposition"
+\end{lstlisting}
+
+\textbf{Key Points:}
+\begin{itemize}
+    \item \texttt{PLATE\_MECHANICS="kinematic"}: Position-controlled motion
+    \item \texttt{convexDecomposition}: VHACD algorithm for concave collision mesh
+    \item Scale factor 10× makes plate visible at meter scale
+    \item 90° rotation applied per-frame to correct mesh orientation
+\end{itemize}
+
+\subsection{Ball Configuration}
+\begin{lstlisting}[language=Python]
+BALL_POSITION = (0.0, 0.0, 3)     # 3m above ground
+BALL_SCALE = (1.0, 1.0, 1.0)      # No additional scaling
+BALL_RADIUS = 0.5                 # 0.5m base radius
+BALL_COLOR = (2.0, 0.0, 0.0)      # Bright red
+BALL_STATIC_FRICTION = 0.6
+BALL_DYNAMIC_FRICTION = 0.5
+BALL_RESTITUTION = 0.3            # Moderate bounce
+BALL_MASS = 0.1                   # 100 grams
+BALL_IS_DYNAMIC = True
+\end{lstlisting}
+
+\textbf{Key Points:}
+\begin{itemize}
+    \item Ball starts 3m above ground, falls onto plate
+    \item Effective radius: $r = 0.5$ m
+    \item Light mass (100g) for realistic rolling dynamics
+    \item Higher restitution than plate for visible bounce
+\end{itemize}
+
+\subsection{Motion Configuration}
+\begin{lstlisting}[language=Python]
+SETTLE_TIME = 3.0                 # Wait time in seconds
+PLATE_MOTION_AMPLITUDE = 2.0      # 2m amplitude
+PLATE_MOTION_FREQUENCY = 0.1      # 0.1 Hz (10s period)
+PLATE_MOTION_AXIS = 0             # X-axis motion
+PLATE_MOTION_ENABLED = True
+\end{lstlisting}
+
+\textbf{Sinusoidal Motion Equation (Kinematic Mode):}
+\begin{align}
+    x(t) &= x_0 + A \sin(2\pi f t) \\
+    v_{computed}(t) &= \frac{dx}{dt} = A \cdot 2\pi f \cdot \cos(2\pi f t)
+\end{align}
+where:
+\begin{itemize}
+    \item $x_0$ = initial position
+    \item $A = 2.0$ m (amplitude)
+    \item $f = 0.1$ Hz (frequency)
+    \item $T = 1/f = 10$ s (period)
+    \item $v_{computed} = 1.257$ m/s (maximum computed velocity for display)
+\end{itemize}
+
+\textbf{Kinematic vs. Dynamic Control:}
+\begin{itemize}
+    \item \textbf{Kinematic}: Direct position setting each frame (position teleportation)
+    \item Physics engine velocity is zero (object doesn't "move" in physics sense)
+    \item Computed velocity is calculated for display purposes only
+    \item More stable for controlled motion, no velocity integration errors
+\end{itemize}
+
+\textbf{Motion starts after:}
+\begin{itemize}
+    \item 3 seconds settling time
+    \item Ball has landed on plate and come to rest
+    \item Plate oscillates $\pm 2$m from center along X-axis
+\end{itemize}
+
+\section{Architecture: Object-Oriented Design}
+
+\subsection{Dataclass Hierarchy}
+\begin{lstlisting}[language=Python]
+@dataclass
+class TransformParams:
+    position: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    scale: Tuple[float, float, float] = (1.0, 1.0, 1.0)
+    rotateX: Optional[float] = None
+
+@dataclass
+class PhysicsMaterialParams:
+    static_friction: float = 0.5
+    dynamic_friction: float = 0.5
+    restitution: float = 0.1
+
+@dataclass
+class VisualMaterialParams:
+    color: Tuple[float, float, float] = (1.0, 1.0, 1.0)
+    roughness: float = 0.4
+    metallic: float = 0.0
+
+@dataclass
+class PhysicsBodyParams:
+    is_dynamic: bool = True
+    enable_ccd: bool = True
+    mass: Optional[float] = None
+    contact_offset: float = 0.02
+    rest_offset: float = 0.0
+
+@dataclass
+class CollisionParams:
+    approximation: str = "none"
+    enable_collision: bool = True
+
+@dataclass
+class SimulationParams:
+    print_interval: int = 100
+    run_interactive: bool = True
+    settle_time: float = 3.0
+    plate_motion_amplitude: float = 2.0
+    plate_motion_frequency: float = 0.1
+    plate_motion_axis: int = 0
+    plate_motion_enabled: bool = True
+\end{lstlisting}
+
+\textbf{Purpose:} Dataclasses organize related parameters into logical groups, improving:
+\begin{itemize}
+    \item Code readability and maintainability
+    \item Type safety (type hints)
+    \item Default value management
+    \item Parameter validation
+\end{itemize}
+
+\subsection{Class Inheritance Structure}
+\begin{verbatim}
+PhysicsObject (Base Class)
+    |
+    +-- Plate (Derived Class)
+    |
+    +-- Ball (Derived Class)
+
+SceneManager (Orchestrator)
+\end{verbatim}
+
+\subsection{PhysicsObject Base Class}
+\begin{lstlisting}[language=Python]
+class PhysicsObject:
+    def __init__(self, prim_path, stage, transform_params, 
+                 physics_material_params, visual_material_params,
+                 physics_body_params):
+        self.prim_path = prim_path
+        self.stage = stage
+        # Store all parameter objects
+        
+    def get_prim(self):
+        return self.stage.GetPrimAtPath(self.prim_path)
+    
+    def apply_transform(self):
+        # Apply position, rotation, scale
+        
+    def create_visual_material(self):
+        # Create PBR material
+        
+    def apply_physics(self):
+        # Apply rigid body and collision
+        
+    def apply_physics_material(self):
+        # Apply friction and restitution
+        
+    def setup(self):
+        # Template method - call all setup steps
+\end{lstlisting}
+
+\textbf{Purpose:} Base class contains common functionality:
+\begin{itemize}
+    \item USD prim access
+    \item Transform operations (position, rotation, scale)
+    \item Visual material creation (PBR shader)
+    \item Physics configuration (rigid body, collision)
+    \item Physics material (friction, restitution)
+\end{itemize}
+
+\textbf{Benefits of inheritance:}
+\begin{itemize}
+    \item Code reuse - shared methods in base class
+    \item Polymorphism - objects treated uniformly
+    \item Extensibility - easy to add new object types
+\end{itemize}
+
+\subsection{Plate Class}
+\begin{lstlisting}[language=Python]
+class Plate(PhysicsObject):
+    def __init__(self, prim_path, model_file, transform_params,
+                 physics_material_params, visual_material_params,
+                 physics_body_params, collision_params):
+        self.model_file = model_file
+        self.collision_params = collision_params
+        super().__init__(...)  # Call parent constructor
+        
+    def import_model(self):
+        # Import USD reference from model_file
+        omni.kit.commands.execute(
+            'CreateReferenceCommand',
+            path_to=self.prim_path,
+            asset_path=str(self.model_file),
+            instanceable=False
+        )
+    
+    def apply_physics(self):
+        # Custom physics for plate with angular locks
+        prim = self.get_prim()
+        
+        # Rigid body
+        UsdPhysics.RigidBodyAPI.Apply(prim)
+        prim.CreateAttribute("physics:rigidBodyEnabled", 
+                           Sdf.ValueTypeNames.Bool).Set(True)
+        
+        # Angular locks to prevent rotation
+        prim.CreateAttribute("physxRigidBody:angularDamping",
+                           Sdf.ValueTypeNames.Float).Set(10000.0)
+        prim.CreateAttribute("physxRigidBody:lockFlags",
+                           Sdf.ValueTypeNames.Int).Set(56)  # Lock X,Y,Z
+        
+        # Collision with convex decomposition
+        UsdPhysics.CollisionAPI.Apply(prim)
+        UsdPhysics.MeshCollisionAPI.Apply(prim)
+        mesh_collision = UsdPhysics.MeshCollisionAPI(prim)
+        mesh_collision.CreateApproximationAttr("convexDecomposition")
+    
+    def setup(self):
+        # Override to import model first
+        self.import_model()
+        self.apply_transform()
+        self.create_visual_material()
+        self.apply_physics()
+        self.apply_physics_material()
+\end{lstlisting}
+
+\textbf{Plate-Specific Features:}
+\begin{itemize}
+    \item \texttt{import\_model()}: Loads external USD file via reference
+    \item \texttt{angular\_locks}: Prevents unwanted rotation during motion
+    \item \texttt{angularDamping=10000}: Strong damping suppresses rotation
+    \item \texttt{lockFlags=56}: Binary 111000 = lock rotation on X, Y, Z axes
+    \item \texttt{convexDecomposition}: Required for concave mesh collision
+\end{itemize}
+
+\subsection{Ball Class}
+\begin{lstlisting}[language=Python]
+class Ball(PhysicsObject):
+    def __init__(self, prim_path, radius, transform_params,
+                 physics_material_params, visual_material_params,
+                 physics_body_params):
+        self.radius = radius
+        super().__init__(...)
+        
+    def create_geometry(self):
+        # Create sphere primitive
+        sphere = UsdGeom.Sphere.Define(self.stage, self.prim_path)
+        sphere.CreateRadiusAttr(self.radius)
+        
+        # Apply transform immediately
+        xformable = UsdGeom.Xformable(sphere)
+        translate_op = xformable.AddTranslateOp()
+        translate_op.Set(Gf.Vec3d(*self.transform_params.position))
+        
+        if self.transform_params.scale:
+            scale_op = xformable.AddScaleOp()
+            scale_op.Set(Gf.Vec3f(*self.transform_params.scale))
+    
+    def apply_physics(self):
+        # Custom physics for sphere
+        prim = self.get_prim()
+        
+        UsdPhysics.RigidBodyAPI.Apply(prim)
+        UsdPhysics.CollisionAPI.Apply(prim)
+        
+        # Mass
+        if self.physics_body_params.mass:
+            mass_api = UsdPhysics.MassAPI.Apply(prim)
+            mass_api.CreateMassAttr(self.physics_body_params.mass)
+    
+    def setup(self):
+        # Override - create geometry first
+        self.create_geometry()
+        # Skip apply_transform (done in create_geometry)
+        self.create_visual_material()
+        self.apply_physics()
+        self.apply_physics_material()
+\end{lstlisting}
+
+\textbf{Ball-Specific Features:}
+\begin{itemize}
+    \item \texttt{create\_geometry()}: Generates \texttt{UsdGeom.Sphere} primitive
+    \item Analytic collision (no mesh approximation needed)
+    \item Explicit mass setting via \texttt{UsdPhysics.MassAPI}
+    \item Transform applied during geometry creation
+\end{itemize}
+
+\section{Scene Manager and Simulation}
+
+\subsection{SceneManager Class}
+\begin{lstlisting}[language=Python]
+class SceneManager:
+    def __init__(self, lighting_params, simulation_params):
+        self.lighting_params = lighting_params
+        self.simulation_params = simulation_params
+        self.world = None
+        self.stage = None
+        self.objects = []
+        
+    def initialize(self):
+        # Create physics world
+        self.world = World(stage_units_in_meters=1.0)
+        self.world.scene.add_default_ground_plane()
+        self.stage = omni.usd.get_context().get_stage()
+        
+    def add_lighting(self):
+        # Add distant + dome lights
+        
+    def add_object(self, obj: PhysicsObject):
+        obj.setup()
+        self.objects.append(obj)
+        
+    def run_simulation(self):
+        # Main simulation loop with motion control
+\end{lstlisting}
+
+\textbf{Purpose:} SceneManager orchestrates the entire simulation:
+\begin{itemize}
+    \item Initializes physics world and USD stage
+    \item Manages lighting setup
+    \item Maintains list of physics objects
+    \item Runs simulation loop with motion control
+\end{itemize}
+
+\subsection{Sinusoidal Motion Implementation}
+\begin{lstlisting}[language=Python]
+def run_simulation(self):
+    self.world.reset()
+    step_count = 0
+    motion_started = False
+    plate_obj = None
+    
+    # Find plate object
+    for obj in self.objects:
+        if "Plate" in obj.prim_path:
+            plate_obj = obj
+            break
+    
+    while simulation_app.is_running():
+        self.world.step(render=True)
+        step_count += 1
+        t = step_count * self.world.get_physics_dt()
+        
+        # Apply sinusoidal motion after settling
+        if (self.simulation_params.plate_motion_enabled and 
+            plate_obj is not None and
+            t >= self.simulation_params.settle_time):
+            
+            if not motion_started:
+                print("STARTING SINUSOIDAL MOTION")
+                motion_started = True
+            
+            # Calculate velocity from sinusoidal position
+            motion_time = t - self.simulation_params.settle_time
+            A = self.simulation_params.plate_motion_amplitude
+            f = self.simulation_params.plate_motion_frequency
+            axis = self.simulation_params.plate_motion_axis
+            
+            # v(t) = A * 2*pi*f * cos(2*pi*f*t)
+            omega = 2 * math.pi * f
+            v_mag = A * omega * math.cos(omega * motion_time)
+            
+            velocity = [0.0, 0.0, 0.0]
+            velocity[axis] = v_mag
+            
+            # Apply velocity to plate
+            plate_prim = plate_obj.get_prim()
+            rigid_body = UsdPhysics.RigidBodyAPI(plate_prim)
+            rigid_body.GetVelocityAttr().Set(Gf.Vec3f(*velocity))
+            
+            # Keep angular velocity zero (prevent rotation)
+            rigid_body.GetAngularVelocityAttr().Set(
+                Gf.Vec3f(0.0, 0.0, 0.0))
+\end{lstlisting}
+
+\textbf{Motion Control Strategy:}
+\begin{enumerate}
+    \item \textbf{Wait for settling}: $t < t_{settle} = 3.0$ s
+    \item \textbf{Calculate velocity}: $v(t) = A \omega \cos(\omega (t - t_{settle}))$
+    \item \textbf{Apply to rigid body}: Set \texttt{velocity} attribute
+    \item \textbf{Zero angular velocity}: Prevent rotation every frame
+\end{enumerate}
+
+\textbf{Why velocity control instead of position?}
+\begin{itemize}
+    \item \textbf{Position control}: Directly setting transform every frame interferes with physics solver
+    \item \textbf{Velocity control}: Works with physics engine, allows realistic collisions
+    \item Physics solver handles contact forces naturally
+    \item Ball responds correctly to moving plate
+\end{itemize}
+
+\textbf{Angular velocity zeroing:}
+\begin{itemize}
+    \item Plate has angular locks (\texttt{lockFlags=56}) in physics setup
+    \item Additional runtime zeroing ensures no rotation starts
+    \item Critical for maintaining plate orientation during motion
+\end{itemize}
+
+\section{Physics Configuration Details}
+
+\subsection{Angular Lock Flags}
+\begin{lstlisting}[language=Python]
+prim.CreateAttribute("physxRigidBody:lockFlags",
+                   Sdf.ValueTypeNames.Int).Set(56)
+\end{lstlisting}
+
+\textbf{Lock flags binary breakdown:}
+\begin{verbatim}
+56 = 0b111000 = 32 + 16 + 8
+    Bit 3 (8):   Lock rotation X
+    Bit 4 (16):  Lock rotation Y
+    Bit 5 (32):  Lock rotation Z
+    Bits 0-2:    Linear locks (not set)
+\end{verbatim}
+
+\textbf{Effect:}
+\begin{itemize}
+    \item Plate can translate freely (linear motion allowed)
+    \item Plate cannot rotate around any axis
+    \item Prevents unwanted tumbling during sinusoidal motion
+\end{itemize}
+
+\subsection{Contact Offsets}
+\begin{lstlisting}[language=Python]
+prim.CreateAttribute("physxCollision:contactOffset",
+                   Sdf.ValueTypeNames.Float).Set(0.02)
+prim.CreateAttribute("physxCollision:restOffset",
+                   Sdf.ValueTypeNames.Float).Set(0.0)
+\end{lstlisting}
+
+\textbf{Contact model:}
+\begin{align}
+    d_{contact} &= 0.02 \text{ m} \\
+    d_{rest} &= 0.0 \text{ m}
+\end{align}
+
+\begin{itemize}
+    \item \texttt{contactOffset}: Distance where contact forces activate
+    \item \texttt{restOffset}: Target separation at rest (0 = touching)
+    \item Solver begins generating repulsion at $d = 0.02$ m
+    \item Objects settle to $d = 0$ (surface contact)
+\end{itemize}
+
+\subsection{Continuous Collision Detection (CCD)}
+\begin{lstlisting}[language=Python]
+prim.CreateAttribute("physxRigidBody:enableCCD",
+                   Sdf.ValueTypeNames.Bool).Set(True)
+\end{lstlisting}
+
+\textbf{Purpose:}
+\begin{itemize}
+    \item Prevents tunneling at high velocities
+    \item Sweeps collision shape between timesteps
+    \item Essential for fast-moving objects (ball at 1m+ drop height)
+    \item Small performance cost, major stability gain
+\end{itemize}
+
+\section{Main Execution Flow}
+
+\subsection{Complete Setup Sequence}
+\begin{lstlisting}[language=Python]
+def main():
+    # 1. Initialize Scene Manager
+    scene = SceneManager(
+        lighting_params=LightingParams(
+            distant_intensity=1000.0,
+            dome_intensity=300.0,
+            angle=-45.0
+        ),
+        simulation_params=SimulationParams(
+            print_interval=100,
+            settle_time=3.0,
+            plate_motion_amplitude=2.0,
+            plate_motion_frequency=0.1,
+            plate_motion_axis=0,
+            plate_motion_enabled=True
+        )
+    )
+    
+    # 2. Initialize World
+    scene.initialize()
+    
+    # 3. Add Lighting
+    scene.add_lighting()
+    
+    # 4. Create Plate
+    plate_usd_path = "plate_dips/part_dips_coarse_rot.usd"
+    plate = Plate(
+        prim_path="/World/Plate",
+        model_file=plate_usd_path,
+        transform_params=TransformParams(
+            position=(0.0, 0.0, 0.1),
+            scale=(10.0, 10.0, 10.0),
+            rotateX=None
+        ),
+        physics_material_params=PhysicsMaterialParams(
+            static_friction=0.6,
+            dynamic_friction=0.5,
+            restitution=0.1
+        ),
+        visual_material_params=VisualMaterialParams(
+            color=(0.0, 1.0, 0.0),
+            roughness=0.4,
+            metallic=0.0
+        ),
+        physics_body_params=PhysicsBodyParams(
+            is_dynamic=True,
+            enable_ccd=True,
+            contact_offset=0.02,
+            rest_offset=0.0
+        ),
+        collision_params=CollisionParams(
+            approximation="convexDecomposition",
+            enable_collision=True
+        )
+    )
+    scene.add_object(plate)
+    
+    # 5. Create Ball
+    ball = Ball(
+        prim_path="/World/Ball",
+        radius=0.5,
+        transform_params=TransformParams(
+            position=(0.0, 0.0, 3),
+            scale=(1.0, 1.0, 1.0)
+        ),
+        physics_material_params=PhysicsMaterialParams(
+            static_friction=0.6,
+            dynamic_friction=0.5,
+            restitution=0.3
+        ),
+        visual_material_params=VisualMaterialParams(
+            color=(2.0, 0.0, 0.0),
+            roughness=0.4,
+            metallic=0.0
+        ),
+        physics_body_params=PhysicsBodyParams(
+            is_dynamic=True,
+            enable_ccd=True,
+            mass=0.1,
+            contact_offset=0.02,
+            rest_offset=0.0
+        )
+    )
+    scene.add_object(ball)
+    
+    # 6. Run Simulation
+    scene.run_simulation()
+    
+    simulation_app.close()
+\end{lstlisting}
+
+\subsection{Execution Timeline}
+\begin{enumerate}
+    \item \textbf{t = 0.0s}: Simulation starts
+    \begin{itemize}
+        \item Ball at position $(0, 0, 3)$ m
+        \item Plate at position $(0, 0, 0.1)$ m
+        \item Both objects at rest
+    \end{itemize}
+    
+    \item \textbf{t = 0.0s - 3.0s}: Settling phase (optional, if ball included)
+    \begin{itemize}
+        \item Ball falls under gravity ($g = -9.81$ m/s²)
+        \item Ball impacts plate, bounces (restitution = 0.3)
+        \item Ball settles into plate dips
+        \item Plate remains stationary (position = constant)
+    \end{itemize}
+    
+    \item \textbf{t = 3.0s}: Kinematic motion activation
+    \begin{itemize}
+        \item Sinusoidal position control begins
+        \item Plate position: $x(t) = x_0 + 2.0 \sin(0.2\pi(t-3))$ m
+        \item Computed velocity (for display): $v_x(t) = 2.0 \cdot 2\pi \cdot 0.1 \cdot \cos(0.2\pi(t-3))$
+        \item Maximum computed velocity: $v_{computed} = 1.257$ m/s
+        \item 90° rotation correction applied each frame (RotateXOp)
+    \end{itemize}
+    
+    \item \textbf{t > 3.0s}: Active kinematic motion
+    \begin{itemize}
+        \item Plate position oscillates with period $T = 10$ s
+        \item Position directly set each frame (kinematic control)
+        \item Physics engine velocity remains zero (teleporting motion)
+        \item Ball responds to plate geometry changes (if present)
+        \item Physics monitoring: translation, rotation, velocity, offsets
+        \item Mesh32 world transform extraction each iteration
+    \end{itemize}
+\end{enumerate}
+
+\section{Key Technical Decisions}
+
+\subsection{Kinematic vs. Dynamic Rigid Body Control}
+\begin{itemize}
+    \item \textbf{Choice}: Kinematic mode (\texttt{PLATE\_MECHANICS = "kinematic"})
+    \item \textbf{Advantages}:
+    \begin{itemize}
+        \item Precise position control without velocity integration errors
+        \item No momentum/inertia effects from plate mass
+        \item Simplified motion equations (direct position setting)
+        \item More stable for controlled trajectories
+    \end{itemize}
+    \item \textbf{Trade-offs}:
+    \begin{itemize}
+        \item Physics engine velocity is zero (position teleportation)
+        \item Cannot apply forces/torques (position override)
+        \item Computed velocity for display only
+    \end{itemize}
+    \item \textbf{Implementation}: Direct TranslateOp each frame, no velocity API calls
+\end{itemize}
+
+\subsection{90° Rotation Correction}
+\begin{itemize}
+    \item \textbf{File}: \texttt{part\_dips\_coarse\_rot.usd} contains pre-rotated mesh
+    \item \textbf{Runtime correction}: Additional 90° rotation around X-axis applied each frame
+    \item \textbf{Method 1 (active)}: Euler angle via \texttt{RotateXOp().Set(90.0)}
+    \item \textbf{Method 2 (commented)}: Quaternion via \texttt{OrientOp().Set(quaternion)}
+    \item \textbf{Reason}: Corrects mesh orientation for proper dip alignment
+    \item \textbf{Hierarchy}: Rotation applied to parent \texttt{/World/Plate}, inherited by child \texttt{mesh32}
+\end{itemize}
+
+\subsection{Transform Hierarchy Debugging}
+\begin{itemize}
+    \item \textbf{Challenge}: Plate visually rotated but local rotation prints showed 0°
+    \item \textbf{Discovery}: Rotation inherited from parent in USD transform hierarchy
+    \item \textbf{Solution}: Extract world transforms using \texttt{ComputeLocalToWorldTransform()}
+    \item \textbf{Monitoring}: Print both local xformOps and world transforms for mesh32
+    \item \textbf{Lessons}:
+    \begin{itemize}
+        \item Local xformOps show only direct operations on prim
+        \item World transforms include accumulated parent transformations
+        \item Rotation extraction requires \texttt{ExtractRotationQuat() + Decompose()}
+    \end{itemize}
+\end{itemize}
+
+\subsection{Dynamic vs. Static vs. Kinematic Plate}
+\begin{itemize}
+    \item \textbf{Static}: Fixed in world, cannot apply velocity or position control
+    \item \textbf{Kinematic} (chosen): Position-controlled, no dynamics, ideal for precise control
+    \item \textbf{Dynamic}: Velocity-controlled with physics interaction, but harder to control precisely
+    \item For precise trajectories, kinematic mode is preferred over dynamic
+\end{itemize}
+
+\subsection{Position-Based Motion Control (Kinematic)}
+\textbf{Alternative approaches considered:}
+\begin{enumerate}
+    \item \textbf{Position teleportation} (chosen): Direct transform modification each frame
+    \begin{itemize}
+        \item Pro: Exact position control following sinusoidal trajectory
+        \item Pro: No integration errors accumulating over time
+        \item Pro: Simple implementation via TranslateOp
+        \item Con: Physics velocity is zero (position jumps)
+        \item Con: Requires computed velocity for display
+    \end{itemize}
+    
+    \item \textbf{Velocity control}: Set linear velocity attribute (dynamic mode)
+    \begin{itemize}
+        \item Pro: Works naturally with physics solver
+        \item Pro: Realistic contact forces and momentum
+        \item Con: Integration errors can drift from desired trajectory
+        \item Con: Requires angular locks to prevent rotation
+        \item Con: More complex parameter tuning
+    \end{itemize}
+    
+    \item \textbf{Force control}: Apply forces to reach target positions
+    \begin{itemize}
+        \item Pro: Most physically realistic
+        \item Con: Difficult to achieve precise trajectories
+        \item Con: Requires PID controller or similar
+        \item Con: Overshoot and oscillation issues
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Implementation Details:}
+\begin{lstlisting}[language=Python]
+# Position control (kinematic mode)
+new_pos = (computed_x, PLATE_Y, PLATE_Z)
+xformable.AddTranslateOp().Set(Gf.Vec3d(*new_pos))
+
+# Rotation correction (90 degrees around X-axis)
+xformable.AddRotateXOp().Set(90.0)
+
+# Computed velocity (display only)
+omega = 2.0 * math.pi * PLATE_FREQUENCY
+computed_velocity = PLATE_AMPLITUDE * omega * math.cos(omega * time_since_start)
+\end{lstlisting}
+
+\section{Parameter Tuning Guidelines}
+
+\subsection{Motion Parameters}
+\begin{itemize}
+    \item \textbf{Amplitude}: Increase for larger oscillations (risk: ball exits plate if present)
+    \item \textbf{Frequency}: Increase for faster motion (risk: instability at $f > 1$ Hz)
+    \item \textbf{Settle time}: Increase if ball hasn't settled (typical: 2-5s, optional if no ball)
+\end{itemize}
+
+\textbf{Kinematic stability constraints:}
+\begin{align}
+    v_{computed}(t) &= 2\pi f A \cos(2\pi f t) \\
+    a_{computed}(t) &= -(2\pi f)^2 A \sin(2\pi f t)
+\end{align}
+
+For stable visualization and physics interaction:
+\begin{itemize}
+    \item $v_{computed,max} < 5$ m/s (reasonable motion speed)
+    \item $a_{computed,max} < 2g$ (maintain visual coherence, where $g = 9.81$ m/s²)
+    \item Position amplitude limited by workspace bounds
+\end{itemize}
+
+\textbf{Current configuration:}
+\begin{align}
+    v_{computed,max} &= 2\pi \cdot 0.1 \cdot 2.0 = 1.257 \text{ m/s} \quad \checkmark \\
+    a_{computed,max} &= (2\pi \cdot 0.1)^2 \cdot 2.0 = 0.789 \text{ m/s}^2 \quad \checkmark
+\end{align}
+
+Note: In kinematic mode, physics engine velocity is zero; computed values are for monitoring only.
+
+\subsection{Physics Parameters}
+\begin{itemize}
+    \item \textbf{Friction}: Increase to prevent ball sliding (typical: 0.4-0.8)
+    \item \textbf{Restitution}: Decrease for less bounce (typical: 0.1-0.4)
+    \item \textbf{Contact offset}: Increase for stability, decrease for precision (typical: 0.01-0.05)
+    \item \textbf{CCD}: Always enable for fast-moving objects
+\end{itemize}
+
+\subsection{Scale Considerations}
+\begin{itemize}
+    \item \textbf{Stage units}: 1.0 (meters)
+    \item \textbf{Plate scale}: 10× (original USD in cm, scaled to meters)
+    \item \textbf{Ball radius}: 0.5 m (realistic for visualization)
+    \item \textbf{Gravity}: Default $-9.81$ m/s² (Earth)
+\end{itemize}
+
+\section{Common Issues and Solutions}
+
+\subsection{Rotation Inheritance in USD Hierarchy}
+\textbf{Symptoms:}
+\begin{itemize}
+    \item Plate appears rotated visually but rotation prints show 0°
+    \item Local xformOps don't match visual appearance
+\end{itemize}
+
+\textbf{Solutions:}
+\begin{enumerate}
+    \item Extract world transforms: \texttt{ComputeLocalToWorldTransform(0)}
+    \item Decompose rotation: \texttt{ExtractRotationQuat() + Decompose()}
+    \item Understand hierarchy: Child prims inherit parent transformations
+    \item Monitor both local and world transforms for debugging
+\end{enumerate}
+
+\textbf{Example:}
+\begin{lstlisting}[language=Python]
+# Get world transform
+mesh_xformable = UsdGeom.Xformable(mesh_prim)
+world_xform = mesh_xformable.ComputeLocalToWorldTransform(0)
+
+# Extract rotation
+world_rot_quat = world_xform.ExtractRotationQuat()
+world_rot_euler = world_rot_quat.GetImaginary()
+print(f"World rotation (XYZ): {world_rot_euler}")
+\end{lstlisting}
+
+\subsection{Kinematic Object Shows Zero Velocity}
+\textbf{Symptoms:}
+\begin{itemize}
+    \item Plate moves visually but velocity prints show 0.0 m/s
+    \item Physics API returns zero velocity
+\end{itemize}
+
+\textbf{Explanation:}
+\begin{itemize}
+    \item Kinematic objects are position-controlled (teleported)
+    \item Physics engine doesn't track velocity for kinematic bodies
+    \item Position changes are instantaneous from physics perspective
+\end{itemize}
+
+\textbf{Solution:}
+\begin{itemize}
+    \item Compute velocity analytically from motion equation
+    \item Display computed velocity for monitoring
+    \item This is expected behavior, not a bug
+\end{itemize}
+
+\subsection{Plate Rotates During Motion (Dynamic Mode)}
+\textbf{Symptoms:}
+\begin{itemize}
+    \item Plate tilts or spins unexpectedly
+    \item Ball falls off due to orientation change
+\end{itemize}
+
+\textbf{Solutions:}
+\begin{enumerate}
+    \item Switch to kinematic mode for better control
+    \item If using dynamic mode: Verify angular locks \texttt{lockFlags = 56}
+    \item Increase angular damping: \texttt{angularDamping = 10000.0}
+    \item Zero angular velocity every frame in simulation loop
+\end{enumerate}
+
+\subsection{Ball Tunnels Through Plate}
+\textbf{Symptoms:}
+\begin{itemize}
+    \item Ball passes through plate at high speed
+    \item No collision detected
+\end{itemize}
+
+\textbf{Solutions:}
+\begin{enumerate}
+    \item Enable CCD: \texttt{enableCCD = True}
+    \item Reduce physics timestep (increase substeps)
+    \item Verify collision is enabled on both objects
+    \item Check convex decomposition succeeded (view collision mesh)
+\end{enumerate}
+
+\subsection{Motion is Jerky or Unstable}
+\textbf{Symptoms:}
+\begin{itemize}
+    \item Plate stutters during motion
+    \item Position updates inconsistent
+\end{itemize}
+
+\textbf{Solutions:}
+\begin{enumerate}
+    \item Reduce motion frequency (slower = smoother)
+    \item Verify position calculation uses \texttt{sin()} correctly
+    \item Check that \texttt{get\_physics\_dt()} is consistent
+    \item Ensure xformOps are cleared/reset each frame properly
+    \item For kinematic mode: Position teleportation is expected to be instantaneous
+\end{enumerate}
+
+\section{Conclusion}
+
+This script demonstrates advanced Isaac Sim concepts:
+
+\subsection{Software Engineering}
+\begin{itemize}
+    \item \textbf{OOP design}: Inheritance, polymorphism, encapsulation
+    \item \textbf{Dataclasses}: Type-safe parameter management
+    \item \textbf{Separation of concerns}: Physics, visuals, simulation separated
+    \item \textbf{Modularity}: Easy to add new object types or behaviors
+\end{itemize}
+
+\subsection{Physics Simulation}
+\begin{itemize}
+    \item \textbf{Dynamic rigid bodies}: Both plate and ball
+    \item \textbf{Convex decomposition}: Accurate collision for concave meshes
+    \item \textbf{Angular locks}: Prevent unwanted rotation
+    \item \textbf{Velocity control}: Physics-aware motion
+    \item \textbf{CCD}: Robust collision detection
+\end{itemize}
+
+\subsection{Motion Control}
+\begin{itemize}
+    \item \textbf{Sinusoidal trajectory}: Smooth periodic motion
+    \item \textbf{Settling period}: Wait for equilibrium before motion
+    \item \textbf{Velocity-based}: Works with physics solver
+    \item \textbf{Runtime zeroing}: Additional rotation prevention
+\end{itemize}
+
+\subsection{Extensions and Future Work}
+Possible enhancements:
+\begin{enumerate}
+    \item \textbf{Multi-axis motion}: Combine X and Y motion (Lissajous curves)
+    \item \textbf{Trajectory planning}: Custom motion profiles (trapezoidal, S-curve)
+    \item \textbf{Force sensing}: Read contact forces on ball
+    \item \textbf{State machine}: Different motion modes (settle, move, stop)
+    \item \textbf{Multiple balls}: Test robustness with many objects
+    \item \textbf{Data logging}: Export positions/velocities to file
+    \item \textbf{PID control}: Closed-loop position/velocity control
+\end{enumerate}
+
+\end{document}

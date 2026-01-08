@@ -1,0 +1,20 @@
+{
+    // OnShape assembly URL
+    "url": "https://cad.onshape.com/documents/02830e503a1c2626d58e0780/w/62db7934caa01effe231f1a9/e/7a54001999a01ae1aa1652f0",
+    
+    // Output format: "urdf" or "mujoco"
+    "output_format": "urdf",
+    
+    // Output filename (extension added automatically)
+    "output_filename": "cart_pendulum",
+    
+    // Directory where STL/mesh files are stored
+    "assets_directory": "assets",
+    
+    // Robot name used in URDF
+    "robot_name": "cart_pendulum",
+    
+
+    
+
+}

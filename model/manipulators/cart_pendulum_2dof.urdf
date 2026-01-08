@@ -1,0 +1,228 @@
+<?xml version="1.0"?>
+<robot name="cart_pendulum_2dof">
+  
+  <!-- ============================================ -->
+  <!-- WORLD/BASE LINK (Fixed reference frame)      -->
+  <!-- ============================================ -->
+  <link name="world"/>
+  
+  <!-- ============================================ -->
+  <!-- RAILS (Fixed beams along X-axis)             -->
+  <!-- ============================================ -->
+  <!-- Rear rail aligned with back edge of cart -->
+  <joint name="rail_rear_joint" type="fixed">
+    <parent link="world"/>
+    <child link="rail_rear"/>
+    <origin xyz="0 -0.1 1.25" rpy="0 0 0"/>  <!-- On top of support boxes -->
+  </joint>
+  
+  <link name="rail_rear">
+    <visual>
+      <geometry>
+        <box size="5.0 0.02 0.02"/>  <!-- Thin beam along X-axis -->
+      </geometry>
+      <material name="gray">
+        <color rgba="0.5 0.5 0.5 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="5.0 0.02 0.02"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="50.0"/>  <!-- Heavy rail, won't move -->
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.02" ixy="0" ixz="0" iyy="20.0" iyz="0" izz="20.0"/>
+    </inertial>
+  </link>
+  
+  <!-- Front rail aligned with front edge of cart -->
+  <joint name="rail_front_joint" type="fixed">
+    <parent link="world"/>
+    <child link="rail_front"/>
+    <origin xyz="0 0.1 1.25" rpy="0 0 0"/>  <!-- On top of support boxes -->
+  </joint>
+  
+  <link name="rail_front">
+    <visual>
+      <geometry>
+        <box size="5.0 0.02 0.02"/>  <!-- Thin beam along X-axis -->
+      </geometry>
+      <material name="gray">
+        <color rgba="0.5 0.5 0.5 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="5.0 0.02 0.02"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="50.0"/>  <!-- Heavy rail, won't move -->
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.02" ixy="0" ixz="0" iyy="20.0" iyz="0" izz="20.0"/>
+    </inertial>
+  </link>
+  
+  <!-- ============================================ -->
+  <!-- SUPPORT BOXES (Support rail ends)            -->
+  <!-- ============================================ -->
+  <!-- Left support box -->
+  <joint name="support_left_joint" type="fixed">
+    <parent link="world"/>
+    <child link="support_left"/>
+    <origin xyz="-2.5 0 0" rpy="0 0 0"/>  <!-- Bottom on ground -->
+  </joint>
+  
+  <link name="support_left">
+    <visual>
+      <origin xyz="0 0 0.625" rpy="0 0 0"/>  <!-- Shift geometry up by half height -->
+      <geometry>
+        <box size="0.2 0.3 1.25"/>  <!-- Height 1.25m to reach rails -->
+      </geometry>
+      <material name="brown">
+        <color rgba="0.6 0.4 0.2 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.625" rpy="0 0 0"/>  <!-- Shift geometry up by half height -->
+      <geometry>
+        <box size="0.2 0.3 1.25"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="100.0"/>  <!-- Very heavy, won't move -->
+      <origin xyz="0 0 0.625" rpy="0 0 0"/>  <!-- Center of mass at geometric center -->
+      <inertia ixx="5.0" ixy="0" ixz="0" iyy="5.0" iyz="0" izz="0.5"/>
+    </inertial>
+  </link>
+  
+  <!-- Right support box -->
+  <joint name="support_right_joint" type="fixed">
+    <parent link="world"/>
+    <child link="support_right"/>
+    <origin xyz="2.5 0 0" rpy="0 0 0"/>  <!-- Bottom on ground -->
+  </joint>
+  
+  <link name="support_right">
+    <visual>
+      <origin xyz="0 0 0.625" rpy="0 0 0"/>  <!-- Shift geometry up by half height -->
+      <geometry>
+        <box size="0.2 0.3 1.25"/>  <!-- Height 1.25m to reach rails -->
+      </geometry>
+      <material name="brown">
+        <color rgba="0.6 0.4 0.2 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.625" rpy="0 0 0"/>  <!-- Shift geometry up by half height -->
+      <geometry>
+        <box size="0.2 0.3 1.25"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="100.0"/>  <!-- Very heavy, won't move -->
+      <origin xyz="0 0 0.625" rpy="0 0 0"/>  <!-- Center of mass at geometric center -->
+      <inertia ixx="5.0" ixy="0" ixz="0" iyy="5.0" iyz="0" izz="0.5"/>
+    </inertial>
+  </link>
+  
+  <!-- ============================================ -->
+  <!-- CART (Slides along X-axis on rails)          -->
+  <!-- ============================================ -->
+  <joint name="cart_slider" type="prismatic">
+    <parent link="world"/>
+    <child link="cart"/>
+    <origin xyz="0 0 1.325" rpy="0 0 0"/>  <!-- On rails -->
+    <axis xyz="1 0 0"/>  <!-- Slides along X-axis -->
+    <limit lower="-2.0" upper="2.0" effort="100" velocity="10.0"/>
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+  
+  <link name="cart">
+    <visual>
+      <geometry>
+        <box size="0.3 0.2 0.15"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0.2 0.2 0.8 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.3 0.2 0.15"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="5.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.05" ixy="0" ixz="0" iyy="0.08" iyz="0" izz="0.06"/>
+    </inertial>
+  </link>
+  
+  <!-- ============================================ -->
+  <!-- PENDULUM (Rotates in XZ plane, around Y)     -->
+  <!-- ============================================ -->
+  <joint name="pendulum_joint" type="continuous">
+    <parent link="cart"/>
+    <child link="pendulum"/>
+    <origin xyz="0 0 -0.075" rpy="0 0 0"/>  <!-- Pivot at bottom of cart -->
+    <axis xyz="0 1 0"/>  <!-- Rotates around Y-axis (XZ plane motion) -->
+    <dynamics damping="0.5" friction="0.01"/>
+  </joint>
+  
+  <!-- Massless rod connecting to point mass -->
+  <link name="pendulum">
+    <visual>
+      <origin xyz="0 0 -0.5" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="1.0"/>  <!-- Thin rod, 1m length -->
+      </geometry>
+      <material name="red">
+        <color rgba="0.8 0.2 0.2 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.5" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="1.0"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.01"/>  <!-- Nearly massless rod -->
+      <origin xyz="0 0 -0.5" rpy="0 0 0"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.00001"/>
+    </inertial>
+  </link>
+  
+  <!-- Point mass at tip -->
+  <joint name="pendulum_mass_joint" type="fixed">
+    <parent link="pendulum"/>
+    <child link="pendulum_mass"/>
+    <origin xyz="0 0 -1.0" rpy="0 0 0"/>
+  </joint>
+  
+  <link name="pendulum_mass">
+    <visual>
+      <geometry>
+        <sphere radius="0.08"/>  <!-- Larger sphere for point mass -->
+      </geometry>
+      <material name="dark_red">
+        <color rgba="0.6 0.1 0.1 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.08"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>  <!-- All mass concentrated here -->
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.002"/>
+    </inertial>
+  </link>
+  
+  
+</robot>

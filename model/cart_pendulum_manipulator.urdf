@@ -1,0 +1,458 @@
+<?xml version="1.0"?>
+<robot name="cart_pendulum_2dof">
+  
+  <!-- ============================================ -->
+  <!-- WORLD/BASE LINK (Fixed reference frame)      -->
+  <!-- ============================================ -->
+  <link name="world"/>
+  
+  <!-- ============================================ -->
+  <!-- RAILS (Fixed beams along X-axis)             -->
+  <!-- ============================================ -->
+  <!-- Rear rail aligned with back edge of cart -->
+  <joint name="rail_rear_joint" type="fixed">
+    <parent link="world"/>
+    <child link="rail_rear"/>
+    <origin xyz="0 -0.1 1.25" rpy="0 0 0"/>  <!-- On top of support boxes -->
+  </joint>
+  
+  <link name="rail_rear">
+    <visual>
+      <geometry>
+        <box size="5.0 0.02 0.02"/>  <!-- Thin beam along X-axis -->
+      </geometry>
+      <material name="gray">
+        <color rgba="0.5 0.5 0.5 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="5.0 0.02 0.02"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="50.0"/>  <!-- Heavy rail, won't move -->
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.02" ixy="0" ixz="0" iyy="20.0" iyz="0" izz="20.0"/>
+    </inertial>
+  </link>
+  
+  <!-- Front rail aligned with front edge of cart -->
+  <joint name="rail_front_joint" type="fixed">
+    <parent link="world"/>
+    <child link="rail_front"/>
+    <origin xyz="0 0.1 1.25" rpy="0 0 0"/>  <!-- On top of support boxes -->
+  </joint>
+  
+  <link name="rail_front">
+    <visual>
+      <geometry>
+        <box size="5.0 0.02 0.02"/>  <!-- Thin beam along X-axis -->
+      </geometry>
+      <material name="gray">
+        <color rgba="0.5 0.5 0.5 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="5.0 0.02 0.02"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="50.0"/>  <!-- Heavy rail, won't move -->
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.02" ixy="0" ixz="0" iyy="20.0" iyz="0" izz="20.0"/>
+    </inertial>
+  </link>
+  
+  <!-- ============================================ -->
+  <!-- SUPPORT BOXES (Support rail ends)            -->
+  <!-- ============================================ -->
+  <!-- Left support box -->
+  <joint name="support_left_joint" type="fixed">
+    <parent link="world"/>
+    <child link="support_left"/>
+    <origin xyz="-2.5 0 0" rpy="0 0 0"/>  <!-- Bottom on ground -->
+  </joint>
+  
+  <link name="support_left">
+    <visual>
+      <origin xyz="0 0 0.625" rpy="0 0 0"/>  <!-- Shift geometry up by half height -->
+      <geometry>
+        <box size="0.2 0.3 1.25"/>  <!-- Height 1.25m to reach rails -->
+      </geometry>
+      <material name="brown">
+        <color rgba="0.6 0.4 0.2 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.625" rpy="0 0 0"/>  <!-- Shift geometry up by half height -->
+      <geometry>
+        <box size="0.2 0.3 1.25"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="100.0"/>  <!-- Very heavy, won't move -->
+      <origin xyz="0 0 0.625" rpy="0 0 0"/>  <!-- Center of mass at geometric center -->
+      <inertia ixx="5.0" ixy="0" ixz="0" iyy="5.0" iyz="0" izz="0.5"/>
+    </inertial>
+  </link>
+  
+  <!-- Right support box -->
+  <joint name="support_right_joint" type="fixed">
+    <parent link="world"/>
+    <child link="support_right"/>
+    <origin xyz="2.5 0 0" rpy="0 0 0"/>  <!-- Bottom on ground -->
+  </joint>
+  
+  <link name="support_right">
+    <visual>
+      <origin xyz="0 0 0.625" rpy="0 0 0"/>  <!-- Shift geometry up by half height -->
+      <geometry>
+        <box size="0.2 0.3 1.25"/>  <!-- Height 1.25m to reach rails -->
+      </geometry>
+      <material name="brown">
+        <color rgba="0.6 0.4 0.2 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.625" rpy="0 0 0"/>  <!-- Shift geometry up by half height -->
+      <geometry>
+        <box size="0.2 0.3 1.25"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="100.0"/>  <!-- Very heavy, won't move -->
+      <origin xyz="0 0 0.625" rpy="0 0 0"/>  <!-- Center of mass at geometric center -->
+      <inertia ixx="5.0" ixy="0" ixz="0" iyy="5.0" iyz="0" izz="0.5"/>
+    </inertial>
+  </link>
+  
+  <!-- ============================================ -->
+  <!-- CART (Slides along X-axis on rails)          -->
+  <!-- ============================================ -->
+  <joint name="cart_slider" type="prismatic">
+    <parent link="world"/>
+    <child link="cart"/>
+    <origin xyz="0 0 1.325" rpy="0 0 0"/>  <!-- On rails -->
+    <axis xyz="1 0 0"/>  <!-- Slides along X-axis -->
+    <limit lower="-2.0" upper="2.0" effort="100" velocity="10.0"/>
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+  
+  <link name="cart">
+    <visual>
+      <geometry>
+        <box size="0.3 0.2 0.15"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0.2 0.2 0.8 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.3 0.2 0.15"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="5.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.05" ixy="0" ixz="0" iyy="0.08" iyz="0" izz="0.06"/>
+    </inertial>
+  </link>
+  
+  <!-- ============================================ -->
+  <!-- PENDULUM (Rotates in XZ plane, around Y)     -->
+  <!-- ============================================ -->
+  <joint name="pendulum_joint" type="continuous">
+    <parent link="cart"/>
+    <child link="pendulum"/>
+    <origin xyz="0 0 -0.075" rpy="0 0 0"/>  <!-- Pivot at bottom of cart -->
+    <axis xyz="0 1 0"/>  <!-- Rotates around Y-axis (XZ plane motion) -->
+    <dynamics damping="0.5" friction="0.01"/>
+  </joint>
+  
+  <!-- Massless rod connecting to point mass -->
+  <link name="pendulum">
+    <visual>
+      <origin xyz="0 0 -0.5" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="1.0"/>  <!-- Thin rod, 1m length -->
+      </geometry>
+      <material name="red">
+        <color rgba="0.8 0.2 0.2 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.5" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="1.0"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.01"/>  <!-- Nearly massless rod -->
+      <origin xyz="0 0 -0.5" rpy="0 0 0"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.00001"/>
+    </inertial>
+  </link>
+  
+  <!-- Point mass at tip -->
+  <joint name="pendulum_mass_joint" type="fixed">
+    <parent link="pendulum"/>
+    <child link="pendulum_mass"/>
+    <origin xyz="0 0 -1.0" rpy="0 0 0"/>
+  </joint>
+  
+  <link name="pendulum_mass">
+    <visual>
+      <geometry>
+        <sphere radius="0.08"/>  <!-- Larger sphere for point mass -->
+      </geometry>
+      <material name="dark_red">
+        <color rgba="0.6 0.1 0.1 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.08"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>  <!-- All mass concentrated here -->
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.002"/>
+    </inertial>
+  </link>
+  
+  <!-- ============================================ -->
+  <!-- MANIPULATOR MOUNTING BOX                     -->
+  <!-- ============================================ -->
+  <!-- Mounting box for manipulator base - Ground mounted pillar -->
+  <joint name="mount_box_joint" type="fixed">
+    <parent link="world"/>
+    <child link="mount_box"/>
+    <origin xyz="-3.0 0 0" rpy="0 0 0"/>  <!-- Behind left support box on negative X-axis -->
+  </joint>
+  
+  <link name="mount_box">
+    <visual>
+      <origin xyz="0 0 0.63125" rpy="0 0 0"/>  <!-- Shift geometry up by half height -->
+      <geometry>
+        <box size="0.5 0.5 1.2625"/>  <!-- Same height as support boxes -->
+      </geometry>
+      <material name="red">
+        <color rgba="0.8 0.2 0.2 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.625" rpy="0 0 0"/>  <!-- Shift geometry up by half height -->
+      <geometry>
+        <box size="0.5 0.5 1.25"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="100.0"/>  <!-- Heavy for stability -->
+      <origin xyz="0 0 0.625" rpy="0 0 0"/>  <!-- Center of mass at geometric center -->
+      <inertia ixx="5.0" ixy="0" ixz="0" iyy="5.0" iyz="0" izz="0.5"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================ -->
+  <!-- MANIPULATOR MOUNTING CYLINDER                -->
+  <!-- ============================================ -->
+  <!-- Cylinder extending from top of mount box to cart height -->
+  <joint name="mount_cylinder_joint" type="fixed">
+    <parent link="mount_box"/>
+    <child link="mount_cylinder"/>
+    <origin xyz="0 0 1.2625" rpy="0 0 0"/>  <!-- At top of mount box (full height) -->
+  </joint>
+  
+  <link name="mount_cylinder">
+    <visual>
+      <origin xyz="0 0 0.0375" rpy="0 0 0"/>  <!-- Center at half of cylinder height -->
+      <geometry>
+        <cylinder radius="0.08" length="0.075"/>  <!-- From box top (1.25m) to cart height (1.325m) -->
+      </geometry>
+      <material name="dark_red">
+        <color rgba="0.6 0.1 0.1 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0375" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.08" length="0.075"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.5"/>
+      <origin xyz="0 0 0.0375" rpy="0 0 0"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+    </inertial>
+  </link>
+
+  <!-- ===================================================== -->
+  <!-- Revolute joint at the middle of the mount_cylinder     -->
+  <!-- Rotation axis: +Z of the joint frame                   -->
+  <!-- ===================================================== -->
+
+  <joint name="manipulator_base_yaw" type="revolute">
+    <parent link="mount_cylinder"/>
+    <child link="manipulator_link_1"/>
+    <!-- Middle of mount_cylinder: length 0.075 => half is 0.0375 -->
+    <origin xyz="0 0 0.0375" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <!-- Example limits; adjust as needed -->
+    <limit lower="-3.14159" upper="3.14159" effort="50" velocity="2.0"/>
+    <dynamics damping="0.1" friction="0.0"/>
+  </joint>
+
+  <!-- =================================== -->
+  <!-- Manipulator link 1: cylinder along +X -->
+  <!-- =================================== -->
+
+  <link name="manipulator_link_1">
+  <visual>
+    <!-- Cylinder axis aligned with +X; centered at x = L/2 -->
+    <origin xyz="0.5 0 0" rpy="0 1.57079632679 0"/>
+    <geometry>
+      <cylinder radius="0.02" length="1.0"/>
+    </geometry>
+    <material name="link1_orange">
+      <color rgba="0.95 0.55 0.2 1.0"/>
+    </material>
+  </visual>
+
+  <collision>
+    <!-- Match visual geometry and pose -->
+    <origin xyz="0.5 0 0" rpy="0 1.57079632679 0"/>
+    <geometry>
+      <cylinder radius="0.02" length="1.0"/>
+    </geometry>
+  </collision>
+
+  <inertial>
+    <!-- COM at geometric center; inertial frame aligned with cylinder axis -->
+    <origin xyz="0.5 0 0" rpy="0 1.57079632679 0"/>
+    <mass value="0.3"/>
+    <!-- Keep your placeholder inertia values, but now they are at least referenced consistently -->
+    <inertia ixx="0.002" ixy="0.0" ixz="0.0" iyy="0.002" iyz="0.0" izz="0.002"/>
+  </inertial>
+  </link>
+
+  <!-- ============================== -->
+  <!-- Joint at the end of link 1     -->
+  <!-- Revolute yaw about +Z axis     -->
+  <!-- ============================== -->
+  <joint name="manipulator_joint_2_yaw" type="revolute">
+    <parent link="manipulator_link_1"/>
+    <child link="manipulator_link_2"/>
+    <!-- end of link1: length = 1.0 along +X -->
+    <origin xyz="1.0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="50" velocity="2.0"/>
+    <dynamics damping="0.1" friction="0.0"/>
+  </joint>
+
+  <!-- =============================== -->
+  <!-- Visual element for Joint 2      -->
+  <!-- (marker link attached with fixed joint) -->
+  <!-- Small cylinder along +Z         -->
+  <!-- =============================== -->
+  <link name="joint2_visual">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.06" length="0.08"/>
+      </geometry>
+      <material name="joint_marker_black">
+        <color rgba="0.05 0.05 0.05 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- Attach the joint-2 visual marker at the SAME pose as manipulator_joint_2_yaw -->
+  <joint name="joint2_visual_fixed" type="fixed">
+    <parent link="manipulator_link_1"/>
+    <child link="joint2_visual"/>
+    <origin xyz="1.0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- =================================== -->
+  <!-- Manipulator link 2: cylinder along +X -->
+  <!-- length = 1.0                         -->
+  <!-- =================================== -->
+  <link name="manipulator_link_2">
+    <visual>
+      <!-- center at x=L/2, rotate +Z -> +X -->
+      <origin xyz="0.5 0 0" rpy="0 1.57079632679 0"/>
+      <geometry>
+        <cylinder radius="0.02" length="1.0"/>
+      </geometry>
+      <material name="link2_green">
+        <color rgba="0.2 0.8 0.4 1.0"/>
+      </material>
+    </visual>
+
+    <collision>
+      <origin xyz="0.5 0 0" rpy="0 1.57079632679 0"/>
+      <geometry>
+        <cylinder radius="0.02" length="1.0"/>
+      </geometry>
+    </collision>
+
+    <inertial>
+      <origin xyz="0.5 0 0" rpy="0 1.57079632679 0"/>
+      <mass value="0.3"/>
+      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.002"/>
+    </inertial>
+  </link>
+
+  <!-- ============================= -->
+  <!-- CONNECTOR FRAMES (TREE-SAFE)  -->
+  <!-- These will be used in Isaac   -->
+  <!-- to add a passive revolute     -->
+  <!-- joint between them.           -->
+  <!-- ============================= -->
+
+  <!-- Cart crank pin frame attached to cart -->
+  <joint name="cart_pin_joint" type="fixed">
+    <parent link="cart"/>
+    <child link="cart_pin"/>
+    <origin xyz="-0.15 0 0" rpy="1.57 0 0"/>
+  </joint>
+  
+  <link name="cart_pin">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.015" length="0.06"/>
+      </geometry>
+      <material name="pin_yellow">
+        <color rgba="0.95 0.9 0.2 1.0"/>
+      </material>
+    </visual>
+
+    <!-- Inertial is still recommended so PhysX treats it cleanly -->
+    <inertial>
+      <mass value="0.01"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <!-- End-effector frame at tip of manipulator_link_2 -->
+  <link name="manipulator_ee"/>
+  <joint name="manipulator_ee_fixed" type="fixed">
+    <parent link="manipulator_link_2"/>
+    <child link="manipulator_ee"/>
+    <origin xyz="1.0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- NOTE:
+       The passive revolute joint that closes the loop:
+         cart_pin  <-->  manipulator_ee
+       is NOT included here because URDF must remain a tree.
+       Add that revolute joint as a PhysX Revolute Joint in Isaac Sim.
+  -->
+
+</robot>

@@ -1,0 +1,202 @@
+<?xml version="1.0"?>
+<robot name="2dof_planar_manipulator">
+  
+  <!-- ============================================ -->
+  <!-- WORLD/BASE LINK (Fixed reference frame)      -->
+  <!-- ============================================ -->
+  <link name="world"/>
+  
+  <!-- ============================================ -->
+  <!-- MANIPULATOR MOUNTING BOX                     -->
+  <!-- ============================================ -->
+  <!-- Mounting box for manipulator base - Ground mounted pillar -->
+  <joint name="mount_box_joint" type="fixed">
+    <parent link="world"/>
+    <child link="mount_box"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>  <!-- Ground mounted -->
+  </joint>
+  
+  <link name="mount_box">
+    <visual>
+      <origin xyz="0 0 0.64375" rpy="0 0 0"/>  <!-- Shift geometry up by half height -->
+      <geometry>
+        <box size="0.5 0.5 1.2875"/>  <!-- Height to match rail system -->
+      </geometry>
+      <material name="red">
+        <color rgba="0.8 0.2 0.2 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.64375" rpy="0 0 0"/>  <!-- Shift geometry up by half height -->
+      <geometry>
+        <box size="0.5 0.5 1.2875"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="100.0"/>  <!-- Heavy for stability -->
+      <origin xyz="0 0 0.64375" rpy="0 0 0"/>  <!-- Center of mass at geometric center -->
+      <inertia ixx="5.0" ixy="0" ixz="0" iyy="5.0" iyz="0" izz="0.5"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================ -->
+  <!-- MANIPULATOR MOUNTING CYLINDER                -->
+  <!-- ============================================ -->
+  <!-- Cylinder extending from top of mount box to cart height -->
+  <joint name="mount_cylinder_joint" type="fixed">
+    <parent link="mount_box"/>
+    <child link="mount_cylinder"/>
+    <origin xyz="0 0 1.2875" rpy="0 0 0"/>  <!-- At top of mount box -->
+  </joint>
+  
+  <link name="mount_cylinder">
+    <visual>
+      <origin xyz="0 0 0.03875" rpy="0 0 0"/>  <!-- Center at half of cylinder height -->
+      <geometry>
+        <cylinder radius="0.08" length="0.07625"/>  <!-- Small extension cylinder -->
+      </geometry>
+      <material name="dark_red">
+        <color rgba="0.6 0.1 0.1 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0375" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.08" length="0.075"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.5"/>
+      <origin xyz="0 0 0.0375" rpy="0 0 0"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+    </inertial>
+  </link>
+
+  <!-- ===================================================== -->
+  <!-- Revolute joint at the middle of the mount_cylinder     -->
+  <!-- Rotation axis: +Z of the joint frame                   -->
+  <!-- ===================================================== -->
+
+  <joint name="manipulator_base_yaw" type="revolute">
+    <parent link="mount_cylinder"/>
+    <child link="manipulator_link_1"/>
+    <!-- Middle of mount_cylinder: length 0.075 => half is 0.0375 -->
+    <origin xyz="0 0 0.0375" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <!-- Example limits; adjust as needed -->
+    <limit lower="-3.14159" upper="3.14159" effort="50" velocity="2.0"/>
+    <dynamics damping="0.1" friction="0.0"/>
+  </joint>
+
+  <!-- =================================== -->
+  <!-- Manipulator link 1: cylinder along +X -->
+  <!-- =================================== -->
+
+  <link name="manipulator_link_1">
+    <visual>
+      <!-- Cylinder axis aligned with +X; centered at x = L/2 -->
+      <origin xyz="0.5 0 0" rpy="0 1.57079632679 0"/>
+      <geometry>
+        <cylinder radius="0.02" length="1.0"/>
+      </geometry>
+      <material name="link1_orange">
+        <color rgba="0.95 0.55 0.2 1.0"/>
+      </material>
+    </visual>
+
+    <collision>
+      <!-- Match visual geometry and pose -->
+      <origin xyz="0.5 0 0" rpy="0 1.57079632679 0"/>
+      <geometry>
+        <cylinder radius="0.02" length="1.0"/>
+      </geometry>
+    </collision>
+
+    <inertial>
+      <!-- COM at geometric center; inertial frame aligned with cylinder axis -->
+      <origin xyz="0.5 0 0" rpy="0 1.57079632679 0"/>
+      <mass value="0.3"/>
+      <inertia ixx="0.002" ixy="0.0" ixz="0.0" iyy="0.002" iyz="0.0" izz="0.002"/>
+    </inertial>
+  </link>
+
+  <!-- ============================== -->
+  <!-- Joint at the end of link 1     -->
+  <!-- Revolute yaw about +Z axis     -->
+  <!-- ============================== -->
+  <joint name="manipulator_joint_2_yaw" type="revolute">
+    <parent link="manipulator_link_1"/>
+    <child link="manipulator_link_2"/>
+    <!-- end of link1: length = 1.0 along +X -->
+    <origin xyz="1.0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="50" velocity="2.0"/>
+    <dynamics damping="0.1" friction="0.0"/>
+  </joint>
+
+  <!-- =============================== -->
+  <!-- Visual element for Joint 2      -->
+  <!-- (marker link attached with fixed joint) -->
+  <!-- Small cylinder along +Z         -->
+  <!-- =============================== -->
+  <link name="joint2_visual">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.06" length="0.08"/>
+      </geometry>
+      <material name="joint_marker_black">
+        <color rgba="0.05 0.05 0.05 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- Attach the joint-2 visual marker at the SAME pose as manipulator_joint_2_yaw -->
+  <joint name="joint2_visual_fixed" type="fixed">
+    <parent link="manipulator_link_1"/>
+    <child link="joint2_visual"/>
+    <origin xyz="1.0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- =================================== -->
+  <!-- Manipulator link 2: cylinder along +X -->
+  <!-- length = 1.0                         -->
+  <!-- =================================== -->
+  <link name="manipulator_link_2">
+    <visual>
+      <!-- center at x=L/2, rotate +Z -> +X -->
+      <origin xyz="0.5 0 0" rpy="0 1.57079632679 0"/>
+      <geometry>
+        <cylinder radius="0.02" length="1.0"/>
+      </geometry>
+      <material name="link2_green">
+        <color rgba="0.2 0.8 0.4 1.0"/>
+      </material>
+    </visual>
+
+    <collision>
+      <origin xyz="0.5 0 0" rpy="0 1.57079632679 0"/>
+      <geometry>
+        <cylinder radius="0.02" length="1.0"/>
+      </geometry>
+    </collision>
+
+    <inertial>
+      <origin xyz="0.5 0 0" rpy="0 1.57079632679 0"/>
+      <mass value="0.3"/>
+      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.002"/>
+    </inertial>
+  </link>
+
+  <!-- ============================= -->
+  <!-- END-EFFECTOR FRAME            -->
+  <!-- ============================= -->
+  <!-- End-effector frame at tip of manipulator_link_2 -->
+  <link name="manipulator_ee"/>
+  <joint name="manipulator_ee_fixed" type="fixed">
+    <parent link="manipulator_link_2"/>
+    <child link="manipulator_ee"/>
+    <origin xyz="1.0 0 0" rpy="0 0 0"/>
+  </joint>
+
+</robot>

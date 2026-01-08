@@ -1,0 +1,93 @@
+<?xml version="1.0" ?>
+<!-- Generated using onshape-to-robot -->
+<!-- Onshape https://cad.onshape.com/documents/02830e503a1c2626d58e0780/w/62db7934caa01effe231f1a9/e/9d31039ea010abe028749d07 -->
+<robot name="onshape_to_robot">
+  <!-- Link base_mount_manipulator -->
+  <link name="base_mount_manipulator">
+    <inertial>
+      <origin xyz="-4.36314e-19 2.47153e-17 0.553261" rpy="0 0 0"/>
+      <mass value="542.696"/>
+      <inertia ixx="58.2669" ixy="-1.00642e-16" ixz="4.10907e-16" iyy="58.2669" iyz="2.02826e-15" izz="5.62415"/>
+    </inertial>
+    <!-- Part base_mount_manipulator -->
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/base_mount_manipulator.stl"/>
+      </geometry>
+      <material name="base_mount_manipulator_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/base_mount_manipulator.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link link1 -->
+  <link name="link1">
+    <inertial>
+      <origin xyz="-0.445272 -0.321529 0.0251674" rpy="0 0 0"/>
+      <mass value="10.8153"/>
+      <inertia ixx="0.344736" ixy="-0.459546" ixz="0.0216138" iyy="0.649304" iyz="0.0156072" izz="0.983505"/>
+    </inertial>
+    <!-- Part link1 -->
+    <visual>
+      <origin xyz="-4.8473e-18 8.03622e-18 1.21437" rpy="3.14159 -1.21474e-25 0.625402"/>
+      <geometry>
+        <mesh filename="package://assets/link1.stl"/>
+      </geometry>
+      <material name="link1_material">
+        <color rgba="0.647059 0.647059 0.647059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-4.8473e-18 8.03622e-18 1.21437" rpy="3.14159 -1.21474e-25 0.625402"/>
+      <geometry>
+        <mesh filename="package://assets/link1.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link link2 -->
+  <link name="link2">
+    <inertial>
+      <origin xyz="-0.502678 7.20289e-17 -0.0190625" rpy="0 0 0"/>
+      <mass value="9.69735"/>
+      <inertia ixx="0.00835887" ixy="4.24646e-17" ixz="-1.19944e-44" iyy="0.773334" iyz="-2.21936e-42" izz="0.779344"/>
+    </inertial>
+    <!-- Part link2 -->
+    <visual>
+      <origin xyz="0.953 0 1.05812" rpy="3.14159 1.43493e-42 -5.55112e-17"/>
+      <geometry>
+        <mesh filename="package://assets/link2.stl"/>
+      </geometry>
+      <material name="link2_material">
+        <color rgba="0.231373 0.380392 0.705882 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.953 0 1.05812" rpy="3.14159 1.43493e-42 -5.55112e-17"/>
+      <geometry>
+        <mesh filename="package://assets/link2.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Joint from link1 to link2 -->
+  <joint name="jt_link1_link2" type="revolute">
+    <origin xyz="-0.772623 -0.557909 0.118125" rpy="2.34407e-26 1.21343e-26 -0.602725"/>
+    <parent link="link1"/>
+    <child link="link2"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-0.342669" upper="2.79892"/>
+  </joint>
+  <!-- Joint from base_mount_manipulator to link1 -->
+  <joint name="jt_mount_link1" type="revolute">
+    <origin xyz="0 2.44929e-18 1.17625" rpy="3.14159 -0 0"/>
+    <parent link="base_mount_manipulator"/>
+    <child link="link1"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-2.1962" upper="0.945394"/>
+  </joint>
+</robot>

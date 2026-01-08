@@ -1,0 +1,515 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+% Code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny\color{gray}
+}
+
+\title{Notes: Import Plate to Isaac Sim\\
+\large Python Script Documentation}
+\author{Script: \texttt{import\_plate\_to\_isaac.py}}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Overview}
+This script demonstrates how to programmatically import a USD model (plate) into NVIDIA Isaac Sim, configure physics properties, add a ball, and run a physics simulation. The script uses convex decomposition for collision detection on a dynamic rigid body plate.
+
+\section{Script Structure}
+
+\subsection{Application Initialization}
+\begin{lstlisting}[language=Python]
+simulation_app = SimulationApp({
+    "headless": False,
+    "width": 1280,
+    "height": 720,
+    "renderer": "RayTracedLighting",
+    "active_gpu": 0,
+})
+\end{lstlisting}
+
+\textbf{Purpose:} Launches Isaac Sim application before importing any Isaac modules. Configuration includes:
+\begin{itemize}
+    \item \texttt{headless=False}: Show GUI window
+    \item \texttt{renderer="RayTracedLighting"}: Enable RTX ray-traced rendering
+    \item Window resolution: 1280×720 pixels
+\end{itemize}
+
+\subsection{Module Imports}
+\begin{lstlisting}[language=Python]
+from omni.isaac.core import World
+from pxr import UsdGeom, Gf, UsdPhysics, PhysxSchema, Sdf, UsdShade, UsdLux
+import omni.usd
+\end{lstlisting}
+
+\textbf{Key modules:}
+\begin{itemize}
+    \item \texttt{World}: High-level physics world management
+    \item \texttt{pxr}: USD (Universal Scene Description) Python bindings
+    \item \texttt{UsdPhysics}: Physics schemas (RigidBody, Collision)
+    \item \texttt{PhysxSchema}: NVIDIA PhysX-specific physics attributes
+\end{itemize}
+
+\subsection{USD Context Access}
+\begin{lstlisting}[language=Python]
+def get_usd_context():
+    return omni.usd.get_context()
+\end{lstlisting}
+
+\textbf{Purpose:} Provides access to the current USD stage (scene graph) for manipulation operations.
+
+\subsection{Physics World Creation}
+\begin{lstlisting}[language=Python]
+def create_world_with_ground():
+    world = World(stage_units_in_meters=1.0)
+    world.scene.add_default_ground_plane()
+    return world
+\end{lstlisting}
+
+\textbf{Purpose:} Initializes the PhysX simulation environment with:
+\begin{itemize}
+    \item Unit system: 1 USD unit = 1 meter
+    \item Default ground plane for objects to rest on
+\end{itemize}
+
+\subsection{Model File Location}
+\begin{lstlisting}[language=Python]
+def find_model_file():
+    model_file = Path(__file__).parent / "plate" / "plate.usdc"
+    if not model_file.exists():
+        raise FileNotFoundError(f"Model file not found: {model_file}")
+    return model_file
+\end{lstlisting}
+
+\textbf{Purpose:} Locates the USD model file (\texttt{plate.usdc}) in the \texttt{plate/} subfolder relative to the script location.
+
+\subsection{USD Model Import}
+\begin{lstlisting}[language=Python]
+def import_usd_model(model_file, prim_path="/World/Plate"):
+    omni.kit.commands.execute(
+        'CreateReferenceCommand',
+        usd_context=get_usd_context(),
+        path_to=prim_path,
+        asset_path=str(model_file.absolute()),
+        instanceable=False
+    )
+    return prim_path
+\end{lstlisting}
+
+\textbf{Purpose:} Creates a USD reference to the external model file at \texttt{/World/Plate}. Using references (instead of copying) allows:
+\begin{itemize}
+    \item External file can be updated independently
+    \item Memory efficiency (shared across instances)
+    \item Standard USD workflow
+\end{itemize}
+
+\subsection{Transform Operations}
+\begin{lstlisting}[language=Python]
+def set_prim_transform(prim_path, position=(0.0, 0.0, 0.0), 
+                      scale=(1.0, 1.0, 1.0), rotateX=None):
+    xform = UsdGeom.Xformable(prim)
+    xform.ClearXformOpOrder()
+    
+    # Match USD xformOpOrder
+    translate_op = xform.AddTranslateOp()
+    translate_op.Set(Gf.Vec3d(*position))
+    
+    orient_op = xform.AddOrientOp()
+    orient_op.Set(Gf.Quatf(1, 0, 0, 0))
+    
+    scale_op = xform.AddScaleOp()
+    scale_op.Set(Gf.Vec3f(1, 1, 1))
+    
+    if rotateX is not None:
+        rotate_x_op = xform.AddRotateXOp(opSuffix="unitsResolve")
+        rotate_x_op.Set(rotateX)
+    
+    scale_units_op = xform.AddScaleOp(opSuffix="unitsResolve")
+    scale_units_op.Set(Gf.Vec3d(*scale))
+\end{lstlisting}
+
+\textbf{Purpose:} Applies transformations matching the USD file structure:
+\begin{enumerate}
+    \item \texttt{xformOp:translate}: Position in world space
+    \item \texttt{xformOp:orient}: Orientation quaternion (identity)
+    \item \texttt{xformOp:scale}: Initial scale (1,1,1)
+    \item \texttt{xformOp:rotateX:unitsResolve}: Optional X-axis rotation
+    \item \texttt{xformOp:scale:unitsResolve}: Final scale factor
+\end{enumerate}
+
+\textbf{Example:} Plate positioned at origin $(0,0,0)$ with scale $0.01$ (1\% of original size).
+
+\subsection{PBR Material Creation}
+\begin{lstlisting}[language=Python]
+def create_pbr_material(prim_path, color=(1.0, 1.0, 1.0), 
+                       roughness=0.4, metallic=0.0):
+    material = UsdShade.Material.Define(stage, prim_path)
+    shader = UsdShade.Shader.Define(stage, f"{prim_path}/Shader")
+    shader.CreateIdAttr("UsdPreviewSurface")
+    
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(color)
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(roughness)
+    shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(metallic)
+\end{lstlisting}
+
+\textbf{Purpose:} Creates Physically Based Rendering (PBR) material with:
+\begin{itemize}
+    \item \texttt{diffuseColor}: RGB color $(r, g, b) \in [0,1]^3$
+    \item \texttt{roughness}: Surface roughness $\in [0,1]$ (0=smooth, 1=rough)
+    \item \texttt{metallic}: Metallic property $\in [0,1]$ (0=dielectric, 1=metal)
+\end{itemize}
+
+\textbf{Example:} Green plate with $\text{color}=(0,1,0)$, $\text{roughness}=0.4$, $\text{metallic}=0$
+
+\subsection{Physics Material}
+\begin{lstlisting}[language=Python]
+def add_physics_material(prim_path, static_friction=0.5, 
+                        dynamic_friction=0.5, restitution=0.1):
+    physics_material = UsdPhysics.MaterialAPI.Apply(
+        stage.DefinePrim(material_path, "Material"))
+    
+    physics_material.CreateStaticFrictionAttr(static_friction)
+    physics_material.CreateDynamicFrictionAttr(dynamic_friction)
+    physics_material.CreateRestitutionAttr(restitution)
+\end{lstlisting}
+
+\textbf{Purpose:} Defines friction and bounce properties:
+\begin{itemize}
+    \item \texttt{static\_friction}: Coefficient when objects at rest $\mu_s$
+    \item \texttt{dynamic\_friction}: Coefficient when objects sliding $\mu_d$
+    \item \texttt{restitution}: Bounciness $e \in [0,1]$ (0=no bounce, 1=perfect)
+\end{itemize}
+
+\textbf{Example:} Plate with $\mu_s=0.6$, $\mu_d=0.5$, $e=0.1$ (low bounce)
+
+\subsection{Plate Collision Configuration}
+\begin{lstlisting}[language=Python]
+def add_collision_to_plate(prim_path):
+    def add_collision_recursive(p, is_root=False):
+        if p.IsA(UsdGeom.Mesh):
+            # Apply rigid body physics to mesh
+            UsdPhysics.RigidBodyAPI.Apply(p)
+            p.CreateAttribute("physics:rigidBodyEnabled", 
+                            Sdf.ValueTypeNames.Bool).Set(True)
+            p.CreateAttribute("physics:kinematicEnabled", 
+                            Sdf.ValueTypeNames.Bool).Set(False)
+            
+            # Apply collision
+            UsdPhysics.CollisionAPI.Apply(p)
+            p.CreateAttribute("physics:collisionEnabled", 
+                            Sdf.ValueTypeNames.Bool).Set(True)
+            
+            # Convex decomposition for collision
+            UsdPhysics.MeshCollisionAPI.Apply(p)
+            mesh_collision = UsdPhysics.MeshCollisionAPI(p)
+            mesh_collision.CreateApproximationAttr("convexDecomposition")
+            
+            # PhysX CCD and contact offsets
+            PhysxSchema.PhysxRigidBodyAPI.Apply(p)
+            p.CreateAttribute("physxRigidBody:enableCCD", 
+                            Sdf.ValueTypeNames.Bool).Set(True)
+            
+            PhysxSchema.PhysxCollisionAPI.Apply(p)
+            p.CreateAttribute("physxCollision:contactOffset", 
+                            Sdf.ValueTypeNames.Float).Set(0.02)
+            p.CreateAttribute("physxCollision:restOffset", 
+                            Sdf.ValueTypeNames.Float).Set(0.001)
+\end{lstlisting}
+
+\textbf{Purpose:} Configures physics on mesh geometry with:
+
+\textbf{Rigid Body Properties:}
+\begin{itemize}
+    \item \texttt{rigidBodyEnabled=True}: Object participates in dynamics
+    \item \texttt{kinematicEnabled=False}: Dynamic (not position-controlled)
+\end{itemize}
+
+\textbf{Collision Approximation:}
+\begin{itemize}
+    \item \texttt{convexDecomposition}: Uses VHACD algorithm to decompose concave mesh into 8-20 convex hulls
+    \item Necessary for moving/dynamic concave objects (plate/bowl)
+    \item More stable than exact triangle mesh for kinematic motion
+\end{itemize}
+
+\textbf{PhysX Settings:}
+\begin{itemize}
+    \item \texttt{enableCCD=True}: Continuous Collision Detection prevents tunneling
+    \item \texttt{contactOffset=0.02m}: Solver "breathing room" for stability
+    \item \texttt{restOffset=0.001m}: Distance at which objects touch
+\end{itemize}
+
+\subsection{Ball Creation}
+\begin{lstlisting}[language=Python]
+def create_ball(position=(0.0, 0.0, 1.5), radius=0.05, 
+               color=(1.0, 0.0, 0.0), scale=(1.0, 1.0, 1.0)):
+    sphere = UsdGeom.Sphere.Define(stage, ball_path)
+    sphere.CreateRadiusAttr(radius)
+    
+    sphere.AddTranslateOp().Set(Gf.Vec3d(*position))
+    sphere.AddScaleOp().Set(Gf.Vec3f(*scale))
+    
+    # Physics
+    prim_ball = sphere.GetPrim()
+    UsdPhysics.RigidBodyAPI.Apply(prim_ball)
+    UsdPhysics.CollisionAPI.Apply(prim_ball)
+    
+    prim_ball.CreateAttribute("physics:rigidBodyEnabled", 
+                            Sdf.ValueTypeNames.Bool).Set(True)
+    prim_ball.CreateAttribute("physics:kinematicEnabled", 
+                            Sdf.ValueTypeNames.Bool).Set(False)
+    prim_ball.CreateAttribute("physics:collisionEnabled", 
+                            Sdf.ValueTypeNames.Bool).Set(True)
+    
+    # PhysX CCD
+    PhysxSchema.PhysxRigidBodyAPI.Apply(prim_ball)
+    PhysxSchema.PhysxCollisionAPI.Apply(prim_ball)
+    prim_ball.CreateAttribute("physxRigidBody:enableCCD", 
+                            Sdf.ValueTypeNames.Bool).Set(True)
+    
+    # Mass
+    mass_api = UsdPhysics.MassAPI.Apply(prim_ball)
+    mass_api.CreateMassAttr(0.1)  # 100 grams
+\end{lstlisting}
+
+\textbf{Purpose:} Creates a dynamic sphere with:
+\begin{itemize}
+    \item \texttt{UsdGeom.Sphere}: Geometric primitive (analytic sphere)
+    \item Position: $(x, y, z)$ in meters
+    \item Base radius $r$ (before scale), effective radius $r \cdot s$ where $s$ is scale
+    \item Mass: $m = 0.1\text{ kg}$ (100 grams)
+    \item Analytic collision (no mesh approximation needed for sphere)
+    \item CCD enabled for robust collision detection
+\end{itemize}
+
+\textbf{Example:} Red ball at $(0, 0, 1)$ with $r=0.5$, $s=0.25$, effective radius $0.125\text{ m}$
+
+\subsection{Scene Lighting}
+\begin{lstlisting}[language=Python]
+def add_scene_lighting(distant_intensity=1000.0, 
+                      dome_intensity=300.0, distant_angle=-45.0):
+    # Distant light (directional)
+    distant_light = UsdLux.DistantLight.Define(stage, light_path)
+    distant_light.CreateIntensityAttr(distant_intensity)
+    distant_light.CreateAngleAttr(0.5)
+    distant_light.AddRotateXYZOp().Set(Gf.Vec3f(distant_angle, 0, 0))
+    
+    # Dome light (ambient)
+    dome_light = UsdLux.DomeLight.Define(stage, dome_light_path)
+    dome_light.CreateIntensityAttr(dome_intensity)
+\end{lstlisting}
+
+\textbf{Purpose:} Adds two light sources:
+\begin{itemize}
+    \item \textbf{Distant Light}: Directional (like sun), intensity $I_d=1000$, angle $-45°$
+    \item \textbf{Dome Light}: Ambient environment lighting, intensity $I_{dome}=300$
+\end{itemize}
+
+Prevents fully black shadows and provides realistic lighting.
+
+\subsection{Collision Visualization}
+\begin{lstlisting}[language=Python]
+def enable_collision_visualization():
+    physics_settings = carb.settings.get_settings()
+    physics_settings.set("/physics/visualizationDisplayCollisionMeshes", True)
+    physics_settings.set("/physics/visualizationDisplayContacts", True)
+    physics_settings.set("/physics/visualizationSimplificationDisplayCollisionMeshes", True)
+\end{lstlisting}
+
+\textbf{Purpose:} Enables debug visualization:
+\begin{itemize}
+    \item Collision meshes shown as wireframes
+    \item Contact points shown as colored markers
+    \item Helps verify collision geometry correctness
+\end{itemize}
+
+\subsection{Simulation Loop}
+\begin{lstlisting}[language=Python]
+def run_simulation(world, ball_path="/World/Ball", plate_path="/World/Plate"):
+    world.reset()
+    
+    ball_geom = UsdGeom.Sphere(ball_prim)
+    ball_radius = ball_geom.GetRadiusAttr().Get()
+    
+    step_count = 0
+    dt = world.get_physics_dt()
+    
+    while simulation_app.is_running():
+        world.step(render=True)
+        step_count += 1
+        
+        if step_count % 100 == 0:
+            # Get positions
+            ball_xform = UsdGeom.Xformable(ball_prim)
+            ball_matrix = ball_xform.ComputeLocalToWorldTransform(0)
+            ball_center = ball_matrix.ExtractTranslation()
+            ball_bottom = ball_center[2] - ball_radius
+            
+            plate_xform = UsdGeom.Xformable(plate_prim)
+            plate_matrix = plate_xform.ComputeLocalToWorldTransform(0)
+            plate_pos = plate_matrix.ExtractTranslation()
+            
+            separation = ball_bottom - plate_pos[2]
+            print(f"Step {step_count} | Ball: {ball_center} | Gap: {separation}")
+\end{lstlisting}
+
+\textbf{Purpose:} Runs physics simulation loop:
+\begin{itemize}
+    \item \texttt{world.reset()}: Initialize physics state
+    \item \texttt{world.step(render=True)}: Advance simulation by $\Delta t$ and render
+    \item Every 100 steps: print positions and separation distance
+\end{itemize}
+
+\textbf{Metrics:}
+\begin{itemize}
+    \item Ball center position: $\mathbf{p}_{ball} = (x, y, z)$
+    \item Ball bottom surface: $z_{bottom} = z_{center} - r$
+    \item Separation gap: $d = z_{bottom} - z_{plate}$
+\end{itemize}
+
+\subsection{Main Execution Flow}
+\begin{lstlisting}[language=Python]
+def main():
+    # 1. Create physics world
+    world = create_world_with_ground()
+    
+    # 2. Add lighting
+    add_scene_lighting(distant_intensity=1000.0, dome_intensity=300.0)
+    
+    # 3. Import plate model
+    model_file = find_model_file()
+    prim_path = import_usd_model(model_file, prim_path="/World/Plate")
+    
+    # 4. Position and scale plate
+    position_and_scale_model(
+        prim_path=prim_path,
+        position=(0.0, 0.0, 0.0),
+        scale=(0.01, 0.01, 0.01)
+    )
+    
+    # 5. Apply visual material (green)
+    material = create_pbr_material(material_path, color=(0.0, 1.0, 0.0), 
+                                  roughness=0.4, metallic=0.0)
+    apply_material_to_prim(prim_path, material)
+    
+    # 6. Add physics to plate
+    add_collision_to_plate(prim_path)
+    add_physics_material(prim_path, static_friction=0.6, 
+                        dynamic_friction=0.5, restitution=0.1)
+    
+    # 7. Create ball
+    create_ball(position=(0.0, 0.0, 1.0), radius=0.5, 
+               color=(1.0, 0.0, 0.0), scale=(0.25, 0.25, 0.25))
+    add_physics_material("/World/Ball", static_friction=0.6, 
+                        dynamic_friction=0.5, restitution=0.3)
+    
+    # 8. Enable collision visualization
+    enable_collision_visualization()
+    
+    # 9. Run simulation
+    run_simulation(world, ball_path="/World/Ball", plate_path=prim_path)
+    
+    simulation_app.close()
+\end{lstlisting}
+
+\textbf{Execution sequence:}
+\begin{enumerate}
+    \item Initialize physics world with ground plane
+    \item Add directional and ambient lighting
+    \item Import plate USD model from file
+    \item Position at origin $(0,0,0)$ with 1\% scale
+    \item Apply green PBR material
+    \item Configure dynamic rigid body with convex decomposition
+    \item Add friction material to plate
+    \item Create red ball at $(0,0,1)$ with effective radius $0.125\text{ m}$
+    \item Add friction material to ball
+    \item Enable collision debug visualization
+    \item Run interactive simulation with position tracking
+\end{enumerate}
+
+\section{Key Parameters}
+
+\subsection{Plate Configuration}
+\begin{itemize}
+    \item Position: $(0, 0, 0)$ m
+    \item Scale: $0.01$ (1\% of original)
+    \item Collision: Convex decomposition (VHACD)
+    \item Physics: Dynamic rigid body
+    \item Friction: $\mu_s = 0.6$, $\mu_d = 0.5$
+    \item Restitution: $e = 0.1$
+    \item Contact offset: $0.02$ m
+\end{itemize}
+
+\subsection{Ball Configuration}
+\begin{itemize}
+    \item Position: $(0, 0, 1)$ m
+    \item Base radius: $r_0 = 0.5$ m
+    \item Scale: $s = 0.25$
+    \item Effective radius: $r = r_0 \cdot s = 0.125$ m
+    \item Mass: $m = 0.1$ kg
+    \item Collision: Analytic sphere
+    \item Physics: Dynamic rigid body
+    \item Friction: $\mu_s = 0.6$, $\mu_d = 0.5$
+    \item Restitution: $e = 0.3$
+    \item CCD: Enabled
+\end{itemize}
+
+\section{Physics Summary}
+
+\subsection{Collision Detection Strategy}
+\begin{itemize}
+    \item \textbf{Plate (concave)}: Convex decomposition creates 8-20 convex hulls using VHACD algorithm
+    \item \textbf{Ball (sphere)}: Analytic sphere collision (most efficient)
+    \item \textbf{CCD}: Both objects use Continuous Collision Detection to prevent tunneling
+\end{itemize}
+
+\subsection{Contact Model}
+Contact forces modeled using:
+\begin{align}
+    F_{normal} &= k \cdot \delta - c \cdot \dot{\delta} \\
+    F_{friction} &= \begin{cases}
+        \mu_s \cdot F_N & \text{if } v = 0 \\
+        \mu_d \cdot F_N & \text{if } v > 0
+    \end{cases}
+\end{align}
+where:
+\begin{itemize}
+    \item $\delta$ is penetration depth
+    \item $k$ is contact stiffness
+    \item $c$ is contact damping
+    \item $v$ is relative velocity
+\end{itemize}
+
+\section{Conclusion}
+This script demonstrates a complete workflow for:
+\begin{enumerate}
+    \item Programmatic Isaac Sim setup
+    \item USD asset import and transformation
+    \item Physics configuration (rigid bodies, collision, materials)
+    \item Visual material application (PBR)
+    \item Real-time simulation with position tracking
+\end{enumerate}
+
+The key technical aspects are:
+\begin{itemize}
+    \item \textbf{Convex decomposition} for moving concave objects (plate)
+    \item \textbf{Dynamic rigid bodies} (not kinematic) allow realistic physics
+    \item \textbf{CCD} prevents fast-moving objects from tunneling
+    \item \textbf{Contact offsets} provide solver stability
+\end{itemize}
+
+\end{document}

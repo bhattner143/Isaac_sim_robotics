@@ -1,0 +1,1185 @@
+#usda 1.0
+(
+    customLayerData = {
+        dictionary audioSettings = {
+            double dopplerLimit = 2
+            double dopplerScale = 1
+            double nonSpatialTimeScale = 1
+            double spatialTimeScale = 1
+            double speedOfSound = 340
+        }
+        dictionary cameraSettings = {
+            dictionary Front = {
+                double3 position = (1000.0000000000005, -2.2204460492503136e-13, 0)
+                double radius = 500
+            }
+            dictionary Perspective = {
+                double3 position = (3.313952320374056, 1.531083249472235, 0.4815744372154983)
+                double radius = 808.1671358505603
+                double3 target = (-3.0952298253692088, -1.4022441956323561, 0.988723296285603)
+            }
+            dictionary Right = {
+                double3 position = (0, -1000, -2.220446049250313e-13)
+                double radius = 500
+            }
+            dictionary Top = {
+                double3 position = (0, 0, 1000)
+                double radius = 500
+            }
+            string boundCamera = "/OmniverseKit_Persp"
+        }
+        dictionary navmeshSettings = {
+            double agentHeight = 180
+            double agentRadius = 20
+            bool excludeRigidBodies = 1
+            int ver = 1
+            double voxelCeiling = 460
+        }
+        dictionary omni_layer = {
+            string authoring_layer = "./franka.usd"
+            dictionary locked = {
+            }
+            dictionary muteness = {
+            }
+        }
+        dictionary physicsSettings = {
+            int "/persistent/simulation/minFrameRate" = 60
+        }
+        dictionary renderSettings = {
+            double "rtx:post:lensDistortion:cameraFocalLength" = 18.14756202697754
+        }
+    }
+    defaultPrim = "panda"
+    endTimeCode = 0
+    metersPerUnit = 1
+    startTimeCode = -1
+    subLayers = [
+        @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/configuration/franka_robot_schema.usd@
+    ]
+    timeCodesPerSecond = 60
+    upAxis = "Z"
+)
+
+def Xform "panda" (
+    prepend apiSchemas = ["PhysicsArticulationRootAPI", "PhysxArticulationAPI"]
+    variants = {
+        string Gripper = "AlternateFinger"
+        string Mesh = "Performance"
+    }
+    prepend variantSets = ["Mesh", "Gripper"]
+)
+{
+    string isaac:namespace (
+        displayName = "Namespace"
+        doc = "Namespace of the prim in Isaac Sim"
+    )
+    bool physxArticulation:enabledSelfCollisions = 0
+    int physxArticulation:solverPositionIterationCount = 32
+    int physxArticulation:solverVelocityIterationCount = 1
+    quatd xformOp:orient = (1, 0, 0, 0)
+    double3 xformOp:scale = (1, 1, 1)
+    double3 xformOp:translate = (0, 0, 0)
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+    def Xform "panda_link0" (
+        prepend apiSchemas = ["PhysxRigidBodyAPI", "PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+        instanceable = false
+    )
+    {
+        string isaac:nameOverride (
+            displayName = "Name Override"
+            doc = "Name override for prim lookup in base name search"
+        )
+        vector3f physics:angularVelocity = (0, 0, 0)
+        point3f physics:centerOfMass = (0, 0, 0)
+        float3 physics:diagonalInertia = (0.0000012988697, 0.0000016535528, 0.0000020331163)
+        bool physics:kinematicEnabled = 0
+        float physics:mass = 2.8142028
+        bool physics:rigidBodyEnabled = 1
+        rel physics:simulationOwner
+        uniform bool physics:startsAsleep = 0
+        vector3f physics:velocity = (0, 0, 0)
+        float physxRigidBody:angularDamping = 0.05
+        bool physxRigidBody:enableCCD = 0
+        bool physxRigidBody:enableSpeculativeCCD = 0
+        float physxRigidBody:linearDamping = 0
+        int physxRigidBody:lockedPosAxis = 0
+        int physxRigidBody:lockedRotAxis = 0
+        float physxRigidBody:maxAngularVelocity = 100
+        float physxRigidBody:maxDepenetrationVelocity = inf
+        float physxRigidBody:maxLinearVelocity = inf
+        float physxRigidBody:sleepThreshold = 0.5
+        int physxRigidBody:solverPositionIterationCount = 4
+        int physxRigidBody:solverVelocityIterationCount = 1
+        float physxRigidBody:stabilizationThreshold = 0.0009999999
+        quatf xformOp:orient = (1, 0, 0, 0)
+        float3 xformOp:scale = (1, 1, 1)
+        float3 xformOp:translate = (-2.3841857e-9, 2.9802322e-10, 2.3841856e-8)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def PhysicsRevoluteJoint "panda_joint1" (
+            prepend apiSchemas = ["PhysxJointAPI", "PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            uniform token articulationType = "articulatedJoint"
+            float drive:angular:physics:damping = 80
+            float drive:angular:physics:maxForce = 87
+            float drive:angular:physics:stiffness = 400
+            float drive:angular:physics:targetPosition = 0.68754935
+            uniform token drive:angular:physics:type = "force"
+            custom string isaac:nameOverride (
+                displayName = "Name Override"
+                doc = "Name override for prim lookup in base name search"
+            )
+            float jointFriction = 0
+            custom token physics:axis = "X"
+            rel physics:body0 = </panda/panda_link0>
+            rel physics:body1 = </panda/panda_link1>
+            float physics:breakForce = 3.4028233e36
+            float physics:breakTorque = 3.4028233e34
+            point3f physics:localPos0 = (0, 0, 0.33299997)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.70710677, 0, -0.70710677, 0)
+            quatf physics:localRot1 = (0.70710677, 0, -0.70710677, 0)
+            custom float physics:lowerLimit = -166.00307
+            custom float physics:upperLimit = 166.00307
+            custom float physxJoint:maxJointVelocity = 124.61832
+            float state:angular:physics:position = 0
+            float state:angular:physics:velocity = 0
+        }
+
+        def "geometry" (
+            instanceable = true
+        )
+        {
+            float3 xformOp:rotateZYX = (0, 0, 0)
+            float3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZYX", "xformOp:scale"]
+        }
+    }
+
+    def Xform "panda_link1" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+        instanceable = false
+    )
+    {
+        vector3f physics:angularVelocity = (0, 0, 0)
+        point3f physics:centerOfMass = (0, 0, 0)
+        float3 physics:diagonalInertia = (0.0000018686388, 0.0000014378986, 9.06812e-7)
+        float physics:mass = 2.3599997
+        rel physics:simulationOwner
+        vector3f physics:velocity = (0, 0, 0)
+        quatf xformOp:orient = (1, 0, 0, 0)
+        float3 xformOp:scale = (1, 1, 1)
+        float3 xformOp:translate = (9.685754e-10, 1.2636184e-7, 0.33300033)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def PhysicsRevoluteJoint "panda_joint2" (
+            prepend apiSchemas = ["PhysxJointAPI", "PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            uniform token articulationType = "articulatedJoint"
+            float drive:angular:physics:damping = 80
+            float drive:angular:physics:maxForce = 87
+            float drive:angular:physics:stiffness = 400
+            float drive:angular:physics:targetPosition = -32.658596
+            uniform token drive:angular:physics:type = "force"
+            custom string isaac:nameOverride (
+                displayName = "Name Override"
+                doc = "Name override for prim lookup in base name search"
+            )
+            float jointFriction = 0
+            custom token physics:axis = "X"
+            rel physics:body0 = </panda/panda_link1>
+            rel physics:body1 = </panda/panda_link2>
+            float physics:breakForce = 3.4028233e36
+            float physics:breakTorque = 3.4028233e34
+            point3f physics:localPos0 = (0, 0, 0)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.49999997, -0.49999997, -0.49999997, 0.49999997)
+            quatf physics:localRot1 = (0.7071067, 0, -0.7071067, 0)
+            custom float physics:lowerLimit = -101.001
+            custom float physics:upperLimit = 101.001
+            custom float physxJoint:maxJointVelocity = 124.61832
+            float state:angular:physics:position = 0
+            float state:angular:physics:velocity = 0
+        }
+
+        def "geometry" (
+            instanceable = true
+        )
+        {
+            float3 xformOp:rotateZYX = (0, 0, 0)
+            float3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZYX", "xformOp:scale"]
+        }
+    }
+
+    def Xform "panda_link2" (
+        prepend apiSchemas = ["PhysxRigidBodyAPI", "PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+        instanceable = false
+    )
+    {
+        string isaac:nameOverride (
+            displayName = "Name Override"
+            doc = "Name override for prim lookup in base name search"
+        )
+        vector3f physics:angularVelocity = (0, 0, 0)
+        point3f physics:centerOfMass = (0, 0, 0)
+        float3 physics:diagonalInertia = (0.0000019038872, 9.1429115e-7, 0.0000014697537)
+        bool physics:kinematicEnabled = 0
+        float physics:mass = 2.3795187
+        bool physics:rigidBodyEnabled = 1
+        rel physics:simulationOwner
+        uniform bool physics:startsAsleep = 0
+        vector3f physics:velocity = (0, 0, 0)
+        float physxRigidBody:angularDamping = 0.05
+        bool physxRigidBody:enableCCD = 0
+        bool physxRigidBody:enableSpeculativeCCD = 0
+        float physxRigidBody:linearDamping = 0
+        int physxRigidBody:lockedPosAxis = 0
+        int physxRigidBody:lockedRotAxis = 0
+        float physxRigidBody:maxAngularVelocity = 100
+        float physxRigidBody:maxDepenetrationVelocity = inf
+        float physxRigidBody:maxLinearVelocity = inf
+        float physxRigidBody:sleepThreshold = 0.5
+        int physxRigidBody:solverPositionIterationCount = 4
+        int physxRigidBody:solverVelocityIterationCount = 1
+        float physxRigidBody:stabilizationThreshold = 0.0009999999
+        quatf xformOp:orient = (-0.7071066, 0.70710695, -1.4901161e-8, 1.359731e-7)
+        float3 xformOp:scale = (1, 1, 1)
+        float3 xformOp:translate = (6.081536e-9, -1.1205673e-7, 0.33300003)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def PhysicsRevoluteJoint "panda_joint3" (
+            prepend apiSchemas = ["PhysxJointAPI", "PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            uniform token articulationType = "articulatedJoint"
+            float drive:angular:physics:damping = 80
+            float drive:angular:physics:maxForce = 87
+            float drive:angular:physics:stiffness = 400
+            float drive:angular:physics:targetPosition = 0
+            uniform token drive:angular:physics:type = "force"
+            custom string isaac:nameOverride (
+                displayName = "Name Override"
+                doc = "Name override for prim lookup in base name search"
+            )
+            float jointFriction = 0
+            custom token physics:axis = "X"
+            rel physics:body0 = </panda/panda_link2>
+            rel physics:body1 = </panda/panda_link3>
+            float physics:breakForce = 3.4028233e36
+            float physics:breakTorque = 3.4028233e34
+            point3f physics:localPos0 = (0, -0.31599998, 0)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.49999994, 0.49999994, -0.49999994, -0.49999994)
+            quatf physics:localRot1 = (0.70710665, 0, -0.70710665, 0)
+            custom float physics:lowerLimit = -166.00307
+            custom float physics:upperLimit = 166.00307
+            custom float physxJoint:maxJointVelocity = 124.61832
+            float state:angular:physics:position = 0
+            float state:angular:physics:velocity = 0
+        }
+
+        def "geometry" (
+            instanceable = true
+        )
+        {
+            float3 xformOp:rotateZYX = (0, 3.0185458e-7, 3.0185456e-7)
+            float3 xformOp:scale = (1, 1.0000001, 1.0000001)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZYX", "xformOp:scale"]
+        }
+    }
+
+    def Xform "panda_link3" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+        instanceable = false
+    )
+    {
+        vector3f physics:angularVelocity = (0, 0, 0)
+        point3f physics:centerOfMass = (0, 0, 0)
+        float3 physics:diagonalInertia = (0.0000012930018, 0.0000015024211, 0.000001427346)
+        float physics:mass = 2.6498823
+        rel physics:simulationOwner
+        vector3f physics:velocity = (0, 0, 0)
+        quatf xformOp:orient = (1, 0, 0, 0)
+        float3 xformOp:scale = (1, 1, 1)
+        float3 xformOp:translate = (-1.5258789e-7, -5.7220458e-8, 0.649)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def PhysicsRevoluteJoint "panda_joint4" (
+            prepend apiSchemas = ["PhysxJointAPI", "PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            uniform token articulationType = "articulatedJoint"
+            float drive:angular:physics:damping = 80
+            float drive:angular:physics:maxForce = 87
+            float drive:angular:physics:stiffness = 400
+            float drive:angular:physics:targetPosition = -161.00114
+            uniform token drive:angular:physics:type = "force"
+            custom string isaac:nameOverride (
+                displayName = "Name Override"
+                doc = "Name override for prim lookup in base name search"
+            )
+            float jointFriction = 0
+            custom token physics:axis = "X"
+            rel physics:body0 = </panda/panda_link3>
+            rel physics:body1 = </panda/panda_link4>
+            float physics:breakForce = 3.4028233e36
+            float physics:breakTorque = 3.4028233e34
+            point3f physics:localPos0 = (0.08249996, 0, 0)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.4999999, 0.4999999, -0.4999999, -0.4999999)
+            quatf physics:localRot1 = (0.70710665, 0, -0.70710665, 0)
+            custom float physics:lowerLimit = -176.00117
+            custom float physics:upperLimit = -3.9992452
+            custom float physxJoint:maxJointVelocity = 124.61832
+            float state:angular:physics:position = 0
+            float state:angular:physics:velocity = 0
+        }
+
+        def "geometry" (
+            instanceable = true
+        )
+        {
+            float3 xformOp:rotateZYX = (0, 0, 0)
+            float3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZYX", "xformOp:scale"]
+        }
+    }
+
+    def Xform "panda_link4" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+        instanceable = false
+    )
+    {
+        vector3f physics:angularVelocity = (0, 0, 0)
+        point3f physics:centerOfMass = (0, 0, 0)
+        float3 physics:diagonalInertia = (0.0000013387461, 0.0000014514325, 0.0000015517554)
+        float physics:mass = 2.6948018
+        rel physics:simulationOwner
+        vector3f physics:velocity = (0, 0, 0)
+        quatf xformOp:orient = (0.7071062, 0.70710737, -7.4505806e-8, -1.527369e-7)
+        float3 xformOp:scale = (1, 1, 1)
+        float3 xformOp:translate = (0.08250008, 5.7220458e-8, 0.6489999)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def PhysicsRevoluteJoint "panda_joint5" (
+            prepend apiSchemas = ["PhysxJointAPI", "PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            uniform token articulationType = "articulatedJoint"
+            float drive:angular:physics:damping = 80
+            float drive:angular:physics:maxForce = 12
+            float drive:angular:physics:stiffness = 400
+            float drive:angular:physics:targetPosition = 0
+            uniform token drive:angular:physics:type = "force"
+            custom string isaac:nameOverride (
+                displayName = "Name Override"
+                doc = "Name override for prim lookup in base name search"
+            )
+            float jointFriction = 0
+            custom token physics:axis = "X"
+            rel physics:body0 = </panda/panda_link4>
+            rel physics:body1 = </panda/panda_link5>
+            float physics:breakForce = 3.4028233e36
+            float physics:breakTorque = 3.4028233e34
+            point3f physics:localPos0 = (-0.08249994, 0.38399988, -1.4210855e-14)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.4999999, -0.4999999, -0.4999999, 0.4999999)
+            quatf physics:localRot1 = (0.70710665, 0, -0.70710665, 0)
+            custom float physics:lowerLimit = -166.00307
+            custom float physics:upperLimit = 166.00307
+            custom float physxJoint:maxJointVelocity = 149.542
+            float state:angular:physics:position = 0
+            float state:angular:physics:velocity = 0
+        }
+
+        def "geometry" (
+            instanceable = true
+        )
+        {
+            float3 xformOp:rotateZYX = (0, 6.0370934e-7, 0)
+            float3 xformOp:scale = (1, 0.99999994, 0.99999994)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZYX", "xformOp:scale"]
+        }
+    }
+
+    def Xform "panda_link5" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+        instanceable = false
+    )
+    {
+        string isaac:nameOverride (
+            displayName = "Name Override"
+            doc = "Name override for prim lookup in base name search"
+        )
+        vector3f physics:angularVelocity = (0, 0, 0)
+        point3f physics:centerOfMass = (0, 0, 0)
+        float3 physics:diagonalInertia = (0.000003255657, 0.0000027066046, 0.0000011502337)
+        float physics:mass = 2.9812818
+        rel physics:simulationOwner
+        vector3f physics:velocity = (0, 0, 0)
+        quatf xformOp:orient = (1, 0, 0, 0)
+        float3 xformOp:scale = (1, 1, 1)
+        float3 xformOp:translate = (5.960464e-9, -2.4318695e-7, 1.0330003)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def PhysicsRevoluteJoint "panda_joint6" (
+            prepend apiSchemas = ["PhysxJointAPI", "PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            uniform token articulationType = "articulatedJoint"
+            float drive:angular:physics:damping = 80
+            float drive:angular:physics:maxForce = 12
+            float drive:angular:physics:stiffness = 400
+            float drive:angular:physics:targetPosition = 174.00728
+            uniform token drive:angular:physics:type = "force"
+            custom string isaac:nameOverride (
+                displayName = "Name Override"
+                doc = "Name override for prim lookup in base name search"
+            )
+            float jointFriction = 0
+            custom token physics:axis = "X"
+            rel physics:body0 = </panda/panda_link5>
+            rel physics:body1 = </panda/panda_link6>
+            float physics:breakForce = 3.4028233e36
+            float physics:breakTorque = 3.4028233e34
+            point3f physics:localPos0 = (0, 0, 0)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.49999988, 0.49999988, -0.49999988, -0.49999988)
+            quatf physics:localRot1 = (0.70710665, 0, -0.70710665, 0)
+            custom float physics:lowerLimit = -1.0026761
+            custom float physics:upperLimit = 215.00241
+            custom float physxJoint:maxJointVelocity = 149.542
+            float state:angular:physics:position = 0
+            float state:angular:physics:velocity = 0
+        }
+
+        def "geometry" (
+            instanceable = true
+        )
+        {
+            float3 xformOp:rotateZYX = (0, 0, 0)
+            float3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZYX", "xformOp:scale"]
+        }
+    }
+
+    def Xform "panda_link6" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+        instanceable = false
+    )
+    {
+        vector3f physics:angularVelocity = (0, 0, 0)
+        point3f physics:centerOfMass = (0, 0, 0)
+        float3 physics:diagonalInertia = (2.6052564e-7, 3.9897228e-7, 4.704859e-7)
+        float physics:mass = 1.1285807
+        rel physics:simulationOwner
+        vector3f physics:velocity = (0, 0, 0)
+        quatf xformOp:orient = (0.70710564, 0.7071079, 1.0477379e-8, 1.9324943e-8)
+        float3 xformOp:scale = (1, 1, 1)
+        float3 xformOp:translate = (-1.4781952e-7, -4.2319297e-8, 1.0329999)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def PhysicsRevoluteJoint "panda_joint7" (
+            prepend apiSchemas = ["PhysxJointAPI", "PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            uniform token articulationType = "articulatedJoint"
+            float drive:angular:physics:damping = 80
+            float drive:angular:physics:maxForce = 12
+            float drive:angular:physics:stiffness = 400
+            float drive:angular:physics:targetPosition = 42.456173
+            uniform token drive:angular:physics:type = "force"
+            custom string isaac:nameOverride (
+                displayName = "Name Override"
+                doc = "Name override for prim lookup in base name search"
+            )
+            float jointFriction = 0
+            custom token physics:axis = "X"
+            rel physics:body0 = </panda/panda_link6>
+            rel physics:body1 = </panda/panda_link7>
+            float physics:breakForce = 3.4028233e36
+            float physics:breakTorque = 3.4028233e34
+            point3f physics:localPos0 = (0.08799993, 0, 0)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.4999999, 0.4999999, -0.4999999, -0.4999999)
+            quatf physics:localRot1 = (0.70710665, 0, -0.70710665, 0)
+            custom float physics:lowerLimit = -166.00307
+            custom float physics:upperLimit = 166.00307
+            custom float physxJoint:maxJointVelocity = 149.542
+            float state:angular:physics:position = 0
+            float state:angular:physics:velocity = 0
+        }
+
+        def "geometry" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+            instanceable = true
+        )
+        {
+            float3 xformOp:rotateZYX = (0, 0, 0.0000011319547)
+            float3 xformOp:scale = (1, 1.0000004, 1.0000004)
+            double3 xformOp:translate
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZYX", "xformOp:scale"]
+        }
+    }
+
+    def Xform "panda_link7" (
+        prepend apiSchemas = ["PhysxRigidBodyAPI", "PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+        instanceable = false
+    )
+    {
+        string isaac:nameOverride (
+            displayName = "Name Override"
+            doc = "Name override for prim lookup in base name search"
+        )
+        vector3f physics:angularVelocity = (0, 0, 0)
+        point3f physics:centerOfMass = (0, 0, 0)
+        float3 physics:diagonalInertia = (6.316591e-8, 6.319639e-8, 1.0607721e-7)
+        bool physics:kinematicEnabled = 0
+        float physics:mass = 0.40529126
+        bool physics:rigidBodyEnabled = 1
+        rel physics:simulationOwner
+        uniform bool physics:startsAsleep = 0
+        vector3f physics:velocity = (0, 0, 0)
+        float physxRigidBody:angularDamping = 0.05
+        bool physxRigidBody:enableCCD = 0
+        bool physxRigidBody:enableSpeculativeCCD = 0
+        float physxRigidBody:linearDamping = 0
+        int physxRigidBody:lockedPosAxis = 0
+        int physxRigidBody:lockedRotAxis = 0
+        float physxRigidBody:maxAngularVelocity = 100
+        float physxRigidBody:maxDepenetrationVelocity = inf
+        float physxRigidBody:maxLinearVelocity = inf
+        float physxRigidBody:sleepThreshold = 0.5
+        int physxRigidBody:solverPositionIterationCount = 4
+        int physxRigidBody:solverVelocityIterationCount = 1
+        float physxRigidBody:stabilizationThreshold = 0.0009999999
+        token visibility = "inherited"
+        quatf xformOp:orient = (6.123234e-17, 1, 0, 0)
+        float3 xformOp:scale = (1, 1, 1)
+        float3 xformOp:translate = (0.08799997, -1.02519984e-7, 1.033)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def "geometry" (
+            instanceable = true
+        )
+        {
+            float3 xformOp:rotateZYX = (0, 0, 0)
+            float3 xformOp:scale = (1, 1.0000005, 1.0000005)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZYX", "xformOp:scale"]
+        }
+
+        def PhysicsFixedJoint "panda_hand_joint"
+        {
+            custom string isaac:nameOverride (
+                displayName = "Name Override"
+                doc = "Name override for prim lookup in base name search"
+            )
+            rel physics:body0 = </panda/panda_link7>
+            rel physics:body1 = </panda/panda_hand>
+            float physics:breakForce = 3.4028233e36
+            float physics:breakTorque = 3.4028233e34
+            point3f physics:localPos0 = (0, 0, 0.10699999)
+            point3f physics:localPos1 = (-3.809022e-8, 3.8090203e-8, -5.9604645e-8)
+            quatf physics:localRot0 = (0.70710677, 0, 0.70710677, 0)
+            quatf physics:localRot1 = (0.6532815, -0.2705981, 0.6532814, 0.27059814)
+        }
+    }
+
+    def Xform "panda_hand" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+        instanceable = false
+    )
+    {
+        string isaac:nameOverride (
+            displayName = "Name Override"
+            doc = "Name override for prim lookup in base name search"
+        )
+        vector3f physics:angularVelocity = (0, 0, 0)
+        point3f physics:centerOfMass = (0, 0, 0)
+        float3 physics:diagonalInertia = (2.3394448e-7, 5.7827858e-8, 2.1310294e-7)
+        float physics:mass = 0.5583305
+        rel physics:simulationOwner
+        vector3f physics:velocity = (0, 0, 0)
+        quatf xformOp:orient = (-6.5592767e-9, 0.9238795, 0.38268355, 1.8626451e-9)
+        float3 xformOp:scale = (1, 1, 1)
+        float3 xformOp:translate = (0.08799997, -4.865229e-8, 0.92599994)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def PhysicsPrismaticJoint "panda_finger_joint1" (
+            prepend apiSchemas = ["PhysxJointAPI", "PhysicsDriveAPI:linear", "PhysicsJointStateAPI:linear"]
+        )
+        {
+            uniform token articulationType = "articulatedJoint"
+            float drive:linear:physics:damping = 80
+            float drive:linear:physics:maxForce = 7.2
+            float drive:linear:physics:stiffness = 400
+            float drive:linear:physics:targetPosition = 0
+            float drive:linear:physics:targetVelocity = 0
+            uniform token drive:linear:physics:type = "force"
+            custom string isaac:nameOverride (
+                displayName = "Name Override"
+                doc = "Name override for prim lookup in base name search"
+            )
+            float jointFriction = 0
+            custom token physics:axis = "X"
+            rel physics:body0 = </panda/panda_hand>
+            rel physics:body1 = </panda/panda_leftfinger>
+            float physics:breakForce = 3.4028233e36
+            float physics:breakTorque = 3.4028233e34
+            point3f physics:localPos0 = (0, 0, 0.05839997)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.70710653, 0, 0, 0.7071066)
+            quatf physics:localRot1 = (0.70710653, 0, 0, 0.7071066)
+            custom float physics:lowerLimit = 0
+            custom float physics:upperLimit = 0.04
+            custom float physxJoint:maxJointVelocity = 0.2
+            float state:linear:physics:position = 0
+            float state:linear:physics:velocity = 0
+        }
+
+        def PhysicsPrismaticJoint "panda_finger_joint2" (
+            prepend apiSchemas = ["PhysxJointAPI", "PhysxMimicJointAPI:rotX", "PhysicsJointStateAPI:linear"]
+        )
+        {
+            uniform token articulationType = "articulatedJoint"
+            custom string isaac:nameOverride (
+                displayName = "Name Override"
+                doc = "Name override for prim lookup in base name search"
+            )
+            float jointFriction = 0
+            custom token physics:axis = "X"
+            rel physics:body0 = </panda/panda_hand>
+            rel physics:body1 = </panda/panda_rightfinger>
+            float physics:breakForce = 3.4028233e36
+            float physics:breakTorque = 3.4028233e34
+            uniform bool physics:excludeFromArticulation = 0
+            point3f physics:localPos0 = (0, 0, 0.05839997)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.7071066, 0, 0, -0.70710653)
+            quatf physics:localRot1 = (0.7071066, 0, 0, -0.70710653)
+            custom float physics:lowerLimit = 0
+            custom float physics:upperLimit = 0.04
+            custom float physxJoint:maxJointVelocity = 10
+            float physxMimicJoint:rotX:gearing = -1
+            rel physxMimicJoint:rotX:referenceJoint = </panda/panda_hand/panda_finger_joint1>
+            float state:linear:physics:position = 0
+            float state:linear:physics:velocity = 0
+        }
+
+        def "geometry" (
+            instanceable = true
+        )
+        {
+            float3 xformOp:rotateZYX = (0, 0, 0)
+            float3 xformOp:scale = (1.0000001, 0.9999986, 0.9999987)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZYX", "xformOp:scale"]
+        }
+
+        def Xform "tool_center" (
+            delete apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI"]
+        )
+        {
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (-6.938893903907228e-18, 0, 0.10340000000000016)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+    }
+
+    def Xform "panda_leftfinger" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+        instanceable = false
+    )
+    {
+        string isaac:nameOverride (
+            displayName = "Name Override"
+            doc = "Name override for prim lookup in base name search"
+        )
+        vector3f physics:angularVelocity = (0, 0, 0)
+        point3f physics:centerOfMass = (0, 0, 0)
+        float3 physics:diagonalInertia = (4.2041304e-10, 3.9026365e-10, 1.3347495e-10)
+        float physics:mass = 0.014055223
+        rel physics:simulationOwner
+        vector3f physics:velocity = (0, 0, 0)
+        quatf xformOp:orient = (6.123234e-17, 0.92387944, 0.38268366, -2.6890988e-17)
+        float3 xformOp:scale = (1, 1, 1)
+        float3 xformOp:translate = (0.087999955, -3.159046e-8, 0.8676001)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def "geometry" (
+            instanceable = true
+        )
+        {
+        }
+    }
+
+    def Xform "panda_rightfinger" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+        instanceable = false
+    )
+    {
+        string isaac:nameOverride (
+            displayName = "Name Override"
+            doc = "Name override for prim lookup in base name search"
+        )
+        vector3f physics:angularVelocity = (0, 0, 0)
+        point3f physics:centerOfMass = (0, 0, 0)
+        float3 physics:diagonalInertia = (4.2041304e-10, 3.9026365e-10, 1.3347495e-10)
+        float physics:mass = 0.014055223
+        rel physics:simulationOwner
+        vector3f physics:velocity = (0, 0, 0)
+        quatf xformOp:orient = (6.123234e-17, 0.9238795, 0.38268346, -6.19799e-17)
+        float3 xformOp:scale = (1, 1, 1)
+        float3 xformOp:translate = (0.08799997, -6.9141386e-8, 0.8676001)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def "geometry" (
+            instanceable = true
+        )
+        {
+            float3 xformOp:rotateZYX = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZYX", "xformOp:scale"]
+        }
+    }
+
+    def PhysicsJoint "rootJoint"
+    {
+        uniform token articulationType = "articulatedRoot"
+        custom string isaac:nameOverride (
+            displayName = "Name Override"
+            doc = "Name override for prim lookup in base name search"
+        )
+        rel physics:body0 = </panda/panda_link0>
+        float physics:breakForce = inf
+        float physics:breakTorque = inf
+        point3f physics:localPos0 = (0, 0, 0)
+        point3f physics:localPos1 = (0, 0, 0)
+    }
+
+    over "Robotiq_2F_85_edit"
+    {
+        string isaac:namespace (
+            displayName = "Namespace"
+            doc = "Namespace of the prim in Isaac Sim"
+        )
+
+        over "Robotiq_2F_85"
+        {
+            over "base_link"
+            {
+            }
+
+            over "left_outer_knuckle"
+            {
+            }
+
+            over "left_outer_finger"
+            {
+            }
+
+            over "left_inner_finger"
+            {
+            }
+
+            over "left_inner_knuckle"
+            {
+            }
+
+            over "right_outer_knuckle"
+            {
+            }
+
+            over "right_outer_finger"
+            {
+            }
+
+            over "right_inner_finger"
+            {
+            }
+
+            over "right_inner_knuckle"
+            {
+            }
+
+            over "Joints"
+            {
+                over "finger_joint"
+                {
+                    float state:angular:physics:position = -3.5326963e-8
+                    float state:angular:physics:velocity = -0.016860245
+                }
+
+                over "right_outer_knuckle_joint"
+                {
+                    float state:angular:physics:position = -9.79341e-8
+                    float state:angular:physics:velocity = 0.013710747
+                }
+
+                over "left_inner_finger_joint"
+                {
+                    float state:angular:physics:position = 0.000033165823
+                    float state:angular:physics:velocity = 0.016860252
+                }
+
+                over "right_inner_finger_joint"
+                {
+                    float state:angular:physics:position = 0.00011276541
+                    float state:angular:physics:velocity = -0.15847589
+                }
+
+                over "left_inner_finger_knuckle_joint"
+                {
+                    float state:angular:physics:position = 0.00003212196
+                    float state:angular:physics:velocity = -0.040696997
+                }
+
+                over "right_inner_finger_knuckle_joint"
+                {
+                    float state:angular:physics:position = -0.000023753099
+                    float state:angular:physics:velocity = 0.014815701
+                }
+            }
+        }
+    }
+    variantSet "Mesh" = {
+        "Performance" (
+            customData = {
+                string[] variantPrimPaths = ["panda_link4/geometry", "panda_link2/geometry", "panda_link1/geometry", "panda_link5/geometry", "panda_link6/geometry", "panda_link3/geometry", "panda_link7/geometry", "panda_link0/geometry"]
+            }
+        ) {
+            over "panda_link0"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/Props/panda_link0.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_link1"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/Props/panda_link1.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_link2"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/Props/panda_link2.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_link3"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/Props/panda_link3.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_link4"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/Props/panda_link4.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_link5"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/Props/panda_link5.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_link6"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/Props/panda_link6.usd@
+                )
+                {
+                    double3 xformOp:translate = (-5.692792449209269e-9, 4.372753403814045e-7, 0)
+                }
+            }
+
+            over "panda_link7"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/Props/panda_link7.usd@
+                )
+                {
+                }
+            }
+
+        }
+        "Quality" (
+            customData = {
+                string[] variantPrimPaths = ["panda_link4/geometry", "panda_link2/geometry", "panda_link1/geometry", "panda_link5/geometry", "panda_link6/geometry", "panda_link3/geometry", "panda_link7/geometry", "panda_link0/geometry"]
+            }
+        ) {
+            over "panda_link0"
+            {
+                over "geometry" (
+                    prepend references = [
+                        @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/DetailedProps/panda_link0.usd@,
+                        @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/DetailedProps/logo_decals.usd@,
+                        @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/DetailedProps/cables_connected.usd@
+                    ]
+                )
+                {
+                }
+            }
+
+            over "panda_link1"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/DetailedProps/panda_link1.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_link2"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/DetailedProps/panda_link2.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_link3"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/DetailedProps/panda_link3.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_link4"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/DetailedProps/panda_link4.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_link5"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/DetailedProps/panda_link5.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_link6"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/DetailedProps/panda_link6.usd@
+                )
+                {
+                    double3 xformOp:translate = (0, 0, -0.015)
+                }
+            }
+
+            over "panda_link7"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/DetailedProps/panda_link7.usd@
+                )
+                {
+                }
+            }
+
+        }
+    }
+    variantSet "Gripper" = {
+        "AlternateFinger" (
+            customData = {
+                string[] variantPrimPaths = ["panda_leftfinger/geometry", "panda_hand/geometry", "panda_leftfinger", "panda_rightfinger/geometry"]
+            }
+        ) {
+            over "panda_hand"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/Props/panda_hand.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_rightfinger"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/DetailedProps/panda_rightfinger_flex.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_leftfinger"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/DetailedProps/panda_leftfinger_flex.usd@
+                )
+                {
+                }
+            }
+
+        }
+        "Default" (
+            customData = {
+                string[] variantPrimPaths = ["panda_leftfinger/geometry", "panda_hand/geometry", "panda_leftfinger", "panda_rightfinger/geometry"]
+            }
+        ) {
+            over "panda_hand"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/Props/panda_hand.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_rightfinger"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/Props/panda_rightfinger.usd@
+                )
+                {
+                }
+            }
+
+            over "panda_leftfinger"
+            {
+                over "geometry" (
+                    prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/Props/panda_leftfinger.usd@
+                )
+                {
+                }
+            }
+
+        }
+        "None" {
+
+        }
+        "Robotiq_2F_85" (
+            customData = {
+                string[] variantPrimPaths = ["panda_rightfinger", "panda_hand/panda_finger_joint1", "panda_hand/panda_finger_joint2", "panda_hand/geometry", "panda_leftfinger", "panda_hand/tool_center"]
+            }
+            prepend payload = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Robots/FrankaRobotics/FrankaPanda/configuration/franka_Gripper_Robotiq_2F_85.usd@
+        ) {
+            prepend rel isaac:physics:robotJoints = </panda/Robotiq_2F_85_edit/Robotiq_2F_85>
+            prepend rel isaac:physics:robotLinks = </panda/Robotiq_2F_85_edit/Robotiq_2F_85>
+
+        }
+    }
+}
+
+def SphereLight "SphereLight" (
+    prepend apiSchemas = ["ShapingAPI"]
+)
+{
+    float3[] extent = [(-50, -50, -50), (50, 50, 50)]
+    float inputs:intensity = 30000
+    float inputs:radius = 0.5
+    float inputs:shaping:cone:angle = 180
+    float inputs:shaping:cone:softness
+    float inputs:shaping:focus
+    color3f inputs:shaping:focusTint
+    asset inputs:shaping:ies:file
+    quatd xformOp:orient = (0.5000000000000001, 0.5, 0.49999999999999994, 0.5)
+    double3 xformOp:scale = (1, 1, 1)
+    double3 xformOp:translate = (1.8653711456151028, 0, 2.4897658495046358)
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+}
+
+def "Render" (
+    hide_in_stage_window = true
+    no_delete = true
+)
+{
+    def "OmniverseKit"
+    {
+        def "HydraTextures" (
+            hide_in_stage_window = true
+            no_delete = true
+        )
+        {
+            def RenderProduct "omni_kit_widget_viewport_ViewportTexture_0" (
+                prepend apiSchemas = ["OmniRtxSettingsCommonAdvancedAPI_1", "OmniRtxSettingsRtAdvancedAPI_1", "OmniRtxSettingsPtAdvancedAPI_1", "OmniRtxPostColorGradingAPI_1", "OmniRtxPostChromaticAberrationAPI_1", "OmniRtxPostBloomPhysicalAPI_1", "OmniRtxPostMatteObjectAPI_1", "OmniRtxPostCompositingAPI_1", "OmniRtxPostDofAPI_1", "OmniRtxPostMotionBlurAPI_1", "OmniRtxPostTvNoiseAPI_1", "OmniRtxPostTonemapIrayReinhardAPI_1", "OmniRtxPostDebugSettingsAPI_1", "OmniRtxDebugSettingsAPI_1"]
+                hide_in_stage_window = true
+                no_delete = true
+            )
+            {
+                rel camera = </OmniverseKit_Persp>
+                token omni:rtx:background:source:texture:textureMode = "repeatMirrored"
+                token omni:rtx:background:source:type = "domeLight"
+                bool omni:rtx:dlss:frameGeneration = 0
+                string omni:rtx:material:db:rtSensorNameToIdMap = "DefaultMaterial:0;AsphaltStandardMaterial:1;AsphaltWeatheredMaterial:2;VegetationGrassMaterial:3;WaterStandardMaterial:4;GlassStandardMaterial:5;FiberGlassMaterial:6;MetalAlloyMaterial:7;MetalAluminumMaterial:8;MetalAluminumOxidizedMaterial:9;PlasticStandardMaterial:10;RetroMarkingsMaterial:11;RetroSignMaterial:12;RubberStandardMaterial:13;SoilClayMaterial:14;ConcreteRoughMaterial:15;ConcreteSmoothMaterial:16;OakTreeBarkMaterial:17;FabricStandardMaterial:18;PlexiGlassStandardMaterial:19;MetalSilverMaterial:20"
+                bool omni:rtx:material:db:syncLoads = 1
+                token omni:rtx:post:dlss:execMode = "performance"
+                float omni:rtx:post:lensDistortion:cameraFocalLength = 18.147562
+                bool omni:rtx:post:registeredCompositing:invertColorCorrection = 1
+                bool omni:rtx:post:registeredCompositing:invertToneMap = 1
+                bool omni:rtx:pt:lightcache:cached:dontResolveConflicts = 1
+                int omni:rtx:pt:maxSamplesPerLaunch = 2073600
+                int omni:rtx:pt:mgpu:maxPixelsPerRegionExponent = 12
+                color3f omni:rtx:rt:ambientLight:color = (0.1, 0.1, 0.1)
+                bool omni:rtx:rt:demoire = 0
+                bool omni:rtx:rt:ecoMode:enabled
+                bool omni:rtx:rt:lightcache:spatialCache:dontResolveConflicts = 1
+                bool omni:rtx:scene:hydra:materialSyncLoads = 1
+                bool omni:rtx:scene:hydra:mdlMaterialWarmup = 1
+                uint omni:rtx:viewTile:limit = 4294967295
+                rel orderedVars = </Render/Vars/LdrColor>
+                custom bool overrideClipRange = 0
+                uniform int2 resolution = (1280, 720)
+            }
+        }
+    }
+
+    def RenderSettings "OmniverseGlobalRenderSettings" (
+        prepend apiSchemas = ["OmniRtxSettingsGlobalRtAdvancedAPI_1", "OmniRtxSettingsGlobalPtAdvancedAPI_1"]
+        no_delete = true
+    )
+    {
+        rel products = </Render/OmniverseKit/HydraTextures/omni_kit_widget_viewport_ViewportTexture_0>
+    }
+
+    def "Vars"
+    {
+        def RenderVar "LdrColor" (
+            hide_in_stage_window = true
+            no_delete = true
+        )
+        {
+            uniform string sourceName = "LdrColor"
+        }
+    }
+}
+
