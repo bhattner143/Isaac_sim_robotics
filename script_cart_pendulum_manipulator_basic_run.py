@@ -12,7 +12,19 @@ System:
 - 2-DOF Manipulator: Planar manipulator in XY plane
 """
 
-# Import standard Python libraries
+# ============================================================================
+# IMPORTS: Standard Python Libraries
+# ============================================================================
+# These are built-in Python modules and external libraries for:
+# - Application setup (SimulationApp)
+# - Data structures (dataclass for clean configuration classes)
+# - Type hints (Optional for better code clarity)
+# - Abstract base classes (ABC for creating robot base class)
+# - Command-line argument parsing (argparse for user options)
+# - File operations (os, Path for file handling)
+# - Math operations (math for trigonometry in kinematics)
+# - Colored terminal output (termcolor for better readability)
+
 from isaacsim import SimulationApp
 from dataclasses import dataclass
 from typing import Optional
@@ -23,39 +35,81 @@ import math
 from pathlib import Path
 from termcolor import colored
 
-# Parse command-line arguments
+# ============================================================================
+# COMMAND-LINE ARGUMENT PARSING
+# ============================================================================
+# This section allows users to control the simulation behavior via command-line arguments.
+# Example usage:
+#   python script.py --mode coupled-motion --device cpu
+#   python script.py --mode ee-trajectory --device cuda
+
 parser = argparse.ArgumentParser()
+
+# Device selection: CPU or GPU (CUDA)
+# GPU acceleration is faster for large-scale simulations with many objects
 parser.add_argument("--device", type=str, choices=["cpu", "cuda"], default="cpu", help="Simulation device")
+
+# Simulation mode: Determines what the simulation demonstrates
+# - scene-viz: Static visualization (no physics simulation)
+# - simulation: Full physics simulation
+# - test-simulation: Test cart motion independently
+# - ee-trajectory: Move manipulator end-effector along X-axis
+# - cart-toward-manipulator: Cart approaches manipulator autonomously
+# - coupled-motion: Manipulator and cart connected via joint (default)
 parser.add_argument(
     "--mode",
     type=str,
     choices=["scene-viz", "simulation", "test-simulation", "ee-trajectory", "cart-toward-manipulator", "coupled-motion"],
-    default="coupled-motion",
+    default="cart-toward-manipulator",
     help="Mode: 'scene-viz' (static), 'simulation' (physics), 'test-simulation' (cart motion test), 'ee-trajectory' (move EE along cart direction), 'cart-toward-manipulator' (cart moves toward manipulator until they meet), 'cart-ee-aligned' (cart edge aligned with EE), 'coupled-motion' (manipulator moves cart-pendulum via joint)",
 )
+
+# Parse the arguments (parse_known_args allows unknown arguments to be ignored)
 args, _ = parser.parse_known_args()
 
-# STEP 1: Launch Isaac Sim application
+# ============================================================================
+# STEP 1: LAUNCH ISAAC SIM APPLICATION
+# ============================================================================
+# IMPORTANT: SimulationApp must be created BEFORE importing any Isaac Sim modules!
+# This initializes the Omniverse Kit framework and creates the rendering window.
+#
+# Configuration parameters:
+# - headless: False means GUI is enabled (set to True for server/batch runs)
+# - width/height: Window resolution in pixels (affects rendering quality)
+
 simulation_app = SimulationApp({
-    "headless": False,
-    "width": 1280,
-    "height": 720,
+    "headless": False,      # Show GUI window
+    "width": 1280,          # Window width
+    "height": 720,          # Window height
 })
 
-# STEP 2: Import Isaac Sim modules (after SimulationApp is created)
-import isaacsim.core.experimental.utils.stage as stage_utils
-import omni.timeline
-import omni.usd
-import omni.kit.commands
-from isaacsim.asset.importer.urdf import _urdf
-from pxr import UsdGeom, UsdLux, Gf, UsdShade, Sdf
-from isaacsim.core.experimental.objects import GroundPlane
-from isaacsim.core.simulation_manager import SimulationManager
-from isaacsim.core.experimental.prims import Articulation, RigidPrim
-from omni.isaac.core import World
-import torch
-import warp as wp
-import numpy as np
+# ============================================================================
+# STEP 2: IMPORT ISAAC SIM MODULES
+# ============================================================================
+# CRITICAL: These imports MUST come AFTER SimulationApp is created!
+# The SimulationApp initialization sets up the Omniverse environment that
+# these modules depend on.
+#
+# Module categories:
+# - Stage/USD: Universal Scene Description (USD) format for 3D scenes
+# - Physics: Articulations (multi-link robots), rigid bodies
+# - Rendering: Lights, materials, geometry
+# - Commands: High-level operations (URDF import, etc.)
+# - Math libraries: PyTorch (tensors/GPU), Warp (parallel computing), NumPy
+
+import isaacsim.core.experimental.utils.stage as stage_utils  # USD stage utilities
+import omni.timeline  # Simulation timeline control
+import omni.usd  # USD context and stage access
+import omni.kit.commands  # High-level commands for operations
+from isaacsim.asset.importer.urdf import _urdf  # URDF to USD converter
+from pxr import UsdGeom, UsdLux, Gf, UsdShade, Sdf  # Pixar USD library
+from isaacsim.core.experimental.objects import GroundPlane  # Ground plane object
+from isaacsim.core.simulation_manager import SimulationManager  # Physics manager
+from isaacsim.core.experimental.prims import Articulation, RigidPrim  # Robot components
+from omni.isaac.core import World  # Main simulation world
+import torch  # PyTorch for tensor operations and GPU computing
+import warp as wp  # NVIDIA Warp for parallel computing
+import numpy as np  # NumPy for numerical computing
 
 # Video recording support
 try:
@@ -157,12 +211,13 @@ MANIPULATOR_INITIAL_JOINT_POSITIONS = [math.radians(50), math.radians(-100.0)]  
 # EE position will be computed using PlanarManipulator.forward_kinematics() method
 # For θ1=45°, θ2=-90°: x ≈ -1.5858m, y ≈ 0.0m, z = 1.325m
 MANIPULATOR_EE_INITIAL_POSE = (-1.5858, 0.0, 1.325)  # Initial EE pose for ee-trajectory mode
-MANIPULATOR_JOINT_DAMPING = [0.1, 0.1]  # Damping for both joints
+MANIPULATOR_JOINT_DAMPING = [0.5, 0.5]  # Damping for both joints
 MANIPULATOR_JOINT_FRICTION = [0.0, 0.0]  # Friction for both joints
 
 # --- EE-Cart Coupling Joint Configuration ---
 EE_CART_COUPLING_JOINT_STIFFNESS = 1000  # N·m/rad - stiffness for coupling joint
 EE_CART_COUPLING_JOINT_DAMPING = 20     # N·m·s/rad - damping for coupling joint
+EE_CART_COUPLING_JOINT_FRICTION = 0.0   # N·m - friction for coupling joint (zero for rigid connection)
 
 # --- Scene Configuration ---
 DISTANT_LIGHT_INTENSITY = 1000.0
@@ -219,15 +274,38 @@ class RobotState:
 
 class RobotBase(ABC):
     """
-    Abstract base class for robots.
+    Abstract Base Class for Robots
     
-    Provides common functionality for loading, configuring, and controlling robots.
+    DESIGN PATTERN: Template Method Pattern
+    This class provides a common interface and shared functionality for all robots.
+    Subclasses (CartPendulum, PlanarManipulator) inherit these methods and can
+    override specific behaviors (e.g., set_joint_properties).
+    
+    EDUCATIONAL NOTE:
+    - Abstract Base Class (ABC): Cannot be instantiated directly
+    - Abstract methods (marked with @abstractmethod): MUST be implemented by subclasses
+    - Concrete methods: Shared implementation used by all subclasses
+    
+    LIFECYCLE:
+    1. Create instance with params → __init__
+    2. Load to stage → load_to_stage()
+    3. Reset world → world.reset() (external call)
+    4. Initialize articulation → initialize_articulation()
+    5. Set properties → set_joint_properties()
+    6. Control robot → set_joint_positions(), get_joint_positions(), etc.
     """
     
     def __init__(self, params: RobotParams):
-        """Initialize robot with parameters."""
+        """Initialize robot with configuration parameters.
+        
+        Args:
+            params: RobotParams object containing all robot configuration
+        
+        Note: Robot state is None until initialize_articulation() is called.
+        This is because articulations can only be created after the world is reset.
+        """
         self.params = params
-        self.state: Optional[RobotState] = None  # Will be created after loading to stage
+        self.state: Optional[RobotState] = None  # Created after world.reset()
     
     def load_to_stage(self, stage):
         """Load robot USD to stage."""
@@ -795,21 +873,46 @@ class PlanarManipulator(RobotBase):
 
     def compute_jacobian(self, theta1, theta2):
         """
-        Compute analytical Jacobian matrix for 2-DOF planar manipulator.
+        Compute Analytical Jacobian Matrix for 2-DOF Planar Manipulator
         
-        The Jacobian relates joint velocities to end-effector velocities:
-        [vx, vy]^T = J * [θ1_dot, θ2_dot]^T
+        WHAT IS THE JACOBIAN?
+        The Jacobian is a matrix that maps joint velocities to end-effector velocities.
+        It's the derivative of forward kinematics with respect to joint angles.
         
-        For a 2-DOF planar manipulator:
-        J = [ -L1*sin(θ1) - L2*sin(θ1+θ2),  -L2*sin(θ1+θ2) ]
-            [  L1*cos(θ1) + L2*cos(θ1+θ2),   L2*cos(θ1+θ2) ]
+        MATHEMATICAL RELATIONSHIP:
+        [v_x]   =  J  * [θ̇1]
+        [v_y]          [θ̇2]
+        
+        where:
+        - v_x, v_y: End-effector linear velocities (m/s)
+        - θ̇1, θ̇2: Joint angular velocities (rad/s)
+        - J: 2×2 Jacobian matrix
+        
+        ANALYTICAL JACOBIAN FOR 2-DOF PLANAR MANIPULATOR:
+        Starting from forward kinematics:
+          x = L1*cos(θ1) + L2*cos(θ1+θ2)
+          y = L1*sin(θ1) + L2*sin(θ1+θ2)
+        
+        Taking partial derivatives:
+          J = [∂x/∂θ1  ∂x/∂θ2]   =  [-L1*sin(θ1) - L2*sin(θ1+θ2),  -L2*sin(θ1+θ2)]
+              [∂y/∂θ1  ∂y/∂θ2]      [ L1*cos(θ1) + L2*cos(θ1+θ2),   L2*cos(θ1+θ2)]
+        
+        APPLICATIONS:
+        1. Velocity control: Convert desired EE velocity to joint velocities
+        2. Differential IK: Iteratively move toward target position
+        3. Singularity detection: Check det(J) ≈ 0 or condition number
+        4. Force mapping: Relate joint torques to end-effector forces
         
         Args:
             theta1: Joint 1 angle in radians
             theta2: Joint 2 angle in radians
             
         Returns:
-            np.ndarray: 2x2 Jacobian matrix, or None if link lengths unavailable
+            np.ndarray: 2×2 Jacobian matrix, or None if link lengths unavailable
+        
+        EDUCATIONAL NOTE:
+        Singularities occur when det(J) = 0, meaning the robot loses degrees
+        of freedom in certain directions (e.g., fully extended or folded).
         """
         import numpy as np
         
@@ -835,18 +938,39 @@ class PlanarManipulator(RobotBase):
     
     def inverse_kinematics(self, target_x, target_y, target_z):
         """
-        Compute inverse kinematics for 2-DOF planar manipulator.
+        Compute Analytical Inverse Kinematics for 2-DOF Planar Manipulator
         
-        The manipulator is planar in XY plane at constant Z height.
-        Given target (x, y, z), compute joint angles (theta1, theta2).
+        INVERSE KINEMATICS PROBLEM:
+        Given: Desired end-effector position (x, y, z) in world coordinates
+        Find: Joint angles (θ1, θ2) that achieve this position
+        
+        ANALYTICAL SOLUTION (Geometric Method):
+        For a 2-DOF planar manipulator with links L1 and L2:
+        
+        1. Transform world coordinates to base-relative coordinates
+        2. Compute distance from base to target: r = sqrt(x² + y²)
+        3. Check reachability: |L1 - L2| ≤ r ≤ L1 + L2
+        4. Use Law of Cosines to find θ2:
+           cos(θ2) = (r² - L1² - L2²) / (2*L1*L2)
+        5. Compute θ1 using geometry:
+           θ1 = atan2(y, x) - atan2(L2*sin(θ2), L1 + L2*cos(θ2))
+        
+        CONFIGURATION:
+        This implementation uses "elbow-down" configuration (θ2 < 0)
+        Alternative: "elbow-up" would use θ2 = +arccos(...)
         
         Args:
-            target_x: Target X position
-            target_y: Target Y position
-            target_z: Target Z position (should match manipulator base Z)
+            target_x: Target X position in world frame (meters)
+            target_y: Target Y position in world frame (meters)
+            target_z: Target Z position in world frame (meters, typically constant)
             
         Returns:
             tuple: (theta1, theta2) in radians, or None if unreachable
+        
+        EDUCATIONAL NOTES:
+        - Closed-form solution: Fast and exact (no iteration needed)
+        - Multiple solutions possible (elbow-up vs elbow-down)
+        - Singularities occur when arm is fully extended or folded
         """
         import numpy as np
         
@@ -984,20 +1108,65 @@ class PlanarManipulator(RobotBase):
         method_cfg: dict = None
     ) -> torch.Tensor:
         """
-        Compute differential inverse kinematics for 2-DOF planar manipulator.
+        Compute Differential (Velocity-Level) Inverse Kinematics
         
-        Uses velocity-level control: computes delta joint positions to move toward target.
-        This is useful for continuous trajectory tracking and velocity control.
+        CONCEPT:
+        Instead of solving for exact joint angles (like analytical IK), differential IK
+        computes small incremental joint angle changes (Δθ) to move the end-effector
+        toward the goal. This is useful for:
+        - Real-time trajectory tracking
+        - Avoiding discontinuities from analytical solutions
+        - Handling redundant manipulators (more DOF than needed)
+        
+        ALGORITHM:
+        1. Compute position error: e = goal - current
+        2. Compute Jacobian at current configuration: J(θ)
+        3. Solve for joint velocity: θ̇ = J⁻¹ * e
+        4. Update joint angles: θ_new = θ_old + Δt * θ̇
+        
+        METHODS FOR COMPUTING J⁻¹:
+        
+        1. PSEUDOINVERSE (Moore-Penrose):
+           Δθ = J⁺ * e, where J⁺ = (JᵀJ)⁻¹Jᵀ
+           - Minimizes ||Δθ|| (smallest joint motion)
+           - Unstable near singularities
+        
+        2. TRANSPOSE METHOD:
+           Δθ = k * Jᵀ * e
+           - Simple and fast
+           - Does not minimize error exactly
+           - Stable near singularities
+        
+        3. DAMPED LEAST SQUARES (DLS) - Levenberg-Marquardt:
+           Δθ = Jᵀ(JJᵀ + λ²I)⁻¹ * e
+           - Adds damping term λ to avoid singularities
+           - More stable than pseudoinverse
+           - Trade-off: accuracy vs. stability (controlled by λ)
+        
+        4. SINGULAR VALUE DECOMPOSITION (SVD):
+           J = UΣVᵀ, then J⁺ = VΣ⁺Uᵀ
+           - Most robust method
+           - Can filter small singular values
+           - Computationally expensive
         
         Args:
             jacobian_end_effector: Jacobian matrix [batch, 2, num_dof] or [2, 2]
             current_position: Current EE position [batch, 2] or [2] (x, y in base frame)
             goal_position: Goal EE position [batch, 2] or [2] (x, y in base frame)
-            method: IK method ("damped-least-squares", "pseudoinverse", "transpose", "singular-value-decomposition")
-            method_cfg: Configuration dict with keys: scale, damping, min_singular_value
+            method: IK method ("damped-least-squares" recommended, "pseudoinverse", "transpose", "singular-value-decomposition")
+            method_cfg: Configuration dict:
+                - scale: Step size multiplier (default: 1.0)
+                - damping: Damping factor λ for DLS (default: 0.05)
+                - min_singular_value: Threshold for SVD (default: 1e-5)
             
         Returns:
-            torch.Tensor: Delta joint positions [batch, num_dof] or [num_dof]
+            torch.Tensor: Delta joint positions Δθ [batch, num_dof] or [num_dof]
+        
+        EDUCATIONAL NOTES:
+        - Differential IK is iterative: repeat until error < threshold
+        - Each iteration moves closer to goal (may not reach in one step)
+        - Singularities occur when J loses rank (det(J) ≈ 0)
+        - Damping helps stability but may slow convergence
         """
         if method_cfg is None:
             method_cfg = {"scale": 1.0, "damping": 0.05, "min_singular_value": 1e-5}
@@ -1074,16 +1243,41 @@ class PlanarManipulator(RobotBase):
     
     def forward_kinematics(self, theta1, theta2):
         """
-        Compute forward kinematics for 2-DOF planar manipulator.
+        Compute Forward Kinematics for 2-DOF Planar Manipulator
         
-        Given joint angles (theta1, theta2), compute end-effector position in world coordinates.
+        FORWARD KINEMATICS PROBLEM:
+        Given: Joint angles (θ1, θ2)
+        Find: End-effector position (x, y, z) in world coordinates
+        
+        SOLUTION FOR 2-DOF PLANAR MANIPULATOR:
+        For a planar manipulator with two revolute joints and link lengths L1, L2:
+        
+        In base frame:
+          x_base = L1*cos(θ1) + L2*cos(θ1+θ2)
+          y_base = L1*sin(θ1) + L2*sin(θ1+θ2)
+          z_base = constant (manipulator operates in XY plane)
+        
+        Transform to world frame:
+          x_world = x_base + base_x_offset
+          y_world = y_base + base_y_offset
+          z_world = z_base + base_z_offset
+        
+        INTUITION:
+        - θ1 rotates first link from X-axis
+        - θ2 rotates second link relative to first link
+        - Combined angle (θ1+θ2) gives second link's absolute orientation
+        - Sum of link vectors gives end-effector position
         
         Args:
-            theta1: Joint 1 angle in radians
-            theta2: Joint 2 angle in radians
+            theta1: Joint 1 angle in radians (base rotation)
+            theta2: Joint 2 angle in radians (elbow rotation)
             
         Returns:
             tuple: (x, y, z) position in world coordinates, or None if link lengths unavailable
+        
+        EDUCATIONAL NOTE:
+        Forward kinematics is unique (one solution), while inverse kinematics
+        can have multiple solutions (elbow-up vs elbow-down configurations).
         """
         # Compute base-frame FK
         base_frame_pos = self.forward_kinematics_base_frame(theta1, theta2)
@@ -1108,7 +1302,30 @@ class PlanarManipulator(RobotBase):
 # ============================================================================
 
 class SceneManager:
-    """Manages the overall simulation scene."""
+    """
+    Scene Manager: Orchestrates the Entire Simulation
+    
+    RESPONSIBILITIES:
+    1. Setup: Create USD stage, add robots, lights, ground plane
+    2. Initialization: Reset physics, initialize articulations
+    3. Execution: Run different simulation modes (static viz, physics, coupled motion)
+    4. Recording: Capture video output of simulation
+    
+    DESIGN PATTERN: Facade Pattern
+    SceneManager provides a simple interface to complex subsystems:
+    - CartPendulum robot
+    - PlanarManipulator robot
+    - USD stage management
+    - Physics simulation (World)
+    - Video recording
+    
+    ARCHITECTURE:
+    SceneManager (orchestrator)
+      ├── CartPendulum (cart-pendulum system)
+      ├── PlanarManipulator (2-DOF arm)
+      ├── World (physics simulation)
+      └── USD Stage (3D scene)
+    """
     
     def __init__(
         self,
@@ -1116,16 +1333,27 @@ class SceneManager:
         manipulator_params: RobotParams,
         lighting_params: LightingParams,
     ):
-        """Initialize scene manager."""
+        """Initialize scene manager with robot and lighting configurations.
+        
+        Args:
+            cart_pendulum_params: Configuration for cart-pendulum system
+            manipulator_params: Configuration for planar manipulator
+            lighting_params: Scene lighting parameters
+        
+        Note: Actual scene creation happens in initialize_stage(), not here.
+        This constructor only stores parameters and creates robot objects.
+        """
+        # Store configuration parameters
         self.cart_pendulum_params = cart_pendulum_params
         self.manipulator_params = manipulator_params
         self.lighting_params = lighting_params
         
-        # Create subsystem instances
+        # Create robot subsystem instances
+        # These objects manage their own USD prims and physics properties
         self.cart_pendulum = CartPendulum(cart_pendulum_params)
         self.manipulator = PlanarManipulator(manipulator_params)
         
-        # Video recording state
+        # Video recording state (initialized later if enabled)
         self.video_writer = None
         self.is_recording = False
     
@@ -1861,9 +2089,9 @@ class SceneManager:
             
             # Determine direction: if cart edge is to the right of EE, move left (decrease X)
             if current_cart_edge_x > target_ee_x:
-                new_cart_x = current_cart_x + cart_step
-            else:
                 new_cart_x = current_cart_x - cart_step
+            else:
+                new_cart_x = current_cart_x + cart_step
             
             # Update cart position
             self.cart_pendulum.set_joint_positions([new_cart_x])
@@ -1908,10 +2136,37 @@ class SceneManager:
 
     def run_coupled_motion(self):
         """
-        Demonstrate manipulator moving cart-pendulum system via coupling joint.
+        Demonstrate Coupled Motion: Manipulator Drives Cart-Pendulum System
         
-        The manipulator moves through joint angles, and the coupling joint
-        causes the cart to follow, swinging the pendulum.
+        CONCEPT:
+        This mode demonstrates mechanical coupling between two independent robots:
+        1. Planar manipulator (2-DOF arm) - actuated (moves via joint commands)
+        2. Cart-pendulum system - passive (follows manipulator motion)
+        3. Fixed joint connects manipulator end-effector to cart edge
+        
+        PHYSICS:
+        - Manipulator applies forces/torques through coupling joint
+        - Cart translates along rail (prismatic joint)
+        - Pendulum swings due to cart acceleration (inertial forces)
+        - System demonstrates multi-body dynamics with constraints
+        
+        EDUCATIONAL OBJECTIVES:
+        1. Understand joint constraints in multi-robot systems
+        2. Observe force transmission through coupling
+        3. Analyze pendulum swing from cart acceleration
+        4. Practice trajectory planning with coupled systems
+        
+        SIMULATION FLOW:
+        1. Initialize both robots in aligned position
+        2. Create fixed joint between EE and cart
+        3. Generate manipulator trajectory (straight line motion)
+        4. Execute trajectory: manipulator pulls/pushes cart
+        5. Record video and log positions
+        
+        REAL-WORLD APPLICATIONS:
+        - Mobile manipulation (robot arm on moving base)
+        - Crane systems (payload swinging during motion)
+        - Humanoid robots (arm motion affects body balance)
         """
         print(f"\n{'='*70}")
         print("COUPLED MOTION: MANIPULATOR MOVES CART-PENDULUM")
@@ -2094,12 +2349,39 @@ class SceneManager:
 # ============================================================================
 
 def main():
-    """Main execution flow."""
+    """
+    Main Execution Flow: Setup and Run Simulation
+    
+    EXECUTION SEQUENCE:
+    1. Check/convert URDF files to USD format
+    2. Create scene manager with robot configurations
+    3. Initialize USD stage (robots, lights, ground)
+    4. Run selected simulation mode
+    5. Clean up and close application
+    
+    URDF vs USD:
+    - URDF (Unified Robot Description Format): XML-based, ROS standard
+    - USD (Universal Scene Description): Pixar format, high-performance 3D
+    - Isaac Sim converts URDF → USD for physics simulation
+    
+    ERROR HANDLING:
+    - Try-except-finally ensures clean shutdown
+    - Exceptions are logged with full traceback
+    - simulation_app.close() always executes (cleanup)
+    """
     print("=" * 70)
     print("Cart-Pendulum with 2-DOF Planar Manipulator")
+    print("Educational Robotics Simulation")
     print("=" * 70)
     
     try:
+        # ====================================================================
+        # STEP 1: CONVERT URDF TO USD (if needed)
+        # ====================================================================
+        # URDF files define robot structure (links, joints, geometry)
+        # USD files are optimized for Isaac Sim physics simulation
+        # Conversion happens automatically if URDF is newer than USD
+        
         # Convert cart-pendulum URDF to USD if needed
         if needs_regeneration(CART_PENDULUM_URDF_PATH, CART_PENDULUM_USD_PATH):
             if os.path.exists(CART_PENDULUM_USD_PATH):

@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<robot name="2dof_planar_manipulator">
+<robot name="2dof_planar_manipulator_pydrake">
   
   <!-- ============================================ -->
   <!-- WORLD/BASE LINK (Fixed reference frame)      -->
@@ -9,11 +9,11 @@
   <!-- ============================================ -->
   <!-- MANIPULATOR MOUNTING BOX                     -->
   <!-- ============================================ -->
-  <!-- Mounting box for manipulator base - Ground mounted pillar -->
+  <!-- Mounting box for manipulator base - Positioned at (-3, 0, 0) for PyDrake -->
   <joint name="mount_box_joint" type="fixed">
     <parent link="world"/>
     <child link="mount_box"/>
-    <origin xyz="0 0 0" rpy="0 0 0"/>  <!-- Ground mounted -->
+    <origin xyz="-3 0 0" rpy="0 0 0"/>  <!-- Positioned at -3, 0, 0 -->
   </joint>
   
   <link name="mount_box">
@@ -198,5 +198,31 @@
     <child link="manipulator_ee"/>
     <origin xyz="1.0 0 0" rpy="0 0 0"/>
   </joint>
+
+  <!-- ============================= -->
+  <!-- ACTUATORS (for Drake)         -->
+  <!-- ============================= -->
+  <!-- Drake requires explicit transmission/actuator tags for joint control -->
+  <transmission name="trans_joint1">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="manipulator_base_yaw">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="motor1">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+  <transmission name="trans_joint2">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="manipulator_joint_2_yaw">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="motor2">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
 
 </robot>

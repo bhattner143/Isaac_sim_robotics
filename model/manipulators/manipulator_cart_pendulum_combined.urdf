@@ -1,0 +1,227 @@
+<?xml version="1.0"?>
+<robot name="manipulator_cart_pendulum_combined">
+  <!--
+  Combined URDF: 2-DOF Planar Manipulator + Cart-Pendulum
+  
+  This merges both robots into a single articulation tree so that PhysX
+  solves all constraints together. The key insight: make the manipulator's
+  EE constraint the cart position, not a separate joint.
+  
+  Kinematic Chain:
+    world → manipulator_base (fixed)
+           → joint_1 (revolute Y) → link_1
+           → joint_2 (revolute Y) → link_2  
+           → ee_cart_joint (fixed, offset to EE position) → cart
+           → pendulum_joint (continuous Y) → pendulum
+  
+  The cart is RIGIDLY attached to the manipulator at the EE point (1.15m from link_2 origin).
+  Forward kinematics of the manipulator directly determines cart position.
+  The pendulum swings from the cart.
+  
+  NOTE: This design removes the original prismatic cart_slider joint.
+  The cart now moves with manipulator kinematics in the XZ plane, not along rails.
+  This is acceptable if manipulator motion controls cart motion completely.
+  -->
+
+  <!-- ============================================ -->
+  <!-- WORLD/BASE LINK (Fixed reference frame)      -->
+  <!-- ============================================ -->
+  <link name="world"/>
+
+  <!-- ============================================ -->
+  <!-- MANIPULATOR BASE (Fixed to world)            -->
+  <!-- ============================================ -->
+  <joint name="manipulator_base_joint" type="fixed">
+    <parent link="world"/>
+    <child link="manipulator_base"/>
+    <origin xyz="-1.5 0 1.325" rpy="0 0 0"/>
+  </joint>
+  
+  <link name="manipulator_base">
+    <visual>
+      <geometry>
+        <cylinder radius="0.08" length="0.1"/>
+      </geometry>
+      <material name="dark_gray">
+        <color rgba="0.3 0.3 0.3 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.08" length="0.1"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="5.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.02"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================ -->
+  <!-- MANIPULATOR LINK 1 (First arm segment)       -->
+  <!-- ============================================ -->
+  <!-- Joint 1: Revolute around Y-axis (planar motion in XZ plane) -->
+  <joint name="manipulator_joint_1" type="revolute">
+    <parent link="manipulator_base"/>
+    <child link="manipulator_link_1"/>
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-3.14159" upper="3.14159" effort="100" velocity="2.0"/>
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+  
+  <link name="manipulator_link_1">
+    <visual>
+      <origin xyz="0.4 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder radius="0.04" length="0.8"/>
+      </geometry>
+      <material name="orange">
+        <color rgba="1.0 0.5 0.0 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder radius="0.04" length="0.8"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="2.0"/>
+      <origin xyz="0.4 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.11" iyz="0" izz="0.11"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================ -->
+  <!-- MANIPULATOR LINK 2 (Second arm segment)      -->
+  <!-- ============================================ -->
+  <!-- Joint 2: Revolute around Y-axis -->
+  <joint name="manipulator_joint_2" type="revolute">
+    <parent link="manipulator_link_1"/>
+    <child link="manipulator_link_2"/>
+    <origin xyz="0.8 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-3.14159" upper="3.14159" effort="100" velocity="2.0"/>
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+  
+  <link name="manipulator_link_2">
+    <visual>
+      <origin xyz="0.5 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder radius="0.035" length="1.0"/>
+      </geometry>
+      <material name="yellow">
+        <color rgba="1.0 0.8 0.0 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.5 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder radius="0.035" length="1.0"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.5"/>
+      <origin xyz="0.5 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.125" iyz="0" izz="0.125"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================ -->
+  <!-- CART (Rigidly attached to EE via fixed joint) -->
+  <!-- ============================================ -->
+  <!-- 
+  CRITICAL: This fixed joint connects the manipulator's EE point to the cart.
+  The cart is now part of the manipulator's kinematic chain.
+  
+  EE position: link_2 origin + 1.0m along X = 1.0m from link_2
+  Cart center should be at EE + 0.15m (half cart length) = 1.15m from link_2
+  
+  IMPORTANT: The cart NO LONGER HAS a prismatic joint!
+  The manipulator's forward kinematics directly control cart position.
+  The cart moves with the manipulator's end-effector in the XZ plane.
+  -->
+  <joint name="ee_to_cart_joint" type="fixed">
+    <parent link="manipulator_link_2"/>
+    <child link="cart"/>
+    <origin xyz="1.15 0 0" rpy="0 0 0"/>
+  </joint>
+  
+  <link name="cart">
+    <visual>
+      <geometry>
+        <box size="0.3 0.2 0.15"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0.2 0.2 0.8 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.3 0.2 0.15"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="5.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.05" ixy="0" ixz="0" iyy="0.08" iyz="0" izz="0.06"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================ -->
+  <!-- PENDULUM (Rotates in XZ plane, around Y)     -->
+  <!-- ============================================ -->
+  <joint name="pendulum_joint" type="continuous">
+    <parent link="cart"/>
+    <child link="pendulum"/>
+    <origin xyz="0 0 -0.075" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <dynamics damping="0.05" friction="0.01"/>
+  </joint>
+  
+  <!-- Pendulum: Rod with point mass at tip -->
+  <link name="pendulum">
+    <!-- Rod (visual only, massless) -->
+    <visual>
+      <origin xyz="0 0 -0.3" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.015" length="0.6"/>
+      </geometry>
+      <material name="silver">
+        <color rgba="0.8 0.8 0.9 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.3" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.015" length="0.6"/>
+      </geometry>
+    </collision>
+    <!-- Point mass at pendulum tip (0.6m below pivot) -->
+    <inertial>
+      <mass value="2.0"/>
+      <origin xyz="0 0 -0.6" rpy="0 0 0"/>
+      <inertia ixx="0.72" ixy="0" ixz="0" iyy="0.72" iyz="0" izz="0.001"/>
+    </inertial>
+    <!-- Tip ball (visual) -->
+    <visual>
+      <origin xyz="0 0 -0.6" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+      <material name="red">
+        <color rgba="0.9 0.1 0.1 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.6" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+    </collision>
+  </link>
+
+</robot>

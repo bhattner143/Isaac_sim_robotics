@@ -1,0 +1,1020 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{float}
+
+% Code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    language=Python
+}
+
+\title{Comprehensive Notes: Cart-Pendulum with 2-DOF Planar Manipulator\\
+\large Coupled Multi-Robot System in NVIDIA Isaac Sim}
+\author{Script: \texttt{script\_cart\_pendulum\_manipulator\_basic\_run.py}}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{System Overview}
+
+This document provides comprehensive technical documentation for a coupled multi-robot system implemented in NVIDIA Isaac Sim. The system consists of two independent robots connected via a coupling joint:
+
+\begin{enumerate}
+    \item \textbf{Cart-Pendulum System}: A cart moving on rails with a hanging pendulum
+    \item \textbf{2-DOF Planar Manipulator}: A two-link robotic arm operating in the XY plane
+    \item \textbf{Coupling Joint}: Fixed joint connecting the manipulator end-effector to the cart edge
+\end{enumerate}
+
+\subsection{Educational Objectives}
+
+\begin{itemize}
+    \item Understand forward and inverse kinematics for planar manipulators
+    \item Learn Jacobian computation and differential inverse kinematics
+    \item Study multi-body dynamics with mechanical constraints
+    \item Analyze force transmission through coupling joints
+    \item Implement trajectory planning and control
+    \item Explore object-oriented design patterns for robotics
+\end{itemize}
+
+\subsection{System Dynamics}
+
+The coupled system exhibits complex dynamics where:
+\begin{itemize}
+    \item Manipulator motion drives cart translation along the X-axis
+    \item Cart acceleration induces pendulum swing (inertial forces)
+    \item Coupling joint transmits forces/torques between subsystems
+    \item System demonstrates multi-body constrained dynamics
+\end{itemize}
+
+\section{Application Initialization}
+
+\subsection{Isaac Sim Launch}
+
+\begin{lstlisting}
+simulation_app = SimulationApp({
+    "headless": False,
+    "width": 1280,
+    "height": 720,
+})
+\end{lstlisting}
+
+\textbf{Critical Note:} SimulationApp \textit{must} be created before importing any Isaac Sim modules. This initializes the Omniverse Kit framework.
+
+\textbf{Configuration Parameters:}
+\begin{itemize}
+    \item \texttt{headless=False}: Enable GUI window (set True for batch/server runs)
+    \item \texttt{width=1280, height=720}: Window resolution (affects rendering quality)
+\end{itemize}
+
+\subsection{Module Imports}
+
+\begin{lstlisting}
+# USD (Universal Scene Description)
+from pxr import UsdGeom, UsdLux, Gf, UsdShade, Sdf
+
+# Isaac Sim Core
+from omni.isaac.core import World
+from isaacsim.core.experimental.prims import Articulation, RigidPrim
+
+# URDF Import
+from isaacsim.asset.importer.urdf import _urdf
+
+# Math Libraries
+import numpy as np
+import torch
+import warp as wp
+\end{lstlisting}
+
+\textbf{Module Categories:}
+\begin{itemize}
+    \item \textbf{USD/Pixar}: Scene graph manipulation (geometry, transforms, materials)
+    \item \textbf{Physics}: Articulation (multi-link robots), rigid body dynamics
+    \item \textbf{URDF}: Robot description format conversion
+    \item \textbf{Math}: NumPy (CPU arrays), PyTorch (GPU tensors), Warp (parallel computing)
+\end{itemize}
+
+\section{URDF to USD Conversion}
+
+\subsection{Why Convert URDF to USD?}
+
+\begin{itemize}
+    \item \textbf{URDF} (Unified Robot Description Format): XML-based, ROS standard, human-readable
+    \item \textbf{USD} (Universal Scene Description): Binary format, Pixar standard, optimized for real-time rendering and physics
+    \item Isaac Sim's physics engine requires USD format for simulation
+\end{itemize}
+
+\subsection{Conversion Function}
+
+\begin{lstlisting}
+def convert_urdf_to_usd(urdf_path, output_usd_path, import_config=None):
+    urdf_interface = _urdf.acquire_urdf_interface()
+    
+    config = _urdf.ImportConfig()
+    config.convex_decomp = import_config.get("convex_decomp", False)
+    config.fix_base = import_config.get("fix_base", False)
+    config.make_default_prim = import_config.get("make_default_prim", True)
+    config.self_collision = import_config.get("self_collision", False)
+    config.distance_scale = import_config.get("distance_scale", 1.0)
+    config.density = import_config.get("density", 0.0)
+    
+    result, prim_path = omni.kit.commands.execute(
+        "URDFParseAndImportFile",
+        urdf_path=urdf_path,
+        import_config=config,
+        dest_path=output_usd_path
+    )
+    
+    return prim_path
+\end{lstlisting}
+
+\textbf{Import Configuration:}
+\begin{itemize}
+    \item \texttt{convex\_decomp}: Decompose complex meshes into convex hulls for collision
+    \item \texttt{fix\_base}: Fix base link to world (no floating base)
+    \item \texttt{make\_default\_prim}: Set as default USD prim for stage
+    \item \texttt{self\_collision}: Enable collision detection between robot links
+    \item \texttt{distance\_scale}: Unit conversion factor (default 1.0 = meters)
+    \item \texttt{density}: Override material density (0.0 = use URDF values)
+\end{itemize}
+
+\subsection{Automatic Regeneration}
+
+\begin{lstlisting}
+def needs_regeneration(urdf_path, usd_path):
+    if not os.path.exists(usd_path):
+        return True  # USD doesn't exist
+    
+    urdf_mtime = os.path.getmtime(urdf_path)
+    usd_mtime = os.path.getmtime(usd_path)
+    
+    return urdf_mtime > usd_mtime  # Regenerate if URDF is newer
+\end{lstlisting}
+
+\textbf{Purpose:} Only regenerate USD if URDF file has been modified, saving time during development.
+
+\section{Object-Oriented Architecture}
+
+\subsection{Design Patterns}
+
+The implementation uses several software design patterns:
+
+\begin{enumerate}
+    \item \textbf{Template Method Pattern} (RobotBase): Define skeleton, subclasses implement specifics
+    \item \textbf{Facade Pattern} (SceneManager): Simple interface to complex subsystems
+    \item \textbf{Dataclass Pattern} (RobotParams): Clean configuration containers
+\end{enumerate}
+
+\subsection{Class Hierarchy}
+
+\begin{verbatim}
+RobotBase (Abstract Base Class)
+|-- CartPendulum
+`-- PlanarManipulator
+
+SceneManager (Orchestrator)
+|-- CartPendulum instance
+|-- PlanarManipulator instance
+|-- World (physics)
+`-- USD Stage (scene)
+\end{verbatim}
+
+\subsection{RobotBase Abstract Class}
+
+\begin{lstlisting}
+class RobotBase(ABC):
+    def __init__(self, params: RobotParams):
+        self.params = params
+        self.state: Optional[RobotState] = None
+    
+    @abstractmethod
+    def set_joint_properties(self):
+        """Must be implemented by subclasses"""
+        pass
+    
+    def load_to_stage(self, stage):
+        """Shared implementation for all robots"""
+        prim = stage.OverridePrim(self.params.prim_path)
+        prim.GetReferences().AddReference(self.params.usd_path)
+    
+    def initialize_articulation(self):
+        """Create Articulation after world.reset()"""
+        robot = Articulation(self.params.prim_path)
+        self.state = RobotState(
+            robot=robot,
+            num_dof=robot.num_dofs,
+            dof_names=robot.dof_names
+        )
+\end{lstlisting}
+
+\textbf{Key Methods:}
+\begin{itemize}
+    \item \texttt{load\_to\_stage()}: Add robot USD to scene graph
+    \item \texttt{initialize\_articulation()}: Create physics object after reset
+    \item \texttt{set\_joint\_properties()}: Configure damping, friction (abstract)
+    \item \texttt{set\_joint\_positions()}: Position control
+    \item \texttt{get\_joint\_positions()}: State query
+\end{itemize}
+
+\section{Forward Kinematics}
+
+\subsection{Problem Statement}
+
+\textbf{Given:} Joint angles $\theta_1, \theta_2$
+
+\textbf{Find:} End-effector position $(x, y, z)$ in world coordinates
+
+\subsection{Mathematical Derivation}
+
+For a 2-DOF planar manipulator with link lengths $L_1$ and $L_2$:
+
+\subsubsection{Position in Base Frame}
+
+The end-effector position relative to the base is:
+\begin{align}
+x_{\text{base}} &= L_1 \cos(\theta_1) + L_2 \cos(\theta_1 + \theta_2) \\
+y_{\text{base}} &= L_1 \sin(\theta_1) + L_2 \sin(\theta_1 + \theta_2)
+\end{align}
+
+\textbf{Intuition:}
+\begin{itemize}
+    \item First link contributes: $(L_1 \cos\theta_1, L_1 \sin\theta_1)$
+    \item Second link rotates by $(\theta_1 + \theta_2)$ absolute angle
+    \item Second link contributes: $(L_2 \cos(\theta_1+\theta_2), L_2 \sin(\theta_1+\theta_2))$
+    \item Sum gives total position
+\end{itemize}
+
+\subsubsection{Transform to World Frame}
+
+\begin{align}
+x_{\text{world}} &= x_{\text{base}} + x_{\text{base\_offset}} \\
+y_{\text{world}} &= y_{\text{base}} + y_{\text{base\_offset}} \\
+z_{\text{world}} &= z_{\text{base}} + z_{\text{base\_offset}}
+\end{align}
+
+\subsection{Implementation}
+
+\begin{lstlisting}
+def forward_kinematics(self, theta1, theta2):
+    L1 = self.link_lengths[0]
+    L2 = self.link_lengths[1]
+    
+    # Base frame position
+    x_rel = L1 * np.cos(theta1) + L2 * np.cos(theta1 + theta2)
+    y_rel = L1 * np.sin(theta1) + L2 * np.sin(theta1 + theta2)
+    
+    # Transform to world coordinates
+    x_world = self.params.position[0] + x_rel
+    y_world = self.params.position[1] + y_rel
+    z_world = self.params.position[2] + 1.3  # Base height
+    
+    return (x_world, y_world, z_world)
+\end{lstlisting}
+
+\subsection{Properties}
+
+\begin{itemize}
+    \item \textbf{Uniqueness}: Forward kinematics has a unique solution
+    \item \textbf{Computational Cost}: $O(1)$ - just trigonometric functions
+    \item \textbf{Workspace}: Annulus with inner radius $|L_1-L_2|$, outer radius $L_1+L_2$
+\end{itemize}
+
+\section{Inverse Kinematics}
+
+\subsection{Problem Statement}
+
+\textbf{Given:} Desired end-effector position $(x_{\text{target}}, y_{\text{target}}, z_{\text{target}})$
+
+\textbf{Find:} Joint angles $(\theta_1, \theta_2)$ that achieve this position
+
+\subsection{Analytical Solution}
+
+\subsubsection{Step 1: Transform to Base Frame}
+
+Convert world coordinates to base-relative coordinates using transformation matrix:
+\begin{equation}
+\begin{bmatrix} x_{\text{rel}} \\ y_{\text{rel}} \\ z_{\text{rel}} \end{bmatrix} = T_{\text{world}\to\text{base}} \begin{bmatrix} x_{\text{target}} \\ y_{\text{target}} \\ z_{\text{target}} \end{bmatrix}
+\end{equation}
+
+\subsubsection{Step 2: Check Reachability}
+
+Compute distance from base to target:
+\begin{equation}
+r = \sqrt{x_{\text{rel}}^2 + y_{\text{rel}}^2}
+\end{equation}
+
+\textbf{Reachability condition:}
+\begin{equation}
+|L_1 - L_2| \leq r \leq L_1 + L_2
+\end{equation}
+
+If violated, target is unreachable (too far or too close).
+
+\subsubsection{Step 3: Compute Joint 2 Angle}
+
+Using the Law of Cosines:
+\begin{equation}
+\cos(\theta_2) = \frac{r^2 - L_1^2 - L_2^2}{2 L_1 L_2}
+\end{equation}
+
+For \textbf{elbow-down} configuration (negative $\theta_2$):
+\begin{equation}
+\theta_2 = -\arccos\left(\frac{r^2 - L_1^2 - L_2^2}{2 L_1 L_2}\right)
+\end{equation}
+
+\subsubsection{Step 4: Compute Joint 1 Angle}
+
+Angle to target from base:
+\begin{equation}
+\phi = \arctan2(y_{\text{rel}}, x_{\text{rel}})
+\end{equation}
+
+Geometric offset angle:
+\begin{equation}
+\alpha = \arctan2(L_2 \sin\theta_2, L_1 + L_2 \cos\theta_2)
+\end{equation}
+
+Final joint 1 angle:
+\begin{equation}
+\theta_1 = \phi - \alpha
+\end{equation}
+
+\subsection{Implementation}
+
+\begin{lstlisting}
+def inverse_kinematics(self, target_x, target_y, target_z):
+    # Transform to base frame
+    base_coords = self.transform_point_world_to_base(
+        target_x, target_y, target_z)
+    x_rel, y_rel, z_rel = base_coords
+    
+    # Check reachability
+    r = np.sqrt(x_rel**2 + y_rel**2)
+    if r > (L1 + L2) or r < abs(L1 - L2):
+        return None  # Unreachable
+    
+    # Law of cosines for theta2
+    cos_theta2 = (r**2 - L1**2 - L2**2) / (2 * L1 * L2)
+    cos_theta2 = np.clip(cos_theta2, -1.0, 1.0)
+    theta2 = -np.arccos(cos_theta2)  # Elbow-down
+    
+    # Solve for theta1
+    phi = np.arctan2(y_rel, x_rel)
+    alpha = np.arctan2(L2 * np.sin(theta2), L1 + L2 * np.cos(theta2))
+    theta1 = phi - alpha
+    
+    return (theta1, theta2)
+\end{lstlisting}
+
+\subsection{Multiple Solutions}
+
+For a 2-DOF planar manipulator, there are typically \textbf{two solutions}:
+\begin{itemize}
+    \item \textbf{Elbow-down}: $\theta_2 < 0$ (implemented above)
+    \item \textbf{Elbow-up}: $\theta_2 > 0$ (use $+\arccos$ instead)
+\end{itemize}
+
+The choice depends on application constraints (obstacle avoidance, joint limits, etc.).
+
+\section{Jacobian Matrix}
+
+\subsection{Definition}
+
+The \textbf{Jacobian matrix} $J$ relates joint velocities to end-effector velocities:
+\begin{equation}
+\begin{bmatrix} v_x \\ v_y \end{bmatrix} = J \begin{bmatrix} \dot{\theta}_1 \\ \dot{\theta}_2 \end{bmatrix}
+\end{equation}
+
+where $v_x, v_y$ are end-effector linear velocities and $\dot{\theta}_1, \dot{\theta}_2$ are joint angular velocities.
+
+\subsection{Mathematical Derivation}
+
+Starting from forward kinematics:
+\begin{align}
+x &= L_1 \cos\theta_1 + L_2 \cos(\theta_1 + \theta_2) \\
+y &= L_1 \sin\theta_1 + L_2 \sin(\theta_1 + \theta_2)
+\end{align}
+
+Taking partial derivatives:
+\begin{align}
+\frac{\partial x}{\partial \theta_1} &= -L_1 \sin\theta_1 - L_2 \sin(\theta_1 + \theta_2) \\
+\frac{\partial x}{\partial \theta_2} &= -L_2 \sin(\theta_1 + \theta_2) \\
+\frac{\partial y}{\partial \theta_1} &= L_1 \cos\theta_1 + L_2 \cos(\theta_1 + \theta_2) \\
+\frac{\partial y}{\partial \theta_2} &= L_2 \cos(\theta_1 + \theta_2)
+\end{align}
+
+\subsection{Jacobian Matrix}
+
+\begin{equation}
+J(\theta_1, \theta_2) = \begin{bmatrix}
+-L_1 \sin\theta_1 - L_2 \sin(\theta_1+\theta_2) & -L_2 \sin(\theta_1+\theta_2) \\
+L_1 \cos\theta_1 + L_2 \cos(\theta_1+\theta_2) & L_2 \cos(\theta_1+\theta_2)
+\end{bmatrix}
+\end{equation}
+
+\subsection{Implementation}
+
+\begin{lstlisting}
+def compute_jacobian(self, theta1, theta2):
+    L1 = self.link_lengths[0]
+    L2 = self.link_lengths[1]
+    
+    s1 = np.sin(theta1)
+    c1 = np.cos(theta1)
+    s12 = np.sin(theta1 + theta2)
+    c12 = np.cos(theta1 + theta2)
+    
+    J = np.array([
+        [-L1*s1 - L2*s12, -L2*s12],
+        [ L1*c1 + L2*c12,  L2*c12]
+    ])
+    
+    return J
+\end{lstlisting}
+
+\subsection{Singularities}
+
+\textbf{Singularity:} Configuration where $\det(J) = 0$, meaning robot loses degrees of freedom.
+
+For 2-DOF planar manipulator, singularities occur when:
+\begin{equation}
+\det(J) = L_1 L_2 \sin\theta_2 = 0
+\end{equation}
+
+This happens when $\theta_2 = 0$ or $\theta_2 = \pi$ (arm fully extended or folded).
+
+\subsection{Condition Number}
+
+\textbf{Condition number:} Measure of numerical stability
+\begin{equation}
+\kappa(J) = \|J\| \cdot \|J^{-1}\|
+\end{equation}
+
+\begin{itemize}
+    \item $\kappa < 10$: Well-conditioned (good for control)
+    \item $10 < \kappa < 100$: Moderately conditioned
+    \item $\kappa > 100$: Poorly conditioned (near singularity)
+\end{itemize}
+
+\section{Differential Inverse Kinematics}
+
+\subsection{Concept}
+
+Instead of computing exact joint angles (analytical IK), \textbf{differential IK} computes incremental changes $\Delta\theta$ to move end-effector toward goal.
+
+\textbf{Algorithm:}
+\begin{enumerate}
+    \item Compute position error: $e = x_{\text{goal}} - x_{\text{current}}$
+    \item Compute Jacobian: $J = J(\theta_{\text{current}})$
+    \item Solve for joint velocity: $\dot{\theta} = J^{-1} e$
+    \item Update: $\theta_{\text{new}} = \theta_{\text{old}} + \alpha \dot{\theta}$ ($\alpha$ = step size)
+    \item Repeat until $\|e\| < \epsilon$
+\end{enumerate}
+
+\subsection{Methods for Computing $J^{-1}$}
+
+\subsubsection{1. Pseudoinverse (Moore-Penrose)}
+
+\begin{equation}
+J^+ = (J^T J)^{-1} J^T
+\end{equation}
+
+\textbf{Properties:}
+\begin{itemize}
+    \item Minimizes $\|\Delta\theta\|$ (smallest joint motion)
+    \item Exact solution for non-singular $J$
+    \item \textbf{Problem:} Unstable near singularities
+\end{itemize}
+
+\subsubsection{2. Transpose Method}
+
+\begin{equation}
+\Delta\theta = k \cdot J^T e
+\end{equation}
+
+\textbf{Properties:}
+\begin{itemize}
+    \item Computationally cheap (no matrix inversion)
+    \item Stable near singularities
+    \item \textbf{Problem:} Does not minimize error exactly, slower convergence
+\end{itemize}
+
+\subsubsection{3. Damped Least Squares (Levenberg-Marquardt)}
+
+\begin{equation}
+\Delta\theta = J^T (J J^T + \lambda^2 I)^{-1} e
+\end{equation}
+
+\textbf{Properties:}
+\begin{itemize}
+    \item Adds damping term $\lambda$ to avoid singularities
+    \item Trade-off: accuracy vs. stability (controlled by $\lambda$)
+    \item \textbf{Recommended for most applications}
+    \item Typical values: $\lambda \in [0.01, 0.1]$
+\end{itemize}
+
+\subsubsection{4. Singular Value Decomposition (SVD)}
+
+\begin{align}
+J &= U \Sigma V^T \\
+J^+ &= V \Sigma^+ U^T
+\end{align}
+
+where $\Sigma^+$ inverts non-zero singular values and zeros out small ones.
+
+\textbf{Properties:}
+\begin{itemize}
+    \item Most robust method
+    \item Can filter small singular values (threshold)
+    \item \textbf{Problem:} Computationally expensive
+\end{itemize}
+
+\subsection{PyTorch Implementation}
+
+\begin{lstlisting}
+def inverse_kinematics_differential(
+    self, jacobian_end_effector, current_position, 
+    goal_position, method="damped-least-squares", method_cfg=None
+):
+    if method_cfg is None:
+        method_cfg = {"scale": 1.0, "damping": 0.05}
+    
+    scale = method_cfg.get("scale", 1.0)
+    damping = method_cfg.get("damping", 0.05)
+    
+    # Compute error
+    error = (goal_position - current_position).unsqueeze(-1)
+    
+    if method == "damped-least-squares":
+        J_T = torch.transpose(jacobian_end_effector, 1, 2)
+        lambda_I = torch.eye(2) * (damping ** 2)
+        delta_theta = (scale * J_T @ torch.inverse(
+            jacobian_end_effector @ J_T + lambda_I) @ error)
+    
+    elif method == "pseudoinverse":
+        J_pinv = torch.linalg.pinv(jacobian_end_effector)
+        delta_theta = (scale * J_pinv @ error)
+    
+    elif method == "transpose":
+        J_T = torch.transpose(jacobian_end_effector, 1, 2)
+        delta_theta = (scale * J_T @ error)
+    
+    elif method == "singular-value-decomposition":
+        U, S, Vh = torch.linalg.svd(jacobian_end_effector)
+        min_sv = method_cfg.get("min_singular_value", 1e-5)
+        inv_s = torch.where(S > min_sv, 1.0 / S, torch.zeros_like(S))
+        J_pinv = Vh.transpose(1,2) @ torch.diag_embed(inv_s) @ U.transpose(1,2)
+        delta_theta = (scale * J_pinv @ error)
+    
+    return delta_theta.squeeze(-1)
+\end{lstlisting}
+
+\section{Joint Properties}
+
+\subsection{Damping}
+
+\textbf{Physical model:} Viscous damping opposes motion proportional to velocity
+\begin{equation}
+\tau_{\text{damp}} = -b \dot{\theta}
+\end{equation}
+
+where $b$ is the damping coefficient (units: N·m·s/rad).
+
+\textbf{Effects:}
+\begin{itemize}
+    \item Dissipates energy from system
+    \item Prevents oscillations
+    \item Stabilizes motion
+\end{itemize}
+
+\textbf{Typical values:}
+\begin{itemize}
+    \item Cart slider: $b = 0.5$ N·m·s/rad (moderate damping)
+    \item Pendulum: $b = 0.01$ N·m·s/rad (low damping for natural swing)
+    \item Manipulator joints: $b = 0.1$ N·m·s/rad (light damping)
+\end{itemize}
+
+\subsection{Stiffness}
+
+\textbf{Physical model:} Spring restoring force proportional to displacement
+\begin{equation}
+\tau_{\text{spring}} = -k (\theta - \theta_{\text{rest}})
+\end{equation}
+
+where $k$ is stiffness coefficient (units: N·m/rad).
+
+\textbf{Effects:}
+\begin{itemize}
+    \item Returns joint to rest position
+    \item Creates passive compliance
+    \item Can stabilize equilibrium
+\end{itemize}
+
+\textbf{Configuration in this system:}
+\begin{itemize}
+    \item Cart slider: $k = 625$ N·m/rad (prevents drift)
+    \item Pendulum: $k = 0.1$ N·m/rad (near-zero for free motion)
+    \item Manipulator: $k = 0$ N·m/rad (no restoring force)
+\end{itemize}
+
+\subsection{Friction}
+
+\textbf{Physical model:} Opposes motion independent of velocity
+\begin{equation}
+\tau_{\text{friction}} = -\mu \cdot \text{sign}(\dot{\theta})
+\end{equation}
+
+where $\mu$ is friction coefficient.
+
+\textbf{Types:}
+\begin{itemize}
+    \item \textbf{Static friction}: Prevents motion when at rest
+    \item \textbf{Dynamic friction}: Opposes motion when moving
+\end{itemize}
+
+\textbf{Configuration:}
+\begin{itemize}
+    \item Cart slider: $\mu = 0.1$ (low friction for smooth motion)
+    \item Pendulum: $\mu = 0$ (frictionless pivot)
+    \item Manipulator: $\mu = 0$ (actuated joints)
+\end{itemize}
+
+\subsection{Implementation}
+
+\begin{lstlisting}
+def _set_joint_damping(self, joint_prim, damping_value, 
+                      stiffness_value=0.0, joint_type="revolute"):
+    from pxr import UsdPhysics
+    
+    if joint_type == "revolute":
+        drive = UsdPhysics.DriveAPI.Apply(joint_prim, "angular")
+    elif joint_type == "prismatic":
+        drive = UsdPhysics.DriveAPI.Apply(joint_prim, "linear")
+    
+    drive.CreateTypeAttr().Set("force")
+    drive.CreateDampingAttr().Set(float(damping_value))
+    drive.CreateStiffnessAttr().Set(float(stiffness_value))
+
+def _set_joint_friction(self, joint_prim, friction_value):
+    from pxr import PhysxSchema
+    
+    physx_joint = PhysxSchema.PhysxJointAPI.Apply(joint_prim)
+    friction_attr = physx_joint.CreateJointFrictionAttr()
+    friction_attr.Set(float(friction_value))
+\end{lstlisting}
+
+\section{Coupling Joint}
+
+\subsection{Purpose}
+
+Connect manipulator end-effector to cart edge, enabling:
+\begin{itemize}
+    \item Force/torque transmission between subsystems
+    \item Manipulator drives cart motion
+    \item Cart acceleration swings pendulum
+    \item Demonstrates multi-body constrained dynamics
+\end{itemize}
+
+\subsection{Joint Type: Fixed Joint}
+
+\textbf{Fixed joint:} Rigid connection with 6 constraints (no relative motion)
+\begin{itemize}
+    \item Constrains: 3 translations + 3 rotations
+    \item End-effector and cart edge move as single rigid body
+    \item Forces transmitted directly through connection
+\end{itemize}
+
+\subsection{Implementation}
+
+\begin{lstlisting}
+def create_ee_cart_joint(self):
+    from pxr import UsdPhysics
+    
+    ee_path = f"{self.manipulator.params.prim_path}/manipulator_link_2/manipulator_ee"
+    cart_path = f"{self.cart_pendulum.params.prim_path}/cart"
+    joint_path = "/World/ee_cart_coupling_joint"
+    
+    # Get transformations
+    ee_world_transform = self.manipulator.get_world_transform(ee_prim)
+    cart_world_transform = self.cart_pendulum.get_world_transform(cart_prim)
+    
+    # Compute joint position in cart's local frame
+    cart_to_world_inv = cart_world_transform.GetInverse()
+    joint_pos_in_cart = cart_to_world_inv.Transform(ee_translation)
+    
+    # Create fixed joint
+    joint = UsdPhysics.FixedJoint.Define(stage, joint_path)
+    joint.CreateBody0Rel().SetTargets([ee_path])
+    joint.CreateBody1Rel().SetTargets([cart_path])
+    joint.CreateLocalPos0Attr().Set(Gf.Vec3f(0, 0, 0))
+    joint.CreateLocalPos1Attr().Set(Gf.Vec3f(joint_pos_in_cart))
+    
+    return True
+\end{lstlisting}
+
+\subsection{Force Analysis}
+
+When manipulator moves with acceleration $\ddot{\theta}_1, \ddot{\theta}_2$:
+
+\begin{enumerate}
+    \item End-effector experiences acceleration: $\mathbf{a}_{\text{EE}} = J \ddot{\boldsymbol{\theta}} + \dot{J} \dot{\boldsymbol{\theta}}$
+    \item Coupling joint transmits force to cart: $\mathbf{F}_{\text{coupling}}$
+    \item Cart accelerates along rail: $\ddot{x}_{\text{cart}} = F_x / m_{\text{cart}}$
+    \item Pendulum experiences inertial force: $F_{\text{inertial}} = m_{\text{pendulum}} \ddot{x}_{\text{cart}}$
+    \item Pendulum swings: $\ddot{\phi}_{\text{pendulum}} = -\frac{g}{L} \sin\phi - \frac{\ddot{x}_{\text{cart}}}{L} \cos\phi$
+\end{enumerate}
+
+\section{Simulation Modes}
+
+\subsection{Scene Visualization (scene-viz)}
+
+\textbf{Purpose:} Static scene viewing without physics simulation
+
+\textbf{Features:}
+\begin{itemize}
+    \item Display robots at initial configuration
+    \item No physics computation
+    \item Useful for debugging USD scene structure
+\end{itemize}
+
+\subsection{End-Effector Trajectory (ee-trajectory)}
+
+\textbf{Purpose:} Move manipulator EE along X-axis using inverse kinematics
+
+\textbf{Algorithm:}
+\begin{enumerate}
+    \item Compute initial EE position using forward kinematics
+    \item Generate sinusoidal trajectory along X-axis
+    \item For each waypoint, solve inverse kinematics
+    \item Set joint positions and step simulation
+\end{enumerate}
+
+\textbf{Trajectory equation:}
+\begin{equation}
+x(t) = x_0 + A \sin\left(\frac{2\pi}{T} t\right)
+\end{equation}
+
+where $A$ is amplitude (meters), $T$ is period (seconds).
+
+\subsection{Cart Toward Manipulator (cart-toward-manipulator)}
+
+\textbf{Purpose:} Autonomously move cart edge to align with manipulator EE
+
+\textbf{Control Law:}
+\begin{equation}
+v_{\text{cart}} = K_p (x_{\text{EE}} - x_{\text{cart\_edge}})
+\end{equation}
+
+\textbf{Convergence:} Stops when $|x_{\text{EE}} - x_{\text{cart\_edge}}| < \epsilon$ (threshold = 0.05mm)
+
+\subsection{Coupled Motion (coupled-motion)}
+
+\textbf{Purpose:} Demonstrate force transmission through coupling joint
+
+\textbf{Features:}
+\begin{enumerate}
+    \item Initialize robots in aligned position
+    \item Create fixed joint between EE and cart
+    \item Generate manipulator trajectory
+    \item Execute trajectory: manipulator pulls/pushes cart
+    \item Record video of coupled motion
+    \item Log positions: EE, cart, pendulum
+\end{enumerate}
+
+\textbf{Observations:}
+\begin{itemize}
+    \item Manipulator motion directly drives cart translation
+    \item Cart acceleration induces pendulum swing
+    \item System exhibits complex coupled dynamics
+    \item Energy transfers between subsystems
+\end{itemize}
+
+\section{Video Recording}
+
+\subsection{Setup}
+
+\begin{lstlisting}
+def start_video_recording(self, output_path, resolution=(1920, 1080), fps=60):
+    viewport_api = get_active_viewport()
+    base_path = output_path.replace('.mp4', '')
+    
+    result = omni.kit.commands.execute(
+        "StartMovieCapture",
+        file_path=base_path,
+        resolution=resolution,
+        fps=fps,
+        viewport_api=viewport_api
+    )
+    
+    self.is_recording = True
+    return result
+\end{lstlisting}
+
+\textbf{Parameters:}
+\begin{itemize}
+    \item \texttt{output\_path}: Full path to MP4 file
+    \item \texttt{resolution}: $(width, height)$ in pixels (e.g., 1920×1080 for Full HD)
+    \item \texttt{fps}: Frames per second (60 for smooth motion)
+\end{itemize}
+
+\subsection{Recording Workflow}
+
+\begin{enumerate}
+    \item Start recording before simulation loop
+    \item Execute simulation (render=True in each step)
+    \item Stop recording after trajectory completion
+    \item Video automatically saved to specified path
+\end{enumerate}
+
+\section{Educational Exercises}
+
+\subsection{Exercise 1: Workspace Analysis}
+
+\textbf{Task:} Compute and visualize the manipulator's reachable workspace.
+
+\textbf{Steps:}
+\begin{enumerate}
+    \item Generate grid of $(\theta_1, \theta_2)$ combinations
+    \item For each configuration, compute EE position using forward kinematics
+    \item Plot points to visualize workspace (annulus shape)
+    \item Identify inner radius: $r_{\min} = |L_1 - L_2|$
+    \item Identify outer radius: $r_{\max} = L_1 + L_2$
+\end{enumerate}
+
+\subsection{Exercise 2: Singularity Analysis}
+
+\textbf{Task:} Find and characterize singularity configurations.
+
+\textbf{Steps:}
+\begin{enumerate}
+    \item Compute Jacobian for range of joint angles
+    \item Calculate determinant: $\det(J) = L_1 L_2 \sin\theta_2$
+    \item Identify singularities: $\theta_2 = 0$ (extended), $\theta_2 = \pi$ (folded)
+    \item Compute condition number near singularities
+    \item Test differential IK behavior near singularities
+\end{enumerate}
+
+\subsection{Exercise 3: Trajectory Optimization}
+
+\textbf{Task:} Generate smooth trajectory minimizing joint velocities/accelerations.
+
+\textbf{Approach:}
+\begin{enumerate}
+    \item Define waypoints in task space
+    \item Solve inverse kinematics for each waypoint
+    \item Fit smooth spline through joint-space waypoints
+    \item Compute velocity/acceleration profiles
+    \item Evaluate smoothness metrics (jerk, etc.)
+\end{enumerate}
+
+\subsection{Exercise 4: Pendulum Swing Analysis}
+
+\textbf{Task:} Analyze pendulum response to cart motion.
+
+\textbf{Analysis:}
+\begin{enumerate}
+    \item Record cart position $x_{\text{cart}}(t)$ during coupled motion
+    \item Record pendulum angle $\phi(t)$
+    \item Compute cart acceleration: $\ddot{x}_{\text{cart}}(t)$
+    \item Verify pendulum equation: $\ddot{\phi} = -\frac{g}{L}\sin\phi - \frac{\ddot{x}_{\text{cart}}}{L}\cos\phi$
+    \item Identify resonant frequencies
+\end{enumerate}
+
+\section{Troubleshooting}
+
+\subsection{Common Issues}
+
+\subsubsection{Inverse Kinematics Fails}
+
+\textbf{Symptoms:} Returns None for valid-looking targets
+
+\textbf{Causes:}
+\begin{itemize}
+    \item Target outside workspace (check reachability condition)
+    \item Numerical precision issues (use \texttt{np.clip} for arc-cosine)
+    \item Wrong coordinate frame (world vs. base)
+\end{itemize}
+
+\textbf{Solutions:}
+\begin{itemize}
+    \item Verify workspace boundaries: $|L_1-L_2| \leq r \leq L_1+L_2$
+    \item Add tolerance to reachability check
+    \item Print intermediate values for debugging
+\end{itemize}
+
+\subsubsection{Robots Not Moving}
+
+\textbf{Symptoms:} Joint commands issued but robots remain static
+
+\textbf{Causes:}
+\begin{itemize}
+    \item Articulation not initialized (call after \texttt{world.reset()})
+    \item High joint stiffness/damping
+    \item Physics not stepping (missing \texttt{world.step()})
+\end{itemize}
+
+\textbf{Solutions:}
+\begin{itemize}
+    \item Ensure initialization order: reset → initialize → set properties
+    \item Check joint property values
+    \item Verify simulation loop calls \texttt{world.step(render=True)}
+\end{itemize}
+
+\subsubsection{Unstable Coupling Joint}
+
+\textbf{Symptoms:} Excessive forces, explosion, divergence
+
+\textbf{Causes:}
+\begin{itemize}
+    \item Incorrect joint positioning
+    \item Conflicting constraints
+    \item Time step too large
+\end{itemize}
+
+\textbf{Solutions:}
+\begin{itemize}
+    \item Verify local positions in joint definition
+    \item Use smaller time step
+    \item Add compliance (use revolute instead of fixed joint)
+\end{itemize}
+
+\section{Extensions and Future Work}
+
+\subsection{3-DOF Spatial Manipulator}
+
+Extend to 3D workspace:
+\begin{itemize}
+    \item Add third revolute joint for vertical motion
+    \item Implement 3D forward/inverse kinematics
+    \item Compute 3×3 Jacobian matrix
+\end{itemize}
+
+\subsection{Redundancy Resolution}
+
+For manipulators with $n > m$ DOF (redundant):
+\begin{itemize}
+    \item Primary task: Reach target position
+    \item Secondary task: Optimize posture (joint limits, obstacle avoidance)
+    \item Use null-space projection: $\Delta\theta = J^+ e + (I - J^+ J) \theta_0$
+\end{itemize}
+
+\subsection{Compliant Coupling}
+
+Replace fixed joint with compliant spring-damper:
+\begin{itemize}
+    \item Add prismatic joint with spring stiffness
+    \item Study vibration transmission
+    \item Analyze resonances and damping
+\end{itemize}
+
+\subsection{Model Predictive Control}
+
+Implement MPC for trajectory tracking:
+\begin{itemize}
+    \item Predict future states using dynamics model
+    \item Optimize control inputs over horizon
+    \item Account for constraints (joint limits, collision)
+\end{itemize}
+
+\section{Conclusion}
+
+This system demonstrates fundamental robotics concepts:
+\begin{itemize}
+    \item Kinematics (forward, inverse, differential)
+    \item Dynamics (multi-body, constraints, coupling)
+    \item Control (position, trajectory tracking)
+    \item Software design (OOP, design patterns)
+\end{itemize}
+
+The implementation provides a foundation for studying more complex systems and control strategies in robotics.
+
+\section{References}
+
+\begin{enumerate}
+    \item J.J. Craig, \textit{Introduction to Robotics: Mechanics and Control}, 4th ed., Pearson, 2017
+    \item B. Siciliano, O. Khatib, \textit{Springer Handbook of Robotics}, 2nd ed., Springer, 2016
+    \item R.M. Murray, Z. Li, S.S. Sastry, \textit{A Mathematical Introduction to Robotic Manipulation}, CRC Press, 1994
+    \item NVIDIA Isaac Sim Documentation: \url{https://docs.omniverse.nvidia.com/isaacsim/}
+    \item USD Documentation: \url{https://graphics.pixar.com/usd/docs/index.html}
+\end{enumerate}
+
+\end{document}
