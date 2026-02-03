@@ -1,0 +1,79 @@
+{
+  "metadata": {
+    "timestamp": "2026-02-03T05:53:24.466822",
+    "simulation_mode": "coupled-motion",
+    "visualize": true,
+    "framework": "PyDrake"
+  },
+  "simulation_parameters": {
+    "time_step": 0.001,
+    "duration": 20.0,
+    "settling_time": 2.0
+  },
+  "cart_pendulum_config": {
+    "urdf_path": "/home/user/Documents/isaac_sim_robotics/model/manipulators/cart_pendulum_2dof.urdf",
+    "initial_joint_positions": [],
+    "joint_damping": [
+      0.5,
+      0.05
+    ],
+    "joint_stiffness": [
+      0,
+      0.1
+    ],
+    "joint_friction": [
+      0.05,
+      0.0
+    ],
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "link_lengths": null,
+    "coupled_motion_positions": [
+      -2,
+      0.0
+    ],
+    "ee_initial_position": null,
+    "ee_final_position": null,
+    "trajectory_duration": 8.0
+  },
+  "manipulator_config": {
+    "urdf_path": "/home/user/Documents/isaac_sim_robotics/model/manipulators/2dof_planar_manipulator_pydrake.urdf",
+    "initial_joint_positions": [],
+    "joint_damping": [
+      0.1,
+      0.1
+    ],
+    "joint_stiffness": [
+      0.0,
+      0.0
+    ],
+    "joint_friction": [
+      0.0,
+      0.0
+    ],
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "link_lengths": [
+      1.0,
+      1.0
+    ],
+    "coupled_motion_positions": null,
+    "ee_initial_position": [
+      -2.5,
+      0.0,
+      0.5
+    ],
+    "ee_final_position": [
+      -1.5,
+      0.0,
+      0.5
+    ],
+    "trajectory_duration": 8.0
+  }
+}
