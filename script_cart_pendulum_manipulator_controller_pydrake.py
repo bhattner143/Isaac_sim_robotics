@@ -1430,7 +1430,7 @@ class DrakeSceneManager:
         target_y = initial_ee_y  # Keep Y constant
         target_z = initial_ee_z  # Keep Z constant
         x_start = initial_ee_x
-        x_range = 0.6  # Move ±0.3m along X (same as Isaac Sim)
+        x_range = 1  # Move ±0.3m along X (same as Isaac Sim)
         duration = 8.0  # 8 seconds (slower for better observation)
         
         print(f"✓ Trajectory parameters:")
