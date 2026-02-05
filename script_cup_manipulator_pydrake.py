@@ -294,6 +294,93 @@ class RobotBase(ABC):
                     joint.set_translation(context, position)
 
 
+
+# ============================================================================
+# CUP MANIPULATOR CLASS
+# ============================================================================
+
+class CupManipulator(RobotBase):
+    """
+    3-DOF Cup Manipulator for Drake.
+    
+    Manages:
+    - Three revolute joints for spatial manipulation
+    - End-effector (cup) frame computation
+    - Joint control and monitoring
+    """
+    
+    def __init__(self, config: ManipulatorConfig):
+        super().__init__(config)
+    
+    def get_joint_positions(self, plant: MultibodyPlant, context) -> Dict[str, float]:
+        """Get current joint positions as a dictionary."""
+        positions = {}
+        # Get joints from the cup manipulator model instance
+        for joint_idx in plant.GetJointIndices(self.model_instance):
+            joint = plant.get_joint(joint_idx)
+            if joint.num_velocities() > 0:
+                if isinstance(joint, RevoluteJoint):
+                    positions[joint.name()] = joint.get_angle(context)
+                elif isinstance(joint, PrismaticJoint):
+                    positions[joint.name()] = joint.get_translation(context)
+        
+        # Also get gimbal joints if they exist (they're in the world instance)
+        if PENDULUM_ENABLED:
+            try:
+                gimbal_pitch = plant.GetJointByName("pendulum_pitch", self.model_instance)
+                positions['pendulum_pitch'] = gimbal_pitch.get_angle(context)
+            except:
+                pass
+            try:
+                gimbal_roll = plant.GetJointByName("pendulum_roll", self.model_instance)
+                positions['pendulum_roll'] = gimbal_roll.get_angle(context)
+            except:
+                pass
+        
+        return positions
+    
+    def get_joint_velocities(self, plant: MultibodyPlant, context) -> Dict[str, float]:
+        """Get current joint velocities as a dictionary."""
+        velocities = {}
+        for joint_idx in plant.GetJointIndices(self.model_instance):
+            joint = plant.get_joint(joint_idx)
+            if joint.num_velocities() > 0:
+                if isinstance(joint, RevoluteJoint):
+                    velocities[joint.name()] = joint.get_angular_rate(context)
+                elif isinstance(joint, PrismaticJoint):
+                    velocities[joint.name()] = joint.get_translation_rate(context)
+        return velocities
+    
+    def get_end_effector_position(self, plant: MultibodyPlant, context) -> np.ndarray:
+        """Get end effector (cup) position in world frame."""
+        try:
+            # Get the cup link (link2 - the cup is attached to link2)
+            cup_body = plant.GetBodyByName("link2", self.model_instance)
+            world_frame = plant.world_frame()
+            cup_frame = cup_body.body_frame()
+            
+            # Get transform from cup frame to world frame
+            X_WC = plant.CalcRelativeTransform(context, world_frame, cup_frame)
+            position = X_WC.translation()
+            
+            return position
+        except Exception as e:
+            print(f"Warning: Could not get end effector position: {e}")
+            return np.array([0.0, 0.0, 0.0])
+    
+    def apply_torques(self, plant: MultibodyPlant, context, link1_torque: float, link2_torque: float):
+        """Apply torques to the two manipulator joints.
+        
+        Args:
+            plant: The MultibodyPlant
+            context: The plant context
+            link1_torque: Torque for link1_base joint (N·m)
+            link2_torque: Torque for link2_link1 joint (N·m)
+        """
+        # Actuators are ordered by the order they were added: [link1_base, link2_link1]
+        actuator_forces = np.array([link1_torque, link2_torque])
+        plant.get_actuation_input_port().FixValue(context, actuator_forces)
+
 # ============================================================================
 # PENDULUM 3D CLASS
 # ============================================================================
@@ -541,93 +628,6 @@ class Pendulum3D:
             self.pitch_joint.set_angle(context, pitch_angle)
         if self.roll_joint:
             self.roll_joint.set_angle(context, roll_angle)
-
-
-# ============================================================================
-# CUP MANIPULATOR CLASS
-# ============================================================================
-
-class CupManipulator(RobotBase):
-    """
-    3-DOF Cup Manipulator for Drake.
-    
-    Manages:
-    - Three revolute joints for spatial manipulation
-    - End-effector (cup) frame computation
-    - Joint control and monitoring
-    """
-    
-    def __init__(self, config: ManipulatorConfig):
-        super().__init__(config)
-    
-    def get_joint_positions(self, plant: MultibodyPlant, context) -> Dict[str, float]:
-        """Get current joint positions as a dictionary."""
-        positions = {}
-        # Get joints from the cup manipulator model instance
-        for joint_idx in plant.GetJointIndices(self.model_instance):
-            joint = plant.get_joint(joint_idx)
-            if joint.num_velocities() > 0:
-                if isinstance(joint, RevoluteJoint):
-                    positions[joint.name()] = joint.get_angle(context)
-                elif isinstance(joint, PrismaticJoint):
-                    positions[joint.name()] = joint.get_translation(context)
-        
-        # Also get gimbal joints if they exist (they're in the world instance)
-        if PENDULUM_ENABLED:
-            try:
-                gimbal_pitch = plant.GetJointByName("pendulum_pitch", self.model_instance)
-                positions['pendulum_pitch'] = gimbal_pitch.get_angle(context)
-            except:
-                pass
-            try:
-                gimbal_roll = plant.GetJointByName("pendulum_roll", self.model_instance)
-                positions['pendulum_roll'] = gimbal_roll.get_angle(context)
-            except:
-                pass
-        
-        return positions
-    
-    def get_joint_velocities(self, plant: MultibodyPlant, context) -> Dict[str, float]:
-        """Get current joint velocities as a dictionary."""
-        velocities = {}
-        for joint_idx in plant.GetJointIndices(self.model_instance):
-            joint = plant.get_joint(joint_idx)
-            if joint.num_velocities() > 0:
-                if isinstance(joint, RevoluteJoint):
-                    velocities[joint.name()] = joint.get_angular_rate(context)
-                elif isinstance(joint, PrismaticJoint):
-                    velocities[joint.name()] = joint.get_translation_rate(context)
-        return velocities
-    
-    def get_end_effector_position(self, plant: MultibodyPlant, context) -> np.ndarray:
-        """Get end effector (cup) position in world frame."""
-        try:
-            # Get the cup link (link2 - the cup is attached to link2)
-            cup_body = plant.GetBodyByName("link2", self.model_instance)
-            world_frame = plant.world_frame()
-            cup_frame = cup_body.body_frame()
-            
-            # Get transform from cup frame to world frame
-            X_WC = plant.CalcRelativeTransform(context, world_frame, cup_frame)
-            position = X_WC.translation()
-            
-            return position
-        except Exception as e:
-            print(f"Warning: Could not get end effector position: {e}")
-            return np.array([0.0, 0.0, 0.0])
-    
-    def apply_torques(self, plant: MultibodyPlant, context, link1_torque: float, link2_torque: float):
-        """Apply torques to the two manipulator joints.
-        
-        Args:
-            plant: The MultibodyPlant
-            context: The plant context
-            link1_torque: Torque for link1_base joint (N·m)
-            link2_torque: Torque for link2_link1 joint (N·m)
-        """
-        # Actuators are ordered by the order they were added: [link1_base, link2_link1]
-        actuator_forces = np.array([link1_torque, link2_torque])
-        plant.get_actuation_input_port().FixValue(context, actuator_forces)
 
 
 
