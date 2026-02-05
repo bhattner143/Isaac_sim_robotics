@@ -5,110 +5,94 @@
   <!-- Link base_mount_manipulator -->
   <link name="base_mount_manipulator">
     <inertial>
-      <origin xyz="-4.36314e-19 -3.04031e-18 0.553261" rpy="0 0 0"/>
+      <origin xyz="-4.36314e-19 -1.69181e-17 0.553261" rpy="0 0 0"/>
       <mass value="542.696"/>
       <inertia ixx="58.2669" ixy="-1.00642e-16" ixz="4.10907e-16" iyy="58.2669" iyz="2.02826e-15" izz="5.62415"/>
     </inertial>
     <!-- Part base_mount_manipulator -->
     <visual>
-      <origin xyz="0 -2.77556e-17 0" rpy="0 -0 0"/>
+      <origin xyz="0 -4.16334e-17 0" rpy="0 -0 0"/>
       <geometry>
-        <mesh filename="package://assets/base_mount_manipulator.stl"/>
+        <mesh filename="package://cup_assets/base_mount_manipulator.obj"/>
       </geometry>
       <material name="base_mount_manipulator_material">
         <color rgba="0.615686 0.811765 0.929412 1"/>
       </material>
     </visual>
     <collision>
-      <origin xyz="0 -2.77556e-17 0" rpy="0 -0 0"/>
+      <origin xyz="0 -4.16334e-17 0" rpy="0 -0 0"/>
       <geometry>
-        <mesh filename="package://assets/base_mount_manipulator.stl"/>
+        <mesh filename="package://cup_assets/base_mount_manipulator.obj"/>
       </geometry>
     </collision>
   </link>
   <!-- Link link1 -->
   <link name="link1">
     <inertial>
-      <origin xyz="-0.549225 5.09487e-18 0.0251674" rpy="0 0 0"/>
+      <origin xyz="0.549225 1.93035e-17 0.0129576" rpy="0 0 0"/>
       <mass value="10.8153"/>
       <inertia ixx="0.0128988" ixy="0" ixz="0.0266598" iyy="0.981141" iyz="0" izz="0.983505"/>
     </inertial>
     <!-- Part link1 -->
     <visual>
-      <origin xyz="0 2.44929e-18 1.21437" rpy="3.14159 -0 0"/>
+      <origin xyz="0 1.63271e-17 -1.17625" rpy="0 -0 3.14159"/>
       <geometry>
-        <mesh filename="package://assets/link1.stl"/>
+        <mesh filename="package://cup_assets/link1.obj"/>
       </geometry>
       <material name="link1_material">
         <color rgba="0.647059 0.647059 0.647059 1"/>
       </material>
     </visual>
     <collision>
-      <origin xyz="0 2.44929e-18 1.21437" rpy="3.14159 -0 0"/>
+      <origin xyz="0 1.63271e-17 -1.17625" rpy="0 -0 3.14159"/>
       <geometry>
-        <mesh filename="package://assets/link1.stl"/>
+        <mesh filename="package://cup_assets/link1.obj"/>
       </geometry>
     </collision>
   </link>
   <!-- Link link2 -->
   <link name="link2">
     <inertial>
-      <origin xyz="-0.499172 -1.13183e-17 -0.0190625" rpy="0 0 0"/>
+      <origin xyz="-3.09078e-14 -0.499172 0.0190625" rpy="0 0 0"/>
       <mass value="9.62243"/>
-      <inertia ixx="0.00834558" ixy="0" ixz="0" iyy="0.75801" iyz="0" izz="0.764024"/>
+      <inertia ixx="0.75801" ixy="-4.62737e-14" ixz="0" iyy="0.00834558" iyz="0" izz="0.764024"/>
     </inertial>
-    <!-- Part cup -->
-    <visual>
-      <origin xyz="-1.2545 -2.44929e-18 -0.188125" rpy="3.14159 -0 0"/>
-      <geometry>
-        <mesh filename="package://assets/cup.stl"/>
-      </geometry>
-      <material name="cup_material">
-        <color rgba="0.615686 0.811765 0.929412 1"/>
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="-1.2545 -2.44929e-18 -0.188125" rpy="3.14159 -0 0"/>
-      <geometry>
-        <mesh filename="package://assets/cup.stl"/>
-      </geometry>
-    </collision>
     <!-- Part link2 -->
     <visual>
-      <origin xyz="0.953 -2.44929e-18 1.05812" rpy="3.14159 -0 0"/>
+      <origin xyz="5.90639e-14 0.953 -1.05812" rpy="0 -0 1.5708"/>
       <geometry>
-        <mesh filename="package://assets/link2.stl"/>
+        <mesh filename="package://cup_assets/link2.obj"/>
       </geometry>
       <material name="link2_material">
         <color rgba="0.231373 0.380392 0.705882 1"/>
       </material>
     </visual>
     <collision>
-      <origin xyz="0.953 -2.44929e-18 1.05812" rpy="3.14159 -0 0"/>
+      <origin xyz="5.90639e-14 0.953 -1.05812" rpy="0 -0 1.5708"/>
       <geometry>
-        <mesh filename="package://assets/link2.stl"/>
+        <mesh filename="package://cup_assets/link2.obj"/>
       </geometry>
     </collision>
-    <!-- Part simple_ball -->
+    <!-- Part part_1 -->
     <visual>
-      <origin xyz="-1.2545 -3.02049e-17 -0.188125" rpy="3.14159 -0 0"/>
+      <origin xyz="-7.77156e-14 -1.2545 -0.15" rpy="3.14159 -0 1.5708"/>
       <geometry>
-        <mesh filename="package://assets/simple_ball.stl"/>
+        <mesh filename="package://cup_assets/part_1.obj"/>
       </geometry>
-      <material name="simple_ball_material">
+      <material name="part_1_material">
         <color rgba="0.615686 0.811765 0.929412 1"/>
       </material>
     </visual>
     <collision>
-      <origin xyz="-1.2545 -3.02049e-17 -0.188125" rpy="3.14159 -0 0"/>
+      <origin xyz="-7.77156e-14 -1.2545 -0.15" rpy="3.14159 -0 1.5708"/>
       <geometry>
-        <mesh filename="package://assets/simple_ball.stl"/>
+        <mesh filename="package://cup_assets/part_1.obj"/>
       </geometry>
     </collision>
   </link>
   <!-- Joint from link1 to link2 -->
   <joint name="link2_link1" type="revolute">
-    <origin xyz="-0.953 4.89859e-18 0.118125" rpy="0 -0 0"/>
+    <origin xyz="0.953 1.87764e-17 -0.08" rpy="0 -0 3.14159"/>
     <parent link="link1"/>
     <child link="link2"/>
     <axis xyz="0 0 1"/>
@@ -116,7 +100,7 @@
   </joint>
   <!-- Joint from base_mount_manipulator to link1 -->
   <joint name="link1_base" type="revolute">
-    <origin xyz="0 -2.53063e-17 1.17625" rpy="3.14159 -0 0"/>
+    <origin xyz="0 -3.91841e-17 1.17625" rpy="3.14159 -0 0"/>
     <parent link="base_mount_manipulator"/>
     <child link="link1"/>
     <axis xyz="0 0 1"/>

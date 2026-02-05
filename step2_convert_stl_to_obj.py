@@ -1,31 +1,67 @@
 #!/usr/bin/env python3
 """
-Convert all STL files in simple_pendulum assets to OBJ format.
+Convert all STL files in model assets to OBJ format.
 This makes them compatible with Drake's Meshcat visualization.
+
+Usage:
+    python step2_convert_stl_to_obj.py ball
+    python step2_convert_stl_to_obj.py cup_manipulator
 """
 
+import argparse
+import sys
 from pathlib import Path
 import trimesh
 
-ASSETS_DIR = Path("model_using_onshape_to_robot/cup_manipulator/assets")
 
-print(f"Converting STL files in {ASSETS_DIR} to OBJ format...\n")
-
-stl_files = list(ASSETS_DIR.glob("*.stl"))
-if not stl_files:
-    print("No STL files found!")
-    exit(1)
-
-for stl_file in stl_files:
-    obj_file = stl_file.with_suffix(".obj")
+def convert_stl_to_obj(model_name):
+    """Convert STL files to OBJ for a specific model."""
     
-    print(f"Converting {stl_file.name}...")
-    try:
-        mesh = trimesh.load(stl_file)
-        mesh.export(obj_file)
-        print(f"  ✓ Created {obj_file.name}")
-    except Exception as e:
-        print(f"  ✗ Error: {e}")
+    assets_dir = Path(f"model_using_onshape_to_robot/{model_name}/assets")
+    
+    if not assets_dir.exists():
+        print(f"Error: Assets directory not found: {assets_dir}")
+        return 1
+    
+    print(f"Converting STL files in {assets_dir} to OBJ format...\n")
+    
+    stl_files = list(assets_dir.glob("*.stl"))
+    if not stl_files:
+        print(f"No STL files found in {assets_dir}!")
+        return 1
+    
+    for stl_file in stl_files:
+        obj_file = stl_file.with_suffix(".obj")
+        
+        print(f"Converting {stl_file.name}...")
+        try:
+            mesh = trimesh.load(stl_file)
+            mesh.export(obj_file)
+            print(f"  ✓ Created {obj_file.name}")
+        except Exception as e:
+            print(f"  ✗ Error: {e}")
+    
+    print(f"\n✓ Conversion complete! {len(stl_files)} files processed.")
+    print(f"\nNext step: Run step3_urdf_stl_to_obj.py {model_name}")
+    return 0
 
-print(f"\n✓ Conversion complete! {len(stl_files)} files processed.")
-print("\nNext step: Update URDF to reference .obj instead of .stl files")
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Convert STL mesh files to OBJ format for Drake compatibility"
+    )
+    parser.add_argument(
+        "model_name",
+        type=str,
+        nargs='?',
+        default="cup_manipulator",
+        help="Name of the model (e.g., 'ball', 'cup_manipulator')"
+    )
+    
+    args = parser.parse_args()
+    
+    return convert_stl_to_obj(args.model_name)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

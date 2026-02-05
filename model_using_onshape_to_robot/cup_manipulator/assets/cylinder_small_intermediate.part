@@ -1,12 +1,12 @@
 {
     "configuration": "default",
     "documentId": "02830e503a1c2626d58e0780",
-    "documentMicroversion": "de591c1dccae3b26d752d911",
-    "elementId": "877f14be6da239694d1278bc",
+    "documentMicroversion": "e3fcae71f231be7faa091dcd",
+    "elementId": "23cf6361c39330d815b19447",
     "fullConfiguration": "default",
-    "id": "MPgBuIlDHcTNT90QH",
+    "id": "M5upDmNgXohqir0lp",
     "isStandardContent": false,
-    "name": "Part 1 <1>",
+    "name": "cylinder_small_intermediate <1>",
     "partId": "JHD",
     "suppressed": false,
     "type": "Part"

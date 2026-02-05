@@ -1,0 +1,170 @@
+<?xml version="1.0" ?>
+<!-- Generated using onshape-to-robot -->
+<!-- Onshape https://cad.onshape.com/documents/02830e503a1c2626d58e0780/w/62db7934caa01effe231f1a9/e/403997dc9b8865e58fc05acd -->
+<robot name="cup_manipulator">
+  <!-- Fixed Base: Manipulator is anchored to the world (no falling) -->
+  
+  <!-- World link (implicit in Drake but explicit for clarity) -->
+  <link name="world"/>
+  
+  <!-- Fixed joint: Weld base_mount_manipulator to world -->
+  <joint name="base_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="world"/>
+    <child link="base_mount_manipulator"/>
+  </joint>
+
+  <!-- Link base_mount_manipulator -->
+  <link name="base_mount_manipulator">
+    <inertial>
+      <origin xyz="-1.28866e-19 -3.07959e-17 0.553261" rpy="0 0 0"/>
+      <mass value="542.696"/>
+      <inertia ixx="58.2669" ixy="-1.00642e-16" ixz="4.30399e-16" iyy="58.2669" iyz="2.04245e-15" izz="5.62415"/>
+    </inertial>
+    <!-- Part base_mount_manipulator -->
+    <visual>
+      <origin xyz="0 -5.55112e-17 0" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://cup_assets/base_mount_manipulator.obj"/>
+      </geometry>
+      <material name="base_mount_manipulator_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -5.55112e-17 0" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://cup_assets/base_mount_manipulator.obj"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link link1 -->
+  <link name="link1">
+    <inertial>
+      <origin xyz="-0.549225 -3.5583e-17 -0.0251674" rpy="0 0 0"/>
+      <mass value="2.0"/>
+      <inertia ixx="0.00239" ixy="1.02e-17" ixz="-0.00493" iyy="0.1815" iyz="-2.74e-19" izz="0.1819"/>
+    </inertial>
+    <!-- Part link1 -->
+    <visual>
+      <origin xyz="6.16298e-33 -2.44929e-18 -1.21437" rpy="0 -0 5.55112e-17"/>
+      <geometry>
+        <mesh filename="package://cup_assets/link1.obj"/>
+      </geometry>
+      <material name="link1_material">
+        <color rgba="0.647059 0.647059 0.647059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="6.16298e-33 -2.44929e-18 -1.21437" rpy="0 -0 5.55112e-17"/>
+      <geometry>
+        <mesh filename="package://cup_assets/link1.obj"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link link2 -->
+  <link name="link2">
+    <inertial>
+      <origin xyz="-0.499172 -1.4477e-16 -0.0190625" rpy="0 0 0"/>
+      <mass value="2.0"/>
+      <inertia ixx="0.00174" ixy="-8.65e-18" ixz="0" iyy="0.1576" iyz="0" izz="0.1588"/>
+    </inertial>
+    <!-- Part link2 -->
+    <visual>
+      <origin xyz="0.953 -5.55112e-17 1.05812" rpy="3.14159 -0 5.55112e-17"/>
+      <geometry>
+        <mesh filename="package://cup_assets/link2.obj"/>
+      </geometry>
+      <material name="link2_material">
+        <color rgba="0.231373 0.380392 0.705882 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.953 -5.55112e-17 1.05812" rpy="3.14159 -0 5.55112e-17"/>
+      <geometry>
+        <mesh filename="package://cup_assets/link2.obj"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link part_1 -->
+  <link name="part_1">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.3"/>
+      <inertia ixx="0.00034" ixy="0" ixz="0" iyy="0.00034" iyz="0" izz="0.00037"/>
+    </inertial>
+    <!-- Part part_1 -->
+    <visual>
+      <origin xyz="-0.3015 -8.32667e-17 -0.15" rpy="3.14159 0 0"/>
+      <geometry>
+        <mesh filename="package://cup_assets/part_1.obj"/>
+      </geometry>
+      <material name="part_1_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <!-- Manual convex decomposition: hollow cup using primitive shapes -->
+    <!-- Bottom disk -->
+    <collision name="cup_bottom">
+      <origin xyz="0.15 0.0 -0.215" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.23" length="0.01"/>
+      </geometry>
+    </collision>
+    <!-- Inner wall segments (8 segments around circumference) -->
+    <collision name="cup_wall_0">
+      <origin xyz="0.38 0.0 -0.12" rpy="0 0.3 0"/>
+      <geometry>
+        <box size="0.02 0.4 0.18"/>
+      </geometry>
+    </collision>
+    <collision name="cup_wall_1">
+      <origin xyz="0.15 0.23 -0.12" rpy="0.3 0 1.571"/>
+      <geometry>
+        <box size="0.02 0.4 0.18"/>
+      </geometry>
+    </collision>
+    <collision name="cup_wall_2">
+      <origin xyz="-0.08 0.23 -0.12" rpy="0.3 0 1.571"/>
+      <geometry>
+        <box size="0.02 0.4 0.18"/>
+      </geometry>
+    </collision>
+    <collision name="cup_wall_3">
+      <origin xyz="-0.08 -0.23 -0.12" rpy="0.3 0 1.571"/>
+      <geometry>
+        <box size="0.02 0.4 0.18"/>
+      </geometry>
+    </collision>
+    <collision name="cup_wall_4">
+      <origin xyz="0.15 -0.23 -0.12" rpy="0.3 0 1.571"/>
+      <geometry>
+        <box size="0.02 0.4 0.18"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Joint from link2 to part_1 -->
+  <joint name="cup_ee" type="revolute">
+    <origin xyz="-0.953 -2.22045e-16 0" rpy="3.14159 0 0"/>
+    <parent link="link2"/>
+    <child link="part_1"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+  <!-- Joint from link1 to link2 -->
+  <joint name="link2_link1" type="revolute">
+    <origin xyz="-0.953 -5.07838e-17 -0.118125" rpy="0 0 0"/>
+    <parent link="link1"/>
+    <child link="link2"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+  <!-- Joint from base_mount_manipulator to link1 -->
+  <joint name="link1_mount" type="revolute">
+    <origin xyz="-6.45044e-17 1.47663e-17 1.17625" rpy="0 0 0"/>
+    <parent link="base_mount_manipulator"/>
+    <child link="link1"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+</robot>

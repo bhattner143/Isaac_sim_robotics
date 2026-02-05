@@ -4,9 +4,14 @@ Convert URDF file to use .obj mesh files instead of .stl files.
 
 This script reads a URDF file and replaces all references to .stl mesh files
 with .obj mesh files, then saves the result as a new URDF file.
+
+Usage:
+    python step3_urdf_stl_to_obj.py ball
+    python step3_urdf_stl_to_obj.py cup_manipulator
 """
 
-import os
+import argparse
+import sys
 from pathlib import Path
 
 
@@ -37,12 +42,25 @@ def convert_urdf_stl_to_obj(input_urdf_path, output_urdf_path):
 
 
 def main():
-    # Define paths
-    script_dir = Path(__file__).parent
-    simple_pendulum_dir = script_dir / "model_using_onshape_to_robot" / "cup_manipulator"
+    parser = argparse.ArgumentParser(
+        description="Convert URDF to use .obj mesh files instead of .stl files"
+    )
+    parser.add_argument(
+        "model_name",
+        type=str,
+        nargs='?',
+        default="cup_manipulator",
+        help="Name of the model (e.g., 'ball', 'cup_manipulator')"
+    )
     
-    input_urdf = simple_pendulum_dir / "cup_manipulator.urdf"
-    output_urdf = simple_pendulum_dir / "cup_manipulator_obj.urdf"
+    args = parser.parse_args()
+    
+    # Define paths based on model name
+    script_dir = Path(__file__).parent
+    model_dir = script_dir / "model_using_onshape_to_robot" / args.model_name
+    
+    input_urdf = model_dir / f"{args.model_name}.urdf"
+    output_urdf = model_dir / f"{args.model_name}_obj.urdf"
     
     # Check if input file exists
     if not input_urdf.exists():
@@ -60,4 +78,4 @@ def main():
 
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())

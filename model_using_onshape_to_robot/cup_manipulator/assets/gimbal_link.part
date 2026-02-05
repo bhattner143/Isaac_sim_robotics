@@ -1,13 +1,13 @@
 {
     "configuration": "default",
     "documentId": "02830e503a1c2626d58e0780",
-    "documentMicroversion": "b6b80fd0ff402cc257256ed4",
-    "elementId": "4e4fc634b36e6e3684563fbe",
+    "documentMicroversion": "6d1828cbfbb40e979c07d88e",
+    "elementId": "23cf6361c39330d815b19447",
     "fullConfiguration": "default",
-    "id": "MGcpql3r5TNd3NCDp",
+    "id": "MaqpdyUZ0AOZzUW2v",
     "isStandardContent": false,
-    "name": "link1 <1>",
-    "partId": "JOD",
+    "name": "gimbal_link <1>",
+    "partId": "JHD",
     "suppressed": false,
     "type": "Part"
 }
