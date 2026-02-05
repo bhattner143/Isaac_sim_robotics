@@ -68,17 +68,44 @@ class ManipulatorConfig:
 
 
 @dataclass
+class VisualizationConfig:
+    """Configuration for visualization settings."""
+    enabled: bool = True  # Enable Meshcat visualization
+    plot_frames: bool = True  # Plot coordinate frames in Meshcat
+    interactive: bool = True  # Enable interactive play/pause/repeat controls
+    realtime_rate: float = 0.5  # 1.0 = real-time, 0.5 = half speed
+    update_every_step: bool = True  # Update Meshcat every simulation step
+    print_interval: float = 0.25  # Print status every N seconds
+    
+    # Meshcat settings
+    meshcat_host: str = "localhost"
+    meshcat_port: int = 7000
+    show_frames: bool = False  # Show frames in scene graph
+    show_contact_forces: bool = False  # Show contact forces
+    show_hydroelastic: bool = True  # Show hydroelastic contact visualization
+
+
+@dataclass
 class SimulationConfig:
     """Configuration for the simulation environment."""
+    mode: str = "simulation"  # Simulation mode: 'scene-viz', 'simulation', 'joint-motion', 'run-all-jts'
     timestep: float = 0.001
     simulation_time: float = 10.0
     gravity: Vec3 = (0.0, 0.0, -9.81)
-    
-    # Visualization settings
-    meshcat_host: str = "localhost"
-    meshcat_port: int = 7000
-    show_frames: bool = False
-    show_contact_forces: bool = False
+    visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
+
+
+@dataclass
+class PendulumConfig:
+    """Configuration for a 3D pendulum with 2-DOF gimbal joints."""
+    mass: float = 0.5  # kg
+    length: float = 0.2  # meters (from pivot to COM)
+    radius: float = 0.05  # meters (ball radius)
+    damping: float = 0.1  # Joint damping coefficient
+    attachment_point: Vec3 = (-1.2545, 0.0, -0.188125)  # Attachment point on parent body
+    initial_pitch: float = 0.0  # degrees - initial swing angle from vertical
+    initial_roll: float = 0.0  # degrees - initial roll angle
+    name: str = "pendulum"
 
 
 @dataclass
@@ -99,7 +126,14 @@ class SceneConfig:
         """Get list of all manipulator names."""
         return [m.name for m in self.manipulators]
 
-
+def create_simulation_config() -> SimulationConfig:
+    """Factory function to create a default SimulationConfig."""
+    return SimulationConfig(
+        mode="simulation",
+        timestep=0.001,
+        simulation_time=10.0,
+        gravity=(0.0, 0.0, -9.81)
+    )
 # Factory functions for common configurations
 
 def create_cup_manipulator_config(
@@ -168,4 +202,42 @@ def create_ball_config(
         joint_configs={},  # No actuated joints - free floating
         base_pose=Pose(xyz=initial_position),
         package_map={"ball_assets": urdf_dir + "/assets/"}
+    )
+
+
+def create_pendulum_config(
+    mass: float = 0.5,
+    length: float = 0.2,
+    radius: float = 0.05,
+    damping: float = 0.1,
+    attachment_point: Tuple[float, float, float] = (-1.2545, 0.0, -0.188125),
+    initial_pitch: float = 0.0,
+    initial_roll: float = 0.0,
+    name: str = "pendulum"
+) -> PendulumConfig:
+    """
+    Create a PendulumConfig for a 3D pendulum with 2-DOF gimbal joints.
+    
+    Args:
+        mass: Mass of pendulum ball (kg)
+        length: Length from pivot to COM (m)
+        radius: Radius of pendulum ball (m)
+        damping: Joint damping coefficient
+        attachment_point: Attachment point on parent body (x, y, z)
+        initial_pitch: Initial pitch angle in degrees (equilibrium at 180°)
+        initial_roll: Initial roll angle in degrees (equilibrium at -180°)
+        name: Name prefix for pendulum bodies/joints
+    
+    Returns:
+        PendulumConfig with specified parameters
+    """
+    return PendulumConfig(
+        mass=mass,
+        length=length,
+        radius=radius,
+        damping=damping,
+        attachment_point=attachment_point,
+        initial_pitch=initial_pitch,
+        initial_roll=initial_roll,
+        name=name
     )

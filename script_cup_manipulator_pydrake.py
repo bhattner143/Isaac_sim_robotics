@@ -87,9 +87,12 @@ from robot_types import (
     JointConfig,
     ManipulatorConfig,
     SimulationConfig,
+    VisualizationConfig,
     SceneConfig,
+    PendulumConfig,
     create_cup_manipulator_config,
     create_ball_config,
+    create_pendulum_config,
 )
 
 # ============================================================================
@@ -116,6 +119,12 @@ parser.add_argument(
     default=True,
     help="Enable interactive play/pause/repeat controls in Meshcat",
 )
+parser.add_argument(
+    "--plot_frames",
+    type=bool,
+    default=True,
+    help="Plot coordinate frames (world, pivot, gimbal) in Meshcat",
+)
 args, _ = parser.parse_known_args()
 
 # ============================================================================
@@ -136,29 +145,40 @@ CUP_MANIPULATOR_CONFIG = create_cup_manipulator_config(
     friction=(0.05, 0.05),
 )
 
+# --- Visualization Configuration ---
+VISUALIZATION_CONFIG = VisualizationConfig(
+    enabled=args.visualize,
+    plot_frames=args.plot_frames,
+    interactive=args.interactive,
+    realtime_rate=0.5,  # 1.0 = real-time, 0.5 = half speed (slower for better observation)
+    update_every_step=True,  # Update Meshcat every simulation step
+    print_interval=0.25,  # Print status every N seconds
+    show_frames=False,
+    show_contact_forces=True,
+    show_hydroelastic=True,
+)
+
 # --- Simulation Configuration ---
 SIMULATION_CONFIG = SimulationConfig(
+    mode=args.mode,  # Simulation mode from command-line: 'scene-viz', 'simulation', 'joint-motion', 'run-all-jts'
     timestep=0.001,  # 1 kHz simulation
     simulation_time=15.0,  # seconds - longer to see ball swing dynamics
     gravity=(0.0, 0.0, -9.81),
+    visualization=VISUALIZATION_CONFIG,
 )
 
 # --- Pendulum Configuration (added programmatically) ---
 PENDULUM_ENABLED = True  # Set to False to disable pendulum
-PENDULUM_MASS = 0.5  # kg
-PENDULUM_LENGTH = 0.2  # meters (from pivot to COM)
-PENDULUM_RADIUS = 0.05  # meters (ball radius)
-PENDULUM_ATTACH_POINT = (-1.2545, 0.0, -0.188125)  # Ball center on link2 (from URDF)
-PENDULUM_DAMPING = 0.1  # Very low damping for free swinging
-
-SIMULATION_MODE = args.mode
-VISUALIZE = args.visualize
-INTERACTIVE = args.interactive
-
-# --- Visualization Configuration ---
-REALTIME_RATE = 0.5  # 1.0 = real-time, 0.5 = half speed (slower for better observation)
-VISUALIZATION_UPDATE_EVERY_STEP = True  # Update Meshcat every simulation step
-PRINT_INTERVAL = 0.25  # Print status every N seconds
+PENDULUM_CONFIG = create_pendulum_config(
+    mass=0.5,  # kg
+    length=0.2,  # meters (from pivot to COM)
+    radius=0.05,  # meters (ball radius)
+    damping=0.1,  # Very low damping for free swinging
+    attachment_point=(-1.2545, 0.0, -0.188125),  # Ball center on link2 (from URDF)
+    initial_pitch=0.0,  # degrees - initial swing angle from vertical (equilibrium at 180°)
+    initial_roll=0.0,  # degrees - initial roll angle (equilibrium at -180°)
+    name="pendulum"
+)
 
 # --- Joint Motion Parameters ---
 # For manipulator joints only (link1_base, link2_link1)
@@ -286,45 +306,60 @@ class Pendulum3D:
     a pendulum that can swing in 3D space.
     """
     
-    def __init__(self, 
-                 mass: float = 0.5,
-                 length: float = 0.2,
-                 radius: float = 0.03,
-                 damping: float = 0.1,
-                 attachment_point: Tuple[float, float, float] = (0.0, 0.0, 0.0),
-                 name: str = "pendulum"):
+    def __init__(self, config: PendulumConfig):
         """
-        Initialize pendulum parameters.
+        Initialize pendulum from configuration.
         
         Args:
-            mass: Mass of pendulum ball (kg)
-            length: Length from pivot to COM (m)
-            radius: Radius of pendulum ball (m)
-            damping: Joint damping coefficient
-            attachment_point: Attachment point on parent body (x, y, z)
-            name: Name prefix for pendulum bodies/joints
+            config: PendulumConfig dataclass with all pendulum parameters
         """
-        self.mass = mass
-        self.length = length
-        self.radius = radius
-        self.damping = damping
-        self.attachment_point = attachment_point
-        self.name = name
+        self.config = config
+        self.mass = config.mass
+        self.length = config.length
+        self.radius = config.radius
+        self.damping = config.damping
+        self.attachment_point = config.attachment_point
+        self.name = config.name
         
-        # Bodies created during attachment
+        # Bodies and frames created during attachment
         self.pivot_frame = None
+        self.pitch_parent_frame = None  # Shifted frame for pitch joint (if shifting enabled)
         self.gimbal1_body = None
         self.pendulum_body = None
         self.pitch_joint = None
         self.roll_joint = None
     
-    def attach_to_body(self, 
+
+
+    def attach_to_body(self,  
                       plant: MultibodyPlant,
                       parent_body,
                       model_instance,
-                      pivot_rotation: Optional[RotationMatrix] = None):
+                      pivot_rotation: Optional[RotationMatrix] = None,
+                      shifting: bool = True,
+                      shift_pitch_by_pi: bool = True,
+                      shift_roll_by_pi: bool = False,
+                    ):
         """
         Attach pendulum to a parent body.
+        
+        COORDINATE FRAME HIERARCHY:
+        ===========================
+        World Frame (W)
+            └─> Link2 Frame (L2) - parent_body
+                └─> Pivot Frame (P) = L2 rotated by pivot_rotation (180° about X) + translated by attachment_point
+                    └─> PitchParent Frame = P rotated by 180° about X (if shifting enabled)
+                        └─> Gimbal1 Body Frame (G1) - pitch joint rotates about +Y axis
+                            └─> Ball Body Frame (B) - roll joint rotates about +X axis
+                                └─> Ball COM at [0, 0, -L] in B frame
+        
+        JOINT ANGLES ARE MEASURED IN THEIR PARENT FRAMES:
+        - pendulum_pitch: Rotation about +Y axis in PitchParent frame (or Pivot frame if not shifting)
+        - pendulum_roll: Rotation about +X axis in Gimbal1 frame
+        
+        The "angle from vertical" shown in terminal is computed in WORLD FRAME:
+        - It measures the angle between the pendulum vector (pivot to COM) and world -Z direction
+        - This is a geometric angle independent of joint coordinates
         
         Args:
             plant: Drake MultibodyPlant (before finalization)
@@ -332,9 +367,14 @@ class Pendulum3D:
             model_instance: Model instance to add pendulum bodies to
             pivot_rotation: Optional rotation of pivot frame relative to parent
         """
+
         # Default: no rotation
-        if pivot_rotation is None:
-            pivot_rotation = RotationMatrix.Identity()
+        # if pivot_rotation is None:
+        roll  = np.deg2rad(0)   # rotation about X
+        pitch = np.deg2rad(0)   # rotation about Y
+        yaw   = np.deg2rad(0)   # rotation about Z
+
+        pivot_rotation = RotationMatrix(RollPitchYaw(roll, pitch, yaw))
         
         # Create pivot frame on parent body at attachment point
         X_parent_pivot = RigidTransform(pivot_rotation, self.attachment_point)
@@ -358,18 +398,39 @@ class Pendulum3D:
             model_instance, 
             gimbal1_inertia
         )
-        
+
+        pitch_parent_frame = None
+        if shifting:
+            print(colored(f"✓ Applying zero-shift of π to pitch joint for better initial pendulum motion", 'yellow'))
+            print(colored(f"  (If the pendulum swings in the opposite direction than expected, try setting shift_pitch_negative to False)", 'yellow'))  
+            #Pitch joint (about +Y in pivot frame), with optional zero shift by pi
+            pitch_parent_frame = self.pivot_frame
+            if shift_pitch_by_pi:
+                sign = 1.0
+                pitch_parent_frame = plant.AddFrame(
+                    FixedOffsetFrame(
+                        name=f"{self.name}_pitch_parent_frame",
+                        P=self.pivot_frame,
+                        X_PF=RigidTransform(
+                            RotationMatrix.MakeYRotation(0),
+                            [0.0, 0.0, 0.0],
+                        ),
+                        model_instance=model_instance,
+                    )
+                )
+                # Store shifted frame for visualization
+                self.pitch_parent_frame = pitch_parent_frame
         # Add pitch joint (Y-axis rotation in pivot frame)
         self.pitch_joint = plant.AddJoint(
-            RevoluteJoint(
-                name=f"{self.name}_pitch",
-                frame_on_parent=self.pivot_frame,
-                frame_on_child=self.gimbal1_body.body_frame(),
-                axis=[0.0, 1.0, 0.0],
-                damping=self.damping,
-            )
+        RevoluteJoint(
+            name=f"{self.name}_pitch",
+            frame_on_parent= self.pitch_parent_frame if shifting else self.pivot_frame,
+            frame_on_child=self.gimbal1_body.body_frame(),
+            axis=[0.0, 1.0, 0.0],
+            damping=self.damping,
         )
-        
+        )         
+
         # Create pendulum body with proper inertia
         m = float(self.mass)
         r = float(self.radius)
@@ -401,12 +462,35 @@ class Pendulum3D:
         self.roll_joint = plant.AddJoint(
             RevoluteJoint(
                 name=f"{self.name}_roll",
-                frame_on_parent=self.gimbal1_body.body_frame(),
+                frame_on_parent=self.gimbal1_body.body_frame() if shifting else self.gimbal1_body.body_frame(),
                 frame_on_child=self.pendulum_body.body_frame(),
                 axis=[1.0, 0.0, 0.0],
                 damping=self.damping,
             )
         )
+
+        # Print all rotation matrices of parent frames
+        print(colored(f"\n{'='*70}", 'cyan'))
+        print(colored(f"ROTATION MATRICES OF PARENT FRAMES:", 'cyan', attrs=['bold']))
+        print(colored(f"{'='*70}", 'cyan'))
+        
+        # Pivot frame transform (X_parent_pivot)
+        print(colored(f"\n1. PIVOT FRAME (relative to parent body frame):", 'yellow', attrs=['bold']))
+        print(colored(f"   Rotation Matrix (pivot_rotation):", 'yellow'))
+        print(colored(f"{pivot_rotation.matrix()}", 'green'))
+        print(colored(f"   Translation (attachment_point): {self.attachment_point}", 'yellow'))
+        
+        # Pitch parent frame (if it exists)
+        if pitch_parent_frame is not None:
+            print(colored(f"\n2. PITCH PARENT FRAME (relative to pivot frame):", 'yellow', attrs=['bold']))
+            print(colored(f"   Frame Name: {pitch_parent_frame.name()}", 'yellow'))
+            print(colored(f"   Rotation Matrix: MakeYRotation(0) =", 'yellow'))
+            print(colored(f"{RotationMatrix.MakeYRotation(0).matrix()}", 'green'))
+            print(colored(f"   Translation: [0.0, 0.0, 1.0]", 'yellow'))
+        else:
+            print(colored(f"\n2. PITCH PARENT FRAME: Using pivot frame directly (no offset)", 'yellow'))
+        
+        print(colored(f"\n{'='*70}\n", 'cyan'))
         
         # Add visual geometry
         self._add_visual_geometry(plant, L, r)
@@ -531,6 +615,19 @@ class CupManipulator(RobotBase):
         except Exception as e:
             print(f"Warning: Could not get end effector position: {e}")
             return np.array([0.0, 0.0, 0.0])
+    
+    def apply_torques(self, plant: MultibodyPlant, context, link1_torque: float, link2_torque: float):
+        """Apply torques to the two manipulator joints.
+        
+        Args:
+            plant: The MultibodyPlant
+            context: The plant context
+            link1_torque: Torque for link1_base joint (N·m)
+            link2_torque: Torque for link2_link1 joint (N·m)
+        """
+        # Actuators are ordered by the order they were added: [link1_base, link2_link1]
+        actuator_forces = np.array([link1_torque, link2_torque])
+        plant.get_actuation_input_port().FixValue(context, actuator_forces)
 
 
 
@@ -625,14 +722,7 @@ class DrakeSceneManager:
         # Add pendulum if enabled
         if PENDULUM_ENABLED:
             print(colored("\n--- Adding Programmatic Pendulum ---", 'yellow', attrs=['bold']))
-            self.pendulum = Pendulum3D(
-                mass=PENDULUM_MASS,
-                length=PENDULUM_LENGTH,
-                radius=PENDULUM_RADIUS,
-                damping=PENDULUM_DAMPING,
-                attachment_point=PENDULUM_ATTACH_POINT,
-                name="pendulum"
-            )
+            self.pendulum = Pendulum3D(PENDULUM_CONFIG)
             
             link2_body = self.plant.GetBodyByName("link2", self.cup_manipulator.model_instance)
             pivot_rotation = RotationMatrix.MakeXRotation(np.pi)  # 180° rotation about X
@@ -645,9 +735,9 @@ class DrakeSceneManager:
             )
             
             print(colored(f"✓ Added 3D pendulum to link2", 'green'))
-            print(colored(f"  - Attachment point (link2 frame): {PENDULUM_ATTACH_POINT}", 'yellow'))
-            print(colored(f"  - Mass: {PENDULUM_MASS} kg, length: {PENDULUM_LENGTH} m, radius: {PENDULUM_RADIUS} m", 'yellow'))
-            print(colored(f"  - Joints: pendulum_pitch (Y-axis), pendulum_roll (X-axis)", 'yellow'))
+            print(colored(f"  - Attachment point (link2 frame): {PENDULUM_CONFIG.attachment_point}", 'yellow'))
+            print(colored(f"  - Mass: {PENDULUM_CONFIG.mass} kg, length: {PENDULUM_CONFIG.length} m, radius: {PENDULUM_CONFIG.radius} m", 'yellow'))
+            print(colored(f"  - Joints: {PENDULUM_CONFIG.name}_pitch (Y-axis), {PENDULUM_CONFIG.name}_roll (X-axis)", 'yellow'))
         else:
             self.pendulum = None
         
@@ -674,20 +764,109 @@ class DrakeSceneManager:
         self.cup_manipulator.initialize_state(self.plant)
         
         # Setup visualization
-        if VISUALIZE:
+        if SIMULATION_CONFIG.visualization.enabled:
             print(colored("\n--- Setting up Meshcat Visualization ---", 'yellow', attrs=['bold']))
             self.meshcat = StartMeshcat()
             visualizer_params = MeshcatVisualizerParams()
             # Enable contact visualization to debug collision issues
-            visualizer_params.show_hydroelastic = True
-            visualizer_params.show_contact_forces = True
-            visualizer = MeshcatVisualizer.AddToBuilder(
+            visualizer_params.show_hydroelastic = SIMULATION_CONFIG.visualization.show_hydroelastic
+            visualizer_params.show_contact_forces = SIMULATION_CONFIG.visualization.show_contact_forces
+            self.visualizer = MeshcatVisualizer.AddToBuilder(
                 self.builder, self.scene_graph, self.meshcat, visualizer_params
             )
             print(colored(f"✓ Meshcat visualization ready at: {self.meshcat.web_url()}", 'cyan'))
             print(colored(f"✓ Contact visualization enabled (hydroelastic + contact forces)", 'cyan'))
         
         print(colored("\n✓ Drake system setup complete", 'green', attrs=['bold']))
+    
+    def _add_frame_visualizations(self, context):
+        """Add coordinate frame visualizations to Meshcat after plant is finalized."""
+        if not SIMULATION_CONFIG.visualization.plot_frames or not SIMULATION_CONFIG.visualization.enabled or not self.meshcat:
+            return
+            
+        print(colored("\n--- Adding Frame Visualizations ---", 'yellow', attrs=['bold']))
+        
+        # Helper function to create a coordinate frame triad
+        def add_frame_triad(meshcat, path, length=0.1):
+            """Add RGB coordinate frame axes at the given path."""
+            from pydrake.geometry import Cylinder as GeoCylinder, Rgba
+            radius = length * 0.02
+            
+            # X-axis (Red)
+            meshcat.SetObject(f"{path}/x_axis", GeoCylinder(radius, length), Rgba(1, 0, 0, 0.8))
+            meshcat.SetTransform(f"{path}/x_axis", 
+                RigidTransform(RotationMatrix.MakeYRotation(np.pi/2), [length/2, 0, 0]))
+            
+            # Y-axis (Green)
+            meshcat.SetObject(f"{path}/y_axis", GeoCylinder(radius, length), Rgba(0, 1, 0, 0.8))
+            meshcat.SetTransform(f"{path}/y_axis",
+                RigidTransform(RotationMatrix.MakeXRotation(np.pi/2), [0, length/2, 0]))
+            
+            # Z-axis (Blue)
+            meshcat.SetObject(f"{path}/z_axis", GeoCylinder(radius, length), Rgba(0, 0, 1, 0.8))
+            meshcat.SetTransform(f"{path}/z_axis",
+                RigidTransform([0, 0, length/2]))
+        
+        # Add world frame at origin
+        add_frame_triad(self.meshcat, "/Frames/World", length=0.20)
+        self.meshcat.SetTransform("/Frames/World", RigidTransform())
+        print(colored("  ✓ World frame (origin)", 'cyan'))
+        
+        # Store frame info for updates
+        self.frame_list = []
+        
+        # Loop through all frames in the plant and add them
+        from pydrake.multibody.tree import FrameIndex
+        for i in range(self.plant.num_frames()):
+            frame = self.plant.get_frame(FrameIndex(i))
+            frame_name = frame.name()
+            
+            # Skip world frame (already added)
+            if frame_name == "world":
+                continue
+            
+            # Determine frame length based on name
+            if "pivot" in frame_name.lower():
+                length = 0.12
+            elif "pitch_parent" in frame_name.lower():
+                length = 0.11
+            elif "gimbal" in frame_name.lower():
+                length = 0.10
+            elif "ball" in frame_name.lower():
+                length = 0.14
+            else:
+                length = 0.15  # Default for body frames
+            
+            # Add frame visualization
+            frame_path = f"/Frames/{frame_name}"
+            add_frame_triad(self.meshcat, frame_path, length=length)
+            self.frame_list.append((frame_name, frame, length))
+            print(colored(f"  ✓ {frame_name} frame", 'cyan'))
+        
+        # Update all frame positions
+        self._update_frame_positions(context)
+        
+        print(colored(f"✓ {len(self.frame_list) + 1} frame visualizations added", 'green'))
+        print(colored("  Legend: X=Red, Y=Green, Z=Blue", 'yellow'))
+    
+    def _update_frame_positions(self, context):
+        """Update frame positions in Meshcat."""
+        if not SIMULATION_CONFIG.visualization.plot_frames or not SIMULATION_CONFIG.visualization.enabled or not self.meshcat:
+            return
+        
+        if not hasattr(self, 'frame_list'):
+            return
+            
+        # Update all frames in the list
+        for frame_name, frame, length in self.frame_list:
+            try:
+                # Get frame pose in world
+                X_WF = frame.CalcPoseInWorld(context)
+                self.meshcat.SetTransform(f"/Frames/{frame_name}", X_WF)
+            except Exception as e:
+                # Skip frames that can't be evaluated
+                continue
+    
     
     def create_simulator(self):
         """Build diagram and create simulator."""
@@ -696,6 +875,11 @@ class DrakeSceneManager:
         self.simulator = Simulator(diagram)
         self.context = self.simulator.get_mutable_context()
         print(colored("✓ Simulator created", 'green'))
+        
+        # Add frame visualizations after simulator is created
+        if SIMULATION_CONFIG.visualization.plot_frames and SIMULATION_CONFIG.visualization.enabled:
+            plant_context = self.plant.GetMyMutableContextFromRoot(self.context)
+            self._add_frame_visualizations(plant_context)
     
     def set_initial_conditions(self):
         """Set initial joint positions, velocities, and robot pose."""
@@ -709,11 +893,20 @@ class DrakeSceneManager:
         # Give pendulum an initial swing angle if enabled
         if PENDULUM_ENABLED and self.pendulum:
             # Set initial pendulum swing angle
-            # For simulation mode: non-zero angle will swing down to zero due to gravity
-            # For scene-viz mode: angle stays fixed (no physics simulation)
-            initial_pitch = np.deg2rad(30) if SIMULATION_MODE == "simulation" else np.deg2rad(0)
-            self.pendulum.set_initial_swing(plant_context, pitch_angle=initial_pitch)
-            print(colored(f"  ✓ pendulum_pitch: {np.rad2deg(initial_pitch):.3f}° (initial swing)", 'cyan'))
+            # Both modes use the same equilibrium values (hanging down)
+            # Equilibrium (hanging straight down): pitch=+180°, roll=-180°
+            if SIMULATION_CONFIG.mode == "simulation":
+                # Simulation: start at configured initial angles
+                initial_pitch = np.deg2rad(PENDULUM_CONFIG.initial_pitch)  
+                initial_roll = np.deg2rad(PENDULUM_CONFIG.initial_roll)
+            else:
+                # Scene-viz: start at equilibrium (hanging down)
+                initial_pitch = np.deg2rad(180)
+                initial_roll = np.deg2rad(-180)
+            
+            self.pendulum.set_initial_swing(plant_context, pitch_angle=initial_pitch, roll_angle=initial_roll)
+            print(colored(f"  ✓ pendulum_pitch: {np.rad2deg(initial_pitch):.3f}° (equilibrium at +180°)", 'cyan'))
+            print(colored(f"  ✓ pendulum_roll: {np.rad2deg(initial_roll):.3f}° (equilibrium at -180°)", 'cyan'))
         
         # Print actual joint positions (from URDF, not config)
         joint_positions = self.cup_manipulator.get_joint_positions(self.plant, plant_context)
@@ -746,6 +939,9 @@ class DrakeSceneManager:
         # if self.ball:
         #     ball_pos = self.ball.get_position(self.plant, plant_context)
         #     self.ball_position_log.append(ball_pos)
+        
+        # Update frame positions
+        self._update_frame_positions(plant_context)
     
     def plot_results(self):
         """Plot simulation results."""
@@ -806,7 +1002,7 @@ class DrakeSceneManager:
         
         # Save plot
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        plot_path = Path(f"plots/cup_manipulator_{SIMULATION_MODE}_{timestamp}.png")
+        plot_path = Path(f"plots/cup_manipulator_{SIMULATION_CONFIG.mode}_{timestamp}.png")
         plot_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(plot_path, dpi=150)
         print(colored(f"✓ Plot saved to: {plot_path}", 'green'))
@@ -859,9 +1055,9 @@ class DrakeSceneManager:
             try:
                 link2_body = self.plant.GetBodyByName("link2", self.cup_manipulator.model_instance)
                 X_WL2 = self.plant.EvalBodyPoseInWorld(plant_context, link2_body)
-                ball_center_world = X_WL2 @ PENDULUM_ATTACH_POINT
+                ball_center_world = X_WL2 @ PENDULUM_CONFIG.attachment_point
                 
-                print(colored(f"  Link2 attachment point (link2 frame): {PENDULUM_ATTACH_POINT}", 'yellow'))
+                print(colored(f"  Link2 attachment point (link2 frame): {PENDULUM_CONFIG.attachment_point}", 'yellow'))
                 print(colored(f"  Ball center (world frame): [{ball_center_world[0]:+.6f}, {ball_center_world[1]:+.6f}, {ball_center_world[2]:+.6f}]", 'cyan'))
                 
                 # Also print the pendulum ball body origin (pivot point)
@@ -873,7 +1069,7 @@ class DrakeSceneManager:
                         print(colored(f"  Pendulum pivot (world frame): [{pivot_pos[0]:+.6f}, {pivot_pos[1]:+.6f}, {pivot_pos[2]:+.6f}]", 'cyan'))
                         
                         # Ball COM is at [0,0,+L] in pendulum body frame
-                        ball_com_world = X_WB @ [0, 0, PENDULUM_LENGTH]
+                        ball_com_world = X_WB @ [0, 0, PENDULUM_CONFIG.length]
                         print(colored(f"  Pendulum ball COM (world frame): [{ball_com_world[0]:+.6f}, {ball_com_world[1]:+.6f}, {ball_com_world[2]:+.6f}]", 'cyan'))
                         
                         # Calculate distances
@@ -882,7 +1078,7 @@ class DrakeSceneManager:
                         
                         print(colored(f"\n  Distances:", 'yellow', attrs=['bold']))
                         print(colored(f"    Ball center to pivot: {dist_ball_to_pivot:.6f} m (should be ~0)", 'green'))
-                        print(colored(f"    Pivot to pendulum COM: {dist_pivot_to_com:.6f} m (should be {PENDULUM_LENGTH} m)", 'green'))
+                        print(colored(f"    Pivot to pendulum COM: {dist_pivot_to_com:.6f} m (should be {PENDULUM_CONFIG.length} m)", 'green'))
                     except:
                         pass
                 
@@ -909,10 +1105,17 @@ class DrakeSceneManager:
         print("=" * 70)
         print(f"View visualization at: {self.meshcat.web_url()}")
         
+        print(colored("\n⚠ COORDINATE FRAME NOTE:", 'yellow', attrs=['bold']))
+        print(colored("  Due to frame transformations in the pendulum setup:", 'yellow'))
+        print(colored("  • Pendulum hanging DOWN (equilibrium) = pitch:+180°, roll:-180°", 'yellow'))
+        print(colored("  • This matches the simulation mode behavior", 'yellow'))
+        print(colored("  • Use these offsets when setting angles\n", 'yellow'))
+        
         if PENDULUM_ENABLED:
             print(f"\nEnter joint positions (4 values in degrees, space-separated):")
             print(f"  Format: <link1_base> <link2_link1> <pendulum_pitch> <pendulum_roll>")
-            print(f"  Example: 0 45 20 10")
+            print(f"  Example: 0 45 180 -180  (pendulum hanging down)")
+            print(f"  Example: 0 45 160 -180 (pendulum swung 20° from vertical)")
             joint_names = ['link1_base', 'link2_link1', 'pendulum_pitch', 'pendulum_roll']
             expected_count = 4
         else:
@@ -948,30 +1151,48 @@ class DrakeSceneManager:
                     # Convert degrees to radians
                     angles_rad = [np.deg2rad(v) for v in values]
                     
+                    # Display what we're about to set
+                    print(colored(f"\n→ Setting joints:", 'yellow'))
+                    for joint_name, angle_deg, angle_rad in zip(joint_names, values, angles_rad):
+                        print(colored(f"    {joint_name}: {angle_deg:+7.2f}° ({angle_rad:+.4f} rad)", 'yellow'))
+                    
                     # Update joint positions
                     for joint_name, angle in zip(joint_names, angles_rad):
                         try:
                             joint = self.plant.GetJointByName(joint_name, self.cup_manipulator.model_instance)
                             if isinstance(joint, RevoluteJoint):
                                 joint.set_angle(plant_context, angle)
+                                print(colored(f"  ✓ Set {joint_name}", 'green'))
                         except Exception as e:
-                            print(f"Warning: Could not set joint {joint_name}: {e}")
-                    
-                    # Update the plant state
-                    self.plant.SetPositions(plant_context, self.plant.GetPositions(plant_context))
+                            print(colored(f"  ⚠ Warning: Could not set joint {joint_name}: {e}", 'red'))
                     
                     # Force publish to update Meshcat visualization
                     diagram.ForcedPublish(self.context)
+                    
+                    # Update frame positions
+                    self._update_frame_positions(plant_context)
                     
                     # Get updated state
                     joint_positions = self.cup_manipulator.get_joint_positions(self.plant, plant_context)
                     ee_pos = self.cup_manipulator.get_end_effector_position(self.plant, plant_context)
                     
-                    # Display updated state
-                    print(colored(f"✓ Joints updated:", 'green'))
+                    # Display updated state (actual values read back from plant)
+                    print(colored(f"\n← Actual joint values (read from plant):", 'cyan'))
                     for name, pos in joint_positions.items():
                         print(colored(f"    {name}: {np.rad2deg(pos):+7.2f}° ({pos:+.4f} rad)", 'cyan'))
-                    print(f"  End Effector: [{ee_pos[0]:+.4f}, {ee_pos[1]:+.4f}, {ee_pos[2]:+.4f}]")
+                    
+                    # Check for discrepancies
+                    print(colored(f"\n🔍 Verification (set vs. read):", 'magenta'))
+                    for joint_name, set_value in zip(joint_names, values):
+                        if joint_name in joint_positions:
+                            read_value = np.rad2deg(joint_positions[joint_name])
+                            diff = read_value - set_value
+                            if abs(diff) > 0.01:  # More than 0.01° difference
+                                print(colored(f"  ⚠ {joint_name}: set={set_value:+7.2f}° → read={read_value:+7.2f}° (Δ={diff:+.2f}°)", 'yellow'))
+                            else:
+                                print(colored(f"  ✓ {joint_name}: {set_value:+7.2f}° (match)", 'green'))
+                    
+                    print(colored(f"  End Effector: [{ee_pos[0]:+.4f}, {ee_pos[1]:+.4f}, {ee_pos[2]:+.4f}]", 'cyan'))
                     
                 except ValueError as e:
                     print(colored(f"❌ Error: Invalid input. Please enter {expected_count} numbers separated by spaces.", 'red'))
@@ -1005,11 +1226,11 @@ class DrakeSceneManager:
         
         # Initialize simulation
         self.simulator.Initialize()
-        self.simulator.set_target_realtime_rate(REALTIME_RATE)
+        self.simulator.set_target_realtime_rate(SIMULATION_CONFIG.visualization.realtime_rate)
         
         print(f"\nSimulation Duration: {self.simulation_config.simulation_time} s")
         print(f"Time Step: {self.simulation_config.timestep} s")
-        print(f"Realtime Rate: {REALTIME_RATE}x")
+        print(f"Realtime Rate: {SIMULATION_CONFIG.visualization.realtime_rate}x")
         print(f"\nActuated Joints (PD Control): link1_base, link2_link1")
         print(f"Ball: Rigidly attached to link2")
         print(f"\nManipulator Motion: Sinusoidal (for {MANIPULATOR_MOTION_DURATION:.1f}s)")
@@ -1087,13 +1308,8 @@ class DrakeSceneManager:
             link1_torque = current_Kp * (link1_desired - link1_actual) + current_Kd * (link1_desired_vel - link1_actual_vel)
             link2_torque = current_Kp * (link2_desired - link2_actual) + current_Kd * (link2_desired_vel - link2_actual_vel)
             
-            # Apply torques to manipulator joints only (2 actuators)
-            # Actuators are ordered by the order they were added: [link1_base, link2_link1]
-            actuator_forces = np.array([link1_torque, link2_torque])
-            
-            # Set actuation forces
-            self.plant.get_actuation_input_port().FixValue(plant_context, actuator_forces)
-            self.plant.get_actuation_input_port().FixValue(plant_context, actuator_forces)
+            # Apply torques to manipulator joints
+            self.cup_manipulator.apply_torques(self.plant, plant_context, link1_torque, link2_torque)
             
             # Advance simulation (dynamics will handle passive joints)
             self.simulator.AdvanceTo(current_time + self.simulation_config.timestep)
@@ -1102,7 +1318,7 @@ class DrakeSceneManager:
             self.log_data(current_time)
             
             # Print status
-            if current_time - last_print_time >= PRINT_INTERVAL:
+            if current_time - last_print_time >= SIMULATION_CONFIG.visualization.print_interval:
                 joint_positions = self.cup_manipulator.get_joint_positions(self.plant, plant_context)
                 
                 # Get joint positions (2 manipulator joints + optional 2 gimbal joints)
@@ -1122,16 +1338,17 @@ class DrakeSceneManager:
                         # Get the body pose (includes rotation and translation)
                         X_WB = self.plant.EvalBodyPoseInWorld(plant_context, pendulum_ball_body)
                         # The COM is at [0,0,-PENDULUM_LENGTH] in body frame, transform to world
-                        ball_com_world = X_WB @ [0, 0, -PENDULUM_LENGTH]
+                        ball_com_world = X_WB @ [0, 0, -PENDULUM_CONFIG.length]
                         
                         # Get attachment point in world frame
                         link2_body = self.plant.GetBodyByName("link2", self.cup_manipulator.model_instance)
                         X_WL2 = self.plant.EvalBodyPoseInWorld(plant_context, link2_body)
-                        attach_world_pos = X_WL2 @ PENDULUM_ATTACH_POINT
+                        attach_world_pos = X_WL2 @ PENDULUM_CONFIG.attachment_point
                         
                         # Vector from attachment to COM
                         pendulum_vec = ball_com_world - attach_world_pos
-                        # Angle from vertical (down is -Z direction)
+                        # Angle from vertical (down is -Z direction in WORLD FRAME)
+                        # This is a geometric measurement independent of joint coordinates
                         vertical_vec = np.array([0, 0, -1])
                         cos_angle = np.dot(pendulum_vec, vertical_vec) / (np.linalg.norm(pendulum_vec) + 1e-10)
                         cos_angle = np.clip(cos_angle, -1, 1)  # Avoid numerical errors
@@ -1167,59 +1384,7 @@ class DrakeSceneManager:
         
         # Plot results
         self.plot_results()
-    
-    def run_joint_motion(self):
-        """Run simulation with sinusoidal joint motion."""
-        print("\n[4/4] Running joint motion simulation...")
-        print("=" * 70)
-        
-        # Initialize simulation
-        self.simulator.Initialize()
-        self.simulator.set_target_realtime_rate(REALTIME_RATE)
-        
-        print(f"\nSimulation Duration: {self.simulation_config.simulation_time} s")
-        print(f"Time Step: {self.simulation_config.timestep} s")
-        print(f"Realtime Rate: {REALTIME_RATE}x")
-        print(f"Joint Motion: Sinusoidal")
-        print(f"  Amplitudes: {JOINT_MOTION_AMPLITUDE}")
-        print(f"  Frequencies: {JOINT_MOTION_FREQUENCY} Hz")
-        print("\nStarting simulation...\n")
-        
-        # Simulation loop
-        last_print_time = 0.0
-        while self.context.get_time() < self.simulation_config.simulation_time:
-            current_time = self.context.get_time()
-            
-            # Calculate desired joint positions (sinusoidal)
-            plant_context = self.plant.GetMyMutableContextFromRoot(self.context)
-            for i, joint_idx in enumerate(self.plant.GetJointIndices(self.cup_manipulator.model_instance)):
-                joint = self.plant.get_mutable_joint(joint_idx)
-                if isinstance(joint, RevoluteJoint):
-                    desired_angle = JOINT_MOTION_AMPLITUDE[i] * np.sin(2 * np.pi * JOINT_MOTION_FREQUENCY[i] * current_time)
-                    joint.set_angle(plant_context, desired_angle)
-            
-            # Advance simulation
-            self.simulator.AdvanceTo(current_time + self.simulation_config.timestep)
-            
-            # Log data
-            self.log_data(current_time)
-            
-            # Print status
-            if current_time - last_print_time >= PRINT_INTERVAL:
-                joint_positions = self.cup_manipulator.get_joint_positions(self.plant, plant_context)
-                ee_pos = self.cup_manipulator.get_end_effector_position(self.plant, plant_context)
-                
-                joint_values = list(joint_positions.values())
-                print(f"t={current_time:.2f}s | Joints: [{', '.join([f'{p:.3f}' for p in joint_values])}] | "
-                      f"EE: [{', '.join([f'{p:.3f}' for p in ee_pos])}]")
-                last_print_time = current_time
-        
-        print("\n" + "=" * 70)
-        print("Joint motion simulation complete!")
-        print("=" * 70)
-        
-        # Plot results
-        self.plot_results()
+
 
     def run_all_jts(self):
         """Interactive mode: control all joints from terminal input."""
@@ -1244,7 +1409,7 @@ class DrakeSceneManager:
         print("Type 'q' or 'exit' to quit")
         print("=" * 70)
         
-        if VISUALIZE:
+        if SIMULATION_CONFIG.visualization.enabled:
             print(f"\nMeshcat visualization: http://localhost:7007")
         
         while True:
@@ -1320,7 +1485,7 @@ def main():
     print(colored("PYDRAKE: Cup Manipulator Visualization", 'cyan', attrs=['bold']))
     print(colored("Educational Robotics Simulation", 'cyan'))
     print("=" * 70)
-    print(colored(f"Mode: {SIMULATION_MODE}", 'yellow'))
+    print(colored(f"Mode: {SIMULATION_CONFIG.mode}", 'yellow'))
     print(colored(f"Time Step: {SIMULATION_CONFIG.timestep} s", 'yellow'))
     print(colored(f"Duration: {SIMULATION_CONFIG.simulation_time} s", 'yellow'))
     print("=" * 70 + "\n")
@@ -1339,16 +1504,16 @@ def main():
         scene_manager.set_initial_conditions()
         
         # Run simulation based on mode
-        if SIMULATION_MODE == "scene-viz":
+        if SIMULATION_CONFIG.mode == "scene-viz":
             scene_manager.run_scene_viz()
-        elif SIMULATION_MODE == "simulation":
+        elif SIMULATION_CONFIG.mode == "simulation":
             scene_manager.run_simulation()
-        elif SIMULATION_MODE == "joint-motion":
+        elif SIMULATION_CONFIG.mode == "joint-motion":
             scene_manager.run_joint_motion()
-        elif SIMULATION_MODE == "run-all-jts":
+        elif SIMULATION_CONFIG.mode == "run-all-jts":
             scene_manager.run_all_jts()
         else:
-            raise ValueError(f"Unknown simulation mode: {SIMULATION_MODE}")
+            raise ValueError(f"Unknown simulation mode: {SIMULATION_CONFIG.mode}")
     
     except Exception as e:
         print(f"\n{colored('ERROR:', 'red', attrs=['bold'])} {e}")
