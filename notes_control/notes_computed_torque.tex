@@ -1,0 +1,629 @@
+\section*{Derivation with explanation (matching the notes in the images)}
+
+\subsection*{0) System definition (actuated vs.\ unactuated)}
+Assume the generalized coordinates are partitioned into actuated ($a$) and unactuated ($u$) parts:
+\begin{equation}
+q =
+\begin{bmatrix}
+q_a\\
+q_u
+\end{bmatrix},
+\qquad
+\dot q =
+\begin{bmatrix}
+\dot q_a\\
+\dot q_u
+\end{bmatrix},
+\qquad
+\ddot q =
+\begin{bmatrix}
+\ddot q_a\\
+\ddot q_u
+\end{bmatrix},
+\qquad
+b(q,\dot q)=
+\begin{bmatrix}
+b_a\\
+b_u
+\end{bmatrix}.
+\end{equation}
+Let $n_a=\dim(q_a)$ and $n_u=\dim(q_u)$. The input torque acts only on actuated coordinates:
+\begin{equation}
+\tau \in \mathbb{R}^{n_a},
+\qquad
+B =
+\begin{bmatrix}
+I_{n_a}\\
+0
+\end{bmatrix}\in \mathbb{R}^{(n_a+n_u)\times n_a},
+\qquad
+B\tau =
+\begin{bmatrix}
+\tau\\
+0
+\end{bmatrix}.
+\end{equation}
+
+\subsection*{1) Equations of motion (EoM) and block partition}
+Start from the multibody dynamics
+\begin{equation}
+M(q)\,\ddot q + b(q,\dot q) = B\,\tau.
+\tag{EOM}
+\end{equation}
+Partition the mass matrix:
+\begin{equation}
+M(q)=
+\begin{bmatrix}
+M_{aa} & M_{au}\\
+M_{ua} & M_{uu}
+\end{bmatrix}.
+\end{equation}
+Substituting the partitions into (EOM) yields
+\begin{equation}
+\begin{bmatrix}
+M_{aa} & M_{au}\\
+M_{ua} & M_{uu}
+\end{bmatrix}
+\begin{bmatrix}
+\ddot q_a\\
+\ddot q_u
+\end{bmatrix}
++
+\begin{bmatrix}
+b_a\\
+b_u
+\end{bmatrix}
+=
+\begin{bmatrix}
+\tau\\
+0
+\end{bmatrix}.
+\end{equation}
+Equivalently, the two block rows are
+\begin{align}
+M_{aa}\ddot q_a + M_{au}\ddot q_u + b_a &= \tau,
+\tag{E1}\\
+M_{ua}\ddot q_a + M_{uu}\ddot q_u + b_u &= 0.
+\tag{E2}
+\end{align}
+\noindent
+\textbf{Explanation:} (E1) is the actuated dynamics driven by $\tau$, while (E2) is the unactuated dynamics (no direct input), which is the essence of underactuation.
+
+\subsection*{2) PD tracking on actuated coordinates}
+Given a desired actuated trajectory $q_{a,d}(t)$, define errors
+\begin{equation}
+e_a = q_{a,d}-q_a,
+\qquad
+\dot e_a = \dot q_{a,d}-\dot q_a.
+\end{equation}
+Choose the commanded actuated acceleration (PD + feedforward):
+\begin{equation}
+\ddot q_{a,\mathrm{cmd}}
+=
+\ddot q_{a,d} + K_p e_a + K_d \dot e_a.
+\tag{C1}
+\end{equation}
+To form a full commanded acceleration, select
+\begin{equation}
+\ddot q_{\mathrm{cmd}}
+=
+\begin{bmatrix}
+\ddot q_{a,\mathrm{cmd}}\\
+\ddot q_{u,\mathrm{cmd}}
+\end{bmatrix},
+\qquad
+\text{and in the notes: }\ddot q_{u,\mathrm{cmd}}=0.
+\tag{C2}
+\end{equation}
+\noindent
+\textbf{Explanation:} Setting $\ddot q_{u,\mathrm{cmd}}=0$ is a \emph{controller choice} (an assumption), not a physical constraint. The real $\ddot q_u$ is determined by (E2).
+
+\subsection*{3) ``Actuated inverse dynamics'' / computed torque law used in the notes}
+Using only the actuated row (E1) and substituting the commanded acceleration, define the torque law:
+\begin{align}
+\tau
+&=
+M_{aa}\,\ddot q_{a,\mathrm{cmd}} + M_{au}\,\ddot q_{u,\mathrm{cmd}} + b_a
+\nonumber\\
+&\overset{\ddot q_{u,\mathrm{cmd}}=0}{=}
+M_{aa}\,\ddot q_{a,\mathrm{cmd}} + b_a.
+\tag{T}
+\end{align}
+\noindent
+\textbf{Explanation:} This is a computed-torque-like law, but it ignores the unknown true passive acceleration $\ddot q_u$ by setting its \emph{command} to zero.
+
+\subsection*{4) Closed-loop consequence on the coupled (underactuated) system}
+Substitute (T) into the true actuated dynamics (E1):
+\begin{equation}
+M_{aa}\ddot q_a + M_{au}\ddot q_u + b_a
+=
+M_{aa}\ddot q_{a,\mathrm{cmd}} + b_a.
+\end{equation}
+Cancel $b_a$ and rearrange:
+\begin{equation}
+M_{aa}\big(\ddot q_a - \ddot q_{a,\mathrm{cmd}}\big)
++ M_{au}\ddot q_u = 0.
+\tag{CL1}
+\end{equation}
+If $M_{aa}$ is invertible, then
+\begin{equation}
+\ddot q_a
+=
+\ddot q_{a,\mathrm{cmd}}
+-
+M_{aa}^{-1}M_{au}\ddot q_u.
+\tag{CL2}
+\end{equation}
+\noindent
+\textbf{Explanation:} In an underactuated system, $\ddot q_u$ is generally nonzero and not directly controlled. The coupling term $-M_{aa}^{-1}M_{au}\ddot q_u$ acts like a disturbance, so $\ddot q_a$ does not equal $\ddot q_{a,\mathrm{cmd}}$ in general.
+
+\subsection*{5) Passive acceleration is determined by the unactuated dynamics}
+From (E2),
+\begin{equation}
+M_{ua}\ddot q_a + M_{uu}\ddot q_u + b_u = 0.
+\end{equation}
+If $M_{uu}$ is invertible,
+\begin{equation}
+\ddot q_u = -M_{uu}^{-1}\big(M_{ua}\ddot q_a + b_u\big).
+\tag{U}
+\end{equation}
+\noindent
+\textbf{Explanation:} $\ddot q_u$ is dictated by the coupled mechanics. Because there is no input in (E2), you cannot freely impose $\ddot q_u=\ddot q_{u,\mathrm{cmd}}$.
+
+\subsection*{6) When does the simple law achieve ``perfect'' tracking?}
+From (CL2), exact matching $\ddot q_a=\ddot q_{a,\mathrm{cmd}}$ would require the coupling effect to vanish, e.g.,
+\begin{equation}
+M_{au}=0 \quad \text{or} \quad \ddot q_u = 0 \text{ along the motion,}
+\end{equation}
+which generally does not hold for underactuated coupled systems.
+
+\bigskip
+\noindent
+\textbf{Summary:} The notes derive a computed-torque-like input for the actuated coordinates, but underactuation implies unactuated dynamics create coupling terms that prevent exact enforcement of the commanded actuated acceleration unless special structural conditions hold.
+
+\section*{Computed Torque Control - Implementation in Drake}
+
+\subsection*{System Overview}
+\textbf{Underactuated System:}
+\begin{itemize}
+\item Total DOF: $n_v = 4$ (2 actuated manipulator joints + 2 passive pendulum joints)
+\item Actuated DOF: $n_u = 2$ (link1\_base, link2\_link1)
+\item Passive DOF: 2 (pendulum\_pitch, pendulum\_roll)
+\item System is underactuated: $n_u < n_v$
+\end{itemize}
+
+\subsection*{Control Law Implementation}
+
+The computed torque controller implements:
+\begin{equation}
+\boldsymbol{\tau} = M(q) \cdot [\ddot{q}_d + K_p \cdot e + K_d \cdot \dot{e}] + C(q,\dot{q}) + g(q)
+\end{equation}
+
+Where:
+\begin{itemize}
+\item $\boldsymbol{\tau}$: Control torques (actuated joints only)
+\item $M(q)$: Mass/inertia matrix
+\item $\ddot{q}_d$: Desired acceleration from trajectory
+\item $e = q_d - q$: Position error
+\item $\dot{e} = \dot{q}_d - \dot{q}$: Velocity error  
+\item $C(q,\dot{q})$: Coriolis and centrifugal forces
+\item $g(q)$: Gravity forces
+\item $K_p, K_d$: Feedback gains (smaller than PD: $K_p=20$, $K_d=5$)
+\end{itemize}
+
+\subsection*{Step-by-Step Algorithm}
+
+\textbf{Step 1: Compute tracking errors}
+\begin{align}
+e &= q_d - q_{\text{actuated}} \\
+\dot{e} &= \dot{q}_d - \dot{q}_{\text{actuated}}
+\end{align}
+
+\textbf{Step 2: Compute commanded acceleration (with feedback)}
+
+Key insight: Feedback is included IN the acceleration command:
+\begin{equation}
+\ddot{q}_{\text{cmd}} = \ddot{q}_d + K_p \cdot e + K_d \cdot \dot{e}
+\tag{Commanded Accel}
+\end{equation}
+
+\textbf{Step 3: Embed in full system acceleration}
+
+For underactuated systems, create full acceleration vector:
+\begin{equation}
+\ddot{q}_{\text{cmd,full}} = 
+\begin{bmatrix}
+\ddot{q}_{\text{cmd}}[0] \\
+\ddot{q}_{\text{cmd}}[1] \\
+0 \\
+0
+\end{bmatrix}
+\in \mathbb{R}^{4}
+\quad
+\text{(2 actuated + 2 passive)}
+\end{equation}
+
+\textbf{Step 4: Apply inverse dynamics}
+
+Use Drake's \texttt{CalcInverseDynamics()}:
+\begin{equation}
+\boldsymbol{\tau}_{\text{full}} = M(q) \cdot \ddot{q}_{\text{cmd,full}} + C(q,\dot{q}) + g(q)
+\tag{Inverse Dynamics}
+\end{equation}
+
+This returns generalized forces for ALL DOF: $\boldsymbol{\tau}_{\text{full}} \in \mathbb{R}^{4}$
+
+\textbf{Step 5: Map to actuator commands}
+
+Two modes implemented:
+
+\textbf{Mode 1: "truncate" (simple)}
+\begin{equation}
+u = \boldsymbol{\tau}_{\text{full}}[0:2]
+\end{equation}
+Assumes actuators directly correspond to first 2 generalized forces.
+
+\textbf{Mode 2: "full" (least-squares projection)}
+
+Use actuation matrix $B \in \mathbb{R}^{4 \times 2}$:
+\begin{equation}
+B = \begin{bmatrix}
+1 & 0 \\
+0 & 1 \\
+0 & 0 \\
+0 & 0
+\end{bmatrix}
+= \begin{bmatrix}
+I_{2} \\
+0
+\end{bmatrix}
+\end{equation}
+
+Solve least-squares:
+\begin{equation}
+u^* = \arg\min_u \|B \cdot u - \boldsymbol{\tau}_{\text{full}}\|^2
+\tag{LS Projection}
+\end{equation}
+
+Solution (using \texttt{np.linalg.lstsq}):
+\begin{equation}
+u = (B^T B)^{-1} B^T \boldsymbol{\tau}_{\text{full}} = \boldsymbol{\tau}_{\text{full}}[0:2]
+\end{equation}
+
+For this specific system, both modes give the same result because $B$ has the identity structure.
+
+\subsection*{Why This Works}
+
+\textbf{Key Property:} The feedback term is multiplied by $M(q)$ inside inverse dynamics.
+
+Expanding the control law:
+\begin{align}
+\boldsymbol{\tau} &= M(q) \cdot [\ddot{q}_d + K_p e + K_d \dot{e}] + C(q,\dot{q}) + g(q) \\
+&= M(q)\ddot{q}_d + M(q)K_p e + M(q)K_d \dot{e} + C(q,\dot{q}) + g(q)
+\end{align}
+
+\textbf{Benefits:}
+\begin{itemize}
+\item Feedback gains are properly scaled by the mass matrix
+\item Gravity and Coriolis are fully compensated
+\item Smaller feedback gains needed ($K_p=20$ vs PD's $K_p=100$)
+\item Better tracking performance
+\item No steady-state error from gravity
+\end{itemize}
+
+\subsection*{Comparison with PD Controller}
+
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Aspect} & \textbf{PD Controller} & \textbf{Computed Torque} \\
+\hline
+Control Law & $\tau = K_p e + K_d \dot{e}$ & $\tau = M[\ddot{q}_d + K_p e + K_d \dot{e}] + C + g$ \\
+\hline
+Gains & $K_p=100$, $K_d=10$ & $K_p=20$, $K_d=5$ (5x \& 2x smaller) \\
+\hline
+Dynamics Comp. & None & Full (gravity + Coriolis) \\
+\hline
+Tracking & Good & Excellent \\
+\hline
+Complexity & Simple & Requires plant model \\
+\hline
+\end{tabular}
+
+\subsection*{Implementation Details (Drake)}
+
+\textbf{Drake API calls:}
+\begin{enumerate}
+\item \texttt{plant.SetPositions(context, q)} - update plant state
+\item \texttt{plant.SetVelocities(context, q\_dot)} - update velocities  
+\item \texttt{plant.CalcInverseDynamics(context, vdot, forces)} - compute $\tau$
+\item \texttt{plant.MakeActuationMatrix()} - get $B$ matrix
+\end{enumerate}
+
+\textbf{Controller Structure (LeafSystem):}
+\begin{itemize}
+\item Input port: Full state $[q, \dot{q}] \in \mathbb{R}^{8}$ (4 positions + 4 velocities)
+\item Output port: Control torques $u \in \mathbb{R}^{2}$ (actuated joints only)
+\item Called every timestep by Drake simulator
+\end{itemize}
+
+\subsection*{Trajectory Generation}
+
+Sinusoidal reference for actuated joints:
+\begin{align}
+q_d(t) &= A \sin(2\pi f t) \\
+\dot{q}_d(t) &= 2\pi f A \cos(2\pi f t) \\
+\ddot{q}_d(t) &= -(2\pi f)^2 A \sin(2\pi f t)
+\end{align}
+
+Parameters:
+\begin{itemize}
+\item Amplitudes: $A = [\pi/3, \pi/2.5]$ rad
+\item Frequencies: $f = [1.2, 1.0]$ Hz
+\item Duration: 3.0 s (then hold position)
+\end{itemize}
+
+\subsection*{Underactuation Constraint}
+
+\textbf{Important:} Even though we command $\ddot{q}_{\text{cmd,full}}[2:4] = 0$ for passive joints, the actual acceleration $\ddot{q}_{\text{actual}}[2:4]$ is NOT zero.
+
+The passive joint dynamics are governed by:
+\begin{equation}
+M_{uu}\ddot{q}_u + M_{ua}\ddot{q}_a + b_u = 0
+\end{equation}
+
+Where:
+\begin{itemize}
+\item $M_{uu}$: Mass matrix for passive joints
+\item $M_{ua}$: Coupling between passive and actuated joints
+\item $\ddot{q}_u$: Actual passive joint accelerations (not commanded)
+\item $\ddot{q}_a$: Actuated joint accelerations
+\end{itemize}
+
+The coupling term $M_{ua}\ddot{q}_a$ means passive joints move in response to actuated motion.
+
+\section*{Mathematical Derivation (Generalized Form)}
+
+\section*{Mathematical Derivation (Generalized Form)}
+
+\subsection*{Notation: $q$ vs $v$ (positions vs velocities)}
+
+In Drake and multibody dynamics, generalized positions $q$ and velocities $v$ are related by:
+\begin{equation}
+\dot{q} = N(q) v
+\tag{Kinematic Map}
+\end{equation}
+
+where $N(q)$ is configuration-dependent. Therefore:
+\begin{itemize}
+\item $n_q = \dim(q)$ (position dimension)
+\item $n_v = \dim(v)$ (velocity dimension)
+\item Often $n_q \neq n_v$ (e.g., quaternions: 4 params in $q$, 3 in $v$)
+\end{itemize}
+
+For this reason, dynamics are expressed using $v$ and $\dot{v}$, not $\ddot{q}$.
+
+\subsection*{Plant Dynamics (Underactuated System)}
+
+The true plant obeys:
+\begin{equation}
+M(q) \dot{v} + b(q,v) = \tau_{\text{ext}} + B u
+\tag{Plant Dynamics}
+\end{equation}
+
+Where:
+\begin{itemize}
+\item $q \in \mathbb{R}^{n_q}$: Generalized positions
+\item $v \in \mathbb{R}^{n_v}$: Generalized velocities
+\item $u \in \mathbb{R}^{n_u}$: Actuator inputs (torques/forces)
+\item $M(q) \in \mathbb{R}^{n_v \times n_v}$: Mass/inertia matrix
+\item $b(q,v) \in \mathbb{R}^{n_v}$: Bias term (Coriolis + gravity)
+\item $B \in \mathbb{R}^{n_v \times n_u}$: Actuation matrix
+\end{itemize}
+
+\textbf{Underactuation:} $n_u < n_v$ or $\text{rank}(B) < n_v$
+
+This means not all generalized forces are achievable:
+\begin{equation}
+\mathcal{T}_{\text{achievable}} = \{\tau \in \mathbb{R}^{n_v} \mid \tau = Bu \text{ for some } u\} = \text{Range}(B)
+\end{equation}
+
+\subsection*{Underactuation vs Redundancy: Clarification}
+
+\textbf{Conceptual Understanding:}
+
+When we pick actuator inputs $u \in \mathbb{R}^{n_u}$, they generate generalized forces:
+\begin{equation}
+\tau_{\text{gen}} = Bu \in \mathbb{R}^{n_v}
+\end{equation}
+
+The relationship between $n_u$, $n_v$, and $\text{rank}(B)$ determines three distinct scenarios:
+
+\subsubsection*{Case 1: Fully Actuated System}
+
+If $\text{rank}(B) = n_v$ (roughly: enough independent actuators), then for \textbf{any} desired generalized force $\tau^* \in \mathbb{R}^{n_v}$, we can find $u$ such that:
+\begin{equation}
+Bu = \tau^*
+\end{equation}
+
+In this case, the controller can exactly produce any desired force.
+
+\subsubsection*{Case 2: Underactuated System (No Exact Solution)}
+
+If $\text{rank}(B) < n_v$, then the achievable generalized forces form a proper subspace:
+\begin{equation}
+\text{Range}(B) \subsetneq \mathbb{R}^{n_v}
+\end{equation}
+
+For a generic desired force $\tau^* \in \mathbb{R}^{n_v}$:
+\begin{equation}
+\tau^* \notin \text{Range}(B) \quad \Rightarrow \quad \text{No exact solution } u \text{ exists}
+\end{equation}
+
+\textbf{Example:} If you have 4 actuators ($u \in \mathbb{R}^4$) but the plant has $n_v = 6$ generalized velocities (e.g., floating base robot with $n_v = 6 + n_{\text{joints}}$), then $Bu$ lives in a 4-dimensional subspace of $\mathbb{R}^6$. Your inverse-dynamics target $\tau^*$ generally has components you cannot produce.
+
+\textbf{Solution:} Use least-squares to find the closest achievable force:
+\begin{equation}
+u^* = \arg\min_u \|Bu - \tau^*\|^2 = (B^TB)^{-1}B^T\tau^*
+\end{equation}
+
+This gives the best approximation $Bu^* = \Pi_{\text{Range}(B)}(\tau^*)$ (orthogonal projection).
+
+\subsubsection*{Case 3: Redundant Actuation (Many Solutions)}
+
+If you have \textbf{more actuators than velocity DOFs} ($n_u > n_v$) or $B$ has a nontrivial nullspace, then even when a solution exists, it may be \textbf{non-unique}:
+\begin{equation}
+Bu = \tau^* \quad \Rightarrow \quad u = u_0 + z, \quad \text{where } z \in \text{Null}(B)
+\end{equation}
+
+\textbf{Example:} A robot with 7 joints but only 6 DOF of end-effector motion has a 1-dimensional nullspace. Many joint torque combinations produce the same end-effector force.
+
+\textbf{Solution:} Least-squares (minimum-norm) picks the particular solution with smallest $\|u\|$:
+\begin{equation}
+u^* = B^{\dagger}\tau^* = (B^TB)^{-1}B^T\tau^* \quad \text{(pseudoinverse)}
+\end{equation}
+
+This is the unique minimum-norm solution.
+
+\subsubsection*{Summary of Cases}
+
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Condition} & \textbf{Case} & \textbf{Solution Existence} & \textbf{Least-Squares Role} \\
+\hline
+$\text{rank}(B) = n_v = n_u$ & Fully actuated & Unique exact $u$ & Not needed \\
+\hline
+$\text{rank}(B) < n_v$ & Underactuated & No exact $u$ & Finds closest $Bu$ to $\tau^*$ \\
+\hline
+$n_u > n_v$ or $\text{Null}(B) \neq \{0\}$ & Redundant & Many exact $u$ & Picks minimum-norm $u$ \\
+\hline
+\end{tabular}
+
+\bigskip
+\noindent
+\textbf{Our System:} With $n_u = 2$ actuators and $n_v = 4$ velocities, we have Case 2 (underactuated). The least-squares solution projects desired forces onto the 2-dimensional achievable subspace $\text{Range}(B) \subset \mathbb{R}^4$.
+
+\subsection*{Computed Torque Control Law}
+
+\textbf{Step 1: Define desired trajectory and errors}
+\begin{align}
+e &= q_d - q \\
+\dot{e} &= v_d - v
+\end{align}
+
+\textbf{Step 2: Compute commanded acceleration with PD feedback}
+\begin{equation}
+\dot{v}_{\text{cmd}} = \dot{v}_d + K_p e + K_d \dot{e}
+\tag{Commanded Velocity Rate}
+\end{equation}
+
+For underactuated systems, embed actuated commands into full dimension:
+\begin{equation}
+\dot{v}_{\text{cmd}} = 
+\begin{bmatrix}
+\dot{v}_{a,\text{cmd}} \\
+0
+\end{bmatrix}
+\in \mathbb{R}^{n_v}
+\quad \text{where} \quad
+\dot{v}_{a,\text{cmd}} = \dot{v}_{a,d} + K_p e_a + K_d \dot{e}_a
+\end{equation}
+
+\textbf{Step 3: Compute desired generalized forces via inverse dynamics}
+\begin{equation}
+\tau^* = M(q) \dot{v}_{\text{cmd}} + b(q,v)
+\tag{Desired Gen. Forces}
+\end{equation}
+
+\textbf{Key Property:} This expands to:
+\begin{equation}
+\tau^* = M(q)[\dot{v}_d + K_p e + K_d \dot{e}] + b(q,v)
+= M(q)\dot{v}_d + M(q)K_p e + M(q)K_d \dot{e} + b(q,v)
+\end{equation}
+
+The feedback terms are scaled by $M(q)$, providing proper inertial compensation.
+
+\textbf{Step 4: Handle underactuation - map $\tau^*$ to actuator commands $u$}
+
+\textbf{Problem:} In underactuated systems, $\tau^* \notin \text{Range}(B)$ in general, so we cannot find $u$ such that:
+\begin{equation}
+Bu = \tau^*
+\end{equation}
+
+\textbf{Solution (Two Modes):}
+
+\textbf{Mode 1: "Truncate"} - Assume special structure
+\begin{equation}
+B = \begin{bmatrix} I_{n_u} \\ 0 \end{bmatrix}
+\quad \Rightarrow \quad
+u = \tau^*_{1:n_u}
+\end{equation}
+
+Valid when actuators correspond to first $n_u$ generalized coordinates.
+
+\textbf{Mode 2: "Full" (Least-Squares Projection)} - General case
+
+Find $u$ that minimizes residual:
+\begin{equation}
+u^* = \arg\min_u \|Bu - \tau^*\|^2
+\tag{LS Problem}
+\end{equation}
+
+Solution:
+\begin{equation}
+u^* = (B^T B)^{-1} B^T \tau^* = B^{\dagger} \tau^*
+\tag{Pseudoinverse}
+\end{equation}
+
+The applied generalized force is:
+\begin{equation}
+\tau_{\text{applied}} = Bu^* = BB^{\dagger}\tau^* = \Pi_{\text{Range}(B)}(\tau^*)
+\end{equation}
+
+This is the orthogonal projection of $\tau^*$ onto the achievable subspace $\text{Range}(B)$.
+
+\subsection*{Closed-Loop Dynamics}
+
+Substituting $u^*$ into plant dynamics (assuming $\tau_{\text{ext}}=0$):
+\begin{equation}
+M(q)\dot{v} + b(q,v) = Bu^* = \Pi_{\text{Range}(B)}(\tau^*)
+\end{equation}
+
+Expanding $\tau^*$:
+\begin{equation}
+M(q)\dot{v} + b(q,v) = \Pi_{\text{Range}(B)}\big[M(q)\dot{v}_{\text{cmd}} + b(q,v)\big]
+\tag{Closed-Loop}
+\end{equation}
+
+\textbf{Analysis:}
+\begin{itemize}
+\item \textbf{Fully actuated} ($\text{Range}(B) = \mathbb{R}^{n_v}$): Projection is identity, recovers classical computed torque with perfect tracking.
+\item \textbf{Underactuated}: Controller applies closest achievable forces in least-squares sense. Tracking depends on coupling structure.
+\end{itemize}
+
+\subsection*{Implementation in Drake: Our Specific System}
+
+\textbf{System parameters:}
+\begin{align}
+n_q &= 4 \quad \text{(quaternions not used, so } n_q = n_v\text{)} \\
+n_v &= 4 \quad \text{(2 actuated + 2 passive)} \\
+n_u &= 2 \quad \text{(link1\_base, link2\_link1)}
+\end{align}
+
+\textbf{Actuation matrix:}
+\begin{equation}
+B = \begin{bmatrix}
+1 & 0 \\
+0 & 1 \\
+0 & 0 \\
+0 & 0
+\end{bmatrix} \in \mathbb{R}^{4 \times 2}
+\end{equation}
+
+\textbf{Observation:} For this structure, both modes ("truncate" and "full") yield identical results:
+\begin{align}
+u_{\text{truncate}} &= \tau^*[0:2] \\
+u_{\text{full}} &= (B^T B)^{-1}B^T\tau^* = I_2 \cdot \begin{bmatrix} I_2 & 0 \end{bmatrix} \tau^* = \tau^*[0:2]
+\end{align}
+
+However, "full" mode is more general and works for arbitrary $B$.
+```

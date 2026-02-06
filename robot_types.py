@@ -75,7 +75,8 @@ class VisualizationConfig:
     interactive: bool = True  # Enable interactive play/pause/repeat controls
     realtime_rate: float = 0.5  # 1.0 = real-time, 0.5 = half speed
     update_every_step: bool = True  # Update Meshcat every simulation step
-    print_interval: float = 0.25  # Print status every N seconds
+    print_interval: float = 0.25  # Print status every N seconds (terminal output)
+    logging_interval: float = 0.02  # Data logging frequency for smooth plots (50 Hz)
     
     # Meshcat settings
     meshcat_host: str = "localhost"
