@@ -30,8 +30,8 @@
   <link name="link1">
     <inertial>
       <origin xyz="-0.549225 5.09487e-18 0.0251674" rpy="0 0 0"/>
-      <mass value="10.8153"/>
-      <inertia ixx="0.0128988" ixy="0" ixz="0.0266598" iyy="0.981141" iyz="0" izz="0.983505"/>
+      <mass value="2.10"/>
+      <inertia ixx="0.0170" ixy="0" ixz="0" iyy="0.0170" iyz="0" izz="0.0026"/>
     </inertial>
     <!-- Part link1 -->
     <visual>
@@ -54,8 +54,8 @@
   <link name="link2">
     <inertial>
       <origin xyz="-0.499172 -1.13183e-17 -0.0190625" rpy="0 0 0"/>
-      <mass value="9.62243"/>
-      <inertia ixx="0.00834558" ixy="0" ixz="0" iyy="0.75801" iyz="0" izz="0.764024"/>
+      <mass value="1.70"/>
+      <inertia ixx="0.0105" ixy="0" ixz="0" iyy="0.0105" iyz="0" izz="0.0017"/>
     </inertial>
     <!-- Part cup -->
     <visual>

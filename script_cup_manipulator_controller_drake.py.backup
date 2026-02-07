@@ -161,15 +161,6 @@ from pydrake.all import (
     # Controllers
     InverseDynamicsController,
     
-    # Trajectory Optimization
-    DirectCollocation,
-    PiecewisePolynomial,
-    
-    # Optimization
-    Solve,
-    BoundingBoxConstraint,
-    LinearEqualityConstraint,
-    
     # Mathematical utilities
     Quaternion,
     RotationMatrix,
@@ -195,13 +186,10 @@ from robot_types import (
 # ============================================================================
 
 parser = argparse.ArgumentParser(description='Drake Diagram-based controller architecture')
-parser.add_argument('--mode', type=str, choices=['pd', 'inverse-dynamics', 'computed-torque', 'scene-viz', 'dynamics-validation', 'trajectory-optimized'],
-                    default='trajectory-optimized', help='Controller type (scene-viz = static visualization only, dynamics-validation = validate manual EOM, trajectory-optimized = optimal trajectory for minimum pendulum swing)')
+parser.add_argument('--mode', type=str, choices=['pd', 'inverse-dynamics', 'computed-torque', 'scene-viz'],
+                    default='computed-torque', help='Controller type (scene-viz = static visualization only)')
 parser.add_argument('--visualize', type=bool, default=True, help='Enable visualization')
 parser.add_argument('--plot_frames', type=bool, default=True, help='Plot coordinate frames')
-parser.add_argument('--q_start', type=float, nargs=2, default=[0.0, 0.0], help='Start joint positions [link1, link2] in degrees')
-parser.add_argument('--q_goal', type=float, nargs=2, default=[45.0, -30.0], help='Goal joint positions [link1, link2] in degrees')
-parser.add_argument('--traj_duration', type=float, default=3.0, help='Trajectory duration in seconds')
 args, _ = parser.parse_known_args()
 
 # ============================================================================
@@ -211,9 +199,9 @@ args, _ = parser.parse_known_args()
 # --- Cup Manipulator Configuration ---
 CUP_MANIPULATOR_CONFIG = create_cup_manipulator_config(
     urdf_path=str(Path("model_using_onshape_to_robot/cup_manipulator/cup_manipulator_obj.urdf").absolute()),
-    joint_angles=(0.1, 0.1),
-    damping=(0.5, 0.5),      # LOW damping → allows oscillations (was 10.5, high damping prevented oscillations)
-    stiffness=(50.0, 50.0),  # Non-zero stiffness → spring restoring force needed for oscillations (was 0.0)
+    joint_angles=(0.0, 0.0),
+    damping=(0.0, 0.0),
+    stiffness=(0.0, 0.0),
     friction=(0.05, 0.05),
 )
 
@@ -258,14 +246,6 @@ CONTROLLER_MODE = args.mode
 MANIPULATOR_MOTION_DURATION = 3.0  # seconds
 JOINT_MOTION_AMPLITUDE = [np.pi/3, np.pi/2.5]  # radians
 JOINT_MOTION_FREQUENCY = [1.2/4, 1.0/4]  # Hz - increased for smoother motion
-
-# --- Trajectory Optimization Configuration ---
-TRAJECTORY_START = [np.deg2rad(80.0), np.deg2rad(-160.0), 0.0, np.deg2rad(180.0)]  # [link1, link2, pitch, roll] - ball hanging down
-TRAJECTORY_GOAL = [np.deg2rad(20.0), np.deg2rad(-40.0), 0.0, np.deg2rad(180.0)]    # End with ball hanging down (zero swing)
-TRAJECTORY_DURATION = args.traj_duration
-TRAJECTORY_NUM_SAMPLES = 30  # Number of knot points for DirectCollocation
-TRAJECTORY_PENDULUM_WEIGHT = 100.0  # Cost weight for pendulum deflection
-TRAJECTORY_TORQUE_WEIGHT = 0.1  # Cost weight for control effort
 
 
 # ============================================================================
@@ -321,298 +301,6 @@ class SinusoidalTrajectoryGenerator:
             q_desired = self.stop_position
             q_dot_desired = np.zeros_like(self.amplitudes)
             q_ddot_desired = np.zeros_like(self.amplitudes)
-        
-        return q_desired, q_dot_desired, q_ddot_desired
-
-
-# ============================================================================
-# TRAJECTORY OPTIMIZER CLASS
-# ============================================================================
-
-class TrajectoryOptimizer:
-    """
-    Optimizes manipulator trajectories to minimize pendulum swing using DirectCollocation.
-    
-    Uses Drake's trajectory optimization to find optimal joint trajectories that:
-    - Move manipulator from start to goal position
-    - Minimize pendulum deflection during motion
-    - Respect dynamics constraints automatically
-    - Stay within joint, velocity, and torque limits
-    """
-    
-    def __init__(self, plant, plant_context, num_samples=30):
-        """
-        Initialize trajectory optimizer.
-        
-        Args:
-            plant: MultibodyPlant with full robot model (manipulator + pendulum)
-            plant_context: Context for the plant
-            num_samples: Number of knot points for collocation
-        """
-        self.plant = plant
-        self.plant_context = plant_context
-        self.num_samples = num_samples
-        self.optimized_trajectory = None
-        
-    def optimize_trajectory(self, q_start, q_goal, duration, 
-                           pendulum_weight=100.0, torque_weight=0.1,
-                           max_pendulum_swing_deg=30.0):
-        """
-        Optimize trajectory from start to goal with minimum pendulum swing.
-        
-        Args:
-            q_start: Initial state [4] - [link1, link2, pitch, roll] (rad)
-            q_goal: Final state [4] - [link1, link2, pitch, roll] (rad)
-            duration: Trajectory duration [s]
-            pendulum_weight: Cost weight for pendulum deflection
-            torque_weight: Cost weight for control effort
-            max_pendulum_swing_deg: Maximum allowed pendulum swing during motion [degrees]
-            
-        Returns:
-            PiecewisePolynomial: Optimized trajectory with q(t), q̇(t), q̈(t)
-        """
-        print(colored("\n" + "="*70, 'cyan', attrs=['bold']))
-        print(colored("Trajectory Optimization with DirectCollocation", 'cyan', attrs=['bold']))
-        print(colored("="*70, 'cyan'))
-        print(f"  Start: [{np.rad2deg(q_start[0]):6.1f}°, {np.rad2deg(q_start[1]):6.1f}°, {np.rad2deg(q_start[2]):6.1f}°, {np.rad2deg(q_start[3]):6.1f}°]")
-        print(f"  Goal:  [{np.rad2deg(q_goal[0]):6.1f}°, {np.rad2deg(q_goal[1]):6.1f}°, {np.rad2deg(q_goal[2]):6.1f}°, {np.rad2deg(q_goal[3]):6.1f}°]")
-        print(f"  Duration: {duration:.2f} s")
-        print(f"  Knot points: {self.num_samples}")
-        print(f"  Weights: pendulum={pendulum_weight}, torque={torque_weight}")
-        print(colored("="*70, 'cyan'))
-        
-        # Create DirectCollocation optimizer
-        min_timestep = duration / (self.num_samples * 2)
-        max_timestep = duration / (self.num_samples * 0.5)
-        
-        dircol = DirectCollocation(
-            self.plant,
-            self.plant_context,
-            num_time_samples=self.num_samples,
-            minimum_time_step=min_timestep,
-            maximum_time_step=max_timestep,
-            input_port_index=self.plant.get_actuation_input_port().get_index()
-        )
-        
-        # Get decision variables
-        u = dircol.input()  # Control inputs (torques) [2] - only manipulator actuated
-        x = dircol.state()  # State [q, q̇] = [8] (4 positions + 4 velocities)
-        
-        # Add cost function: minimize pendulum swing + control effort
-        # State indices: [link1, link2, pitch, roll, link1_dot, link2_dot, pitch_dot, roll_dot]
-        # Note: In DirectCollocation, x and u are symbolic matrices where columns are knot points
-        
-        # Target: pitch=0 (no pitch), roll=180° (hanging down)
-        target_roll = q_start[3]  # Should be 180° for hanging down
-        
-        # Add running cost integrated over the trajectory
-        # Manipulator accelerations (indices 4,5 in state derivative)
-        # q̈_manipulator = (q̇_manipulator - q̇_manipulator_prev) / dt (approximated by velocities)
-        dircol.AddRunningCost(
-            pendulum_weight * (x[2]**2 + (x[3] - target_roll)**2) +   # deviation from target (pitch=0, roll=180°)
-            0.1 * pendulum_weight * (x[6]**2 + x[7]**2) +              # pendulum velocities  
-            torque_weight * (u[0]**2 + u[1]**2) +                     # control effort
-            0.5 * (x[4]**2 + x[5]**2)                                 # manipulator velocities (encourage smooth motion)
-        )
-        
-        # Boundary conditions
-        # Initial state: q = q_start, q̇ = 0
-        initial_state = np.concatenate([q_start, np.zeros(4)])
-        prog = dircol.prog()  # Get the mathematical program
-        prog.AddBoundingBoxConstraint(initial_state, initial_state, dircol.initial_state())
-        
-        # Final state: Only constrain positions, allow velocities to approach zero smoothly
-        # This prevents the sudden velocity drop that causes jerk transfer to pendulum
-        final_positions = q_goal  # [link1, link2, pitch, roll]
-        final_state_var = dircol.final_state()
-        
-        # Constrain only the position part (indices 0:4)
-        prog.AddBoundingBoxConstraint(final_positions, final_positions, final_state_var[:4])
-        
-        # Add terminal cost for non-zero velocities (soft constraint for smooth approach)
-        # Heavily penalize non-zero velocities at the end
-        final_velocity_weight = 50.0
-        dircol.AddFinalCost(
-            final_velocity_weight * (final_state_var[4]**2 + final_state_var[5]**2 +  # manipulator velocities
-                                    final_state_var[6]**2 + final_state_var[7]**2)    # pendulum velocities
-        )
-        
-        # Path constraints (applied to all knot points)
-        # Joint limits (manipulator joints)
-        joint_limits_rad = np.deg2rad(170)  # ±170 degrees
-        max_swing_rad = np.deg2rad(max_pendulum_swing_deg)
-        max_velocity = 3.0  # rad/s
-        max_torque = 10.0  # N·m
-        
-        # For pendulum starting at roll=180° (hanging down), allow swing around that position
-        target_roll = q_start[3]  # 180° for hanging down
-        
-        # State limits [link1, link2, pitch, roll, link1_dot, link2_dot, pitch_dot, roll_dot]
-        state_lower = np.array([
-            -joint_limits_rad, -joint_limits_rad,      # manipulator joints
-            -max_swing_rad, target_roll - max_swing_rad,  # pitch: ±swing, roll: 180°±swing
-            -max_velocity, -max_velocity, -max_velocity, -max_velocity  # velocities
-        ])
-        state_upper = np.array([
-            joint_limits_rad, joint_limits_rad,
-            max_swing_rad, target_roll + max_swing_rad,
-            max_velocity, max_velocity, max_velocity, max_velocity
-        ])
-        state_constraint = BoundingBoxConstraint(state_lower, state_upper)
-        dircol.AddConstraintToAllKnotPoints(state_constraint, x)
-        
-        # Control (torque) limits [link1_torque, link2_torque]
-        control_lower = np.array([-max_torque, -max_torque])
-        control_upper = np.array([max_torque, max_torque])
-        control_constraint = BoundingBoxConstraint(control_lower, control_upper)
-        dircol.AddConstraintToAllKnotPoints(control_constraint, u)
-        
-        # Initial guess: cubic interpolation for smooth velocity profile
-        # This creates a trajectory where velocities smoothly ramp up and down
-        final_state_guess = np.concatenate([q_goal, np.zeros(4)])  # Guess: zero velocities at end
-        initial_x_trajectory = PiecewisePolynomial.CubicWithContinuousSecondDerivatives(
-            [0., duration],
-            np.column_stack([initial_state, final_state_guess]),
-            np.zeros(8),  # Zero velocity derivative at start
-            np.zeros(8)   # Zero velocity derivative at end
-        )
-        dircol.SetInitialTrajectory(PiecewisePolynomial(), initial_x_trajectory)
-        
-        # Solve the optimization problem
-        print(colored("\n⏳ Solving trajectory optimization...", 'yellow'))
-        print(f"  Decision variables: ~{self.num_samples * 10 + 1}")
-        print(f"  Constraints: ~{self.num_samples * 20} (dynamics + limits)")
-        
-        prog = dircol.prog()
-        result = Solve(prog)
-        
-        if not result.is_success():
-            print(colored("✗ Trajectory optimization failed!", 'red', attrs=['bold']))
-            print(f"  Solver: {result.get_solver_id().name()}")
-            print(f"  Status: {result.get_solution_result()}")
-            raise RuntimeError("Trajectory optimization did not converge")
-        
-        # Extract optimized trajectory
-        self.optimized_trajectory = dircol.ReconstructStateTrajectory(result)
-        self.optimized_input_trajectory = dircol.ReconstructInputTrajectory(result)
-        
-        # Print optimization results
-        print(colored("✓ Trajectory optimization succeeded!", 'green', attrs=['bold']))
-        print(f"  Solver: {result.get_solver_id().name()}")
-        # Try to get solve time if available
-        try:
-            solver_details = result.get_solver_details()
-            if hasattr(solver_details, 'optimizer_time'):
-                print(f"  Solve time: {solver_details.optimizer_time:.3f} s")
-        except:
-            pass
-        print(f"  Final cost: {result.get_optimal_cost():.6f}")
-        
-        # Analyze trajectory
-        self._analyze_trajectory(duration)
-        
-        return self.optimized_trajectory
-    
-    def _analyze_trajectory(self, duration):
-        """Print statistics about the optimized trajectory."""
-        if self.optimized_trajectory is None:
-            return
-        
-        # Sample trajectory at fine resolution
-        t_samples = np.linspace(0, duration, 200)
-        max_pitch = 0.0
-        max_roll = 0.0
-        max_torque = np.array([0.0, 0.0])
-        
-        for t in t_samples:
-            state = self.optimized_trajectory.value(t).flatten()
-            pitch = abs(state[2])
-            roll = abs(state[3])
-            max_pitch = max(max_pitch, pitch)
-            max_roll = max(max_roll, roll)
-            
-            if self.optimized_input_trajectory is not None:
-                torque = self.optimized_input_trajectory.value(t).flatten()
-                max_torque = np.maximum(max_torque, np.abs(torque))
-        
-        print(colored("\nTrajectory Analysis:", 'cyan'))
-        print(f"  Max pitch deflection: {np.rad2deg(max_pitch):.2f}°")
-        print(f"  Max roll deflection:  {np.rad2deg(max_roll):.2f}°")
-        print(f"  Max torque Link1:     {max_torque[0]:.3f} N·m")
-        print(f"  Max torque Link2:     {max_torque[1]:.3f} N·m")
-        print(colored("="*70 + "\n", 'cyan'))
-    
-    def get_trajectory_at_time(self, t):
-        """
-        Get desired state at time t from optimized trajectory.
-        
-        Args:
-            t: Query time [s]
-            
-        Returns:
-            tuple: (q_desired [4], q_dot_desired [4], q_ddot_desired [4])
-        """
-        if self.optimized_trajectory is None:
-            raise RuntimeError("No optimized trajectory available. Call optimize_trajectory() first.")
-        
-        # Get state and derivatives from piecewise polynomial
-        state = self.optimized_trajectory.value(t).flatten()  # [q, q̇]
-        state_dot = self.optimized_trajectory.derivative(1).value(t).flatten()  # [q̇, q̈]
-        
-        q_desired = state[:4]
-        q_dot_desired = state[4:]
-        q_ddot_desired = state_dot[4:]
-        
-        return q_desired, q_dot_desired, q_ddot_desired
-
-
-# ============================================================================
-# OPTIMIZED TRAJECTORY GENERATOR
-# ============================================================================
-
-class OptimizedTrajectoryGenerator:
-    """
-    Trajectory generator that wraps optimized trajectory from DirectCollocation.
-    
-    Extracts manipulator joints from full 4-DOF optimized trajectory and provides
-    interface compatible with existing controllers.
-    """
-    
-    def __init__(self, optimizer: TrajectoryOptimizer, duration: float):
-        """
-        Args:
-            optimizer: TrajectoryOptimizer with computed trajectory
-            duration: Trajectory duration [s]
-        """
-        self.optimizer = optimizer
-        self.motion_duration = duration  # Compatibility with existing code
-    
-    def compute_trajectory(self, t: float):
-        """
-        Get desired state from optimized trajectory.
-        
-        Args:
-            t: Current time [s]
-            
-        Returns:
-            tuple: (q_desired [2], q_dot_desired [2], q_ddot_desired [2])
-                  Only manipulator joints (indices 0:2)
-        """
-        # Clamp time to trajectory duration for holding phase
-        t_clamped = min(t, self.motion_duration)
-        
-        # Get full 4-DOF trajectory state
-        q_full, q_dot_full, q_ddot_full = self.optimizer.get_trajectory_at_time(t_clamped)
-        
-        # Extract manipulator joints only (indices 0:2)
-        q_desired = q_full[:2]
-        q_dot_desired = q_dot_full[:2]
-        q_ddot_desired = q_ddot_full[:2]
-        
-        # For holding phase after trajectory, zero velocity/acceleration
-        if t > self.motion_duration:
-            q_dot_desired = np.zeros(2)
-            q_ddot_desired = np.zeros(2)
         
         return q_desired, q_dot_desired, q_ddot_desired
 
@@ -1192,41 +880,7 @@ class ComputedTorqueController(LeafSystem):
 # ============================================================================
 
 class Pendulum3D:
-    """
-    3D Pendulum with 2-DOF gimbal joints using spherical coordinates.
-    
-    COORDINATE SYSTEM (matches LaTeX documentation):
-    --------------------------------------------------
-    The pendulum orientation is described using spherical coordinates:
-    
-    - θ (theta): Polar angle from +z axis (down), θ ∈ [0, π]
-        * θ = 0: pendulum hanging straight down (stable equilibrium)
-        * θ = π/2: pendulum horizontal
-        * θ = π: pendulum pointing up (unstable equilibrium)
-    
-    - φ (phi): Azimuthal angle from +x axis in xy-plane, φ ∈ [0, 2π)
-        * φ = 0: pendulum projects onto +x axis
-        * φ = π/2: pendulum projects onto +y axis
-    
-    KINEMATICS:
-    -----------
-    Ball position in Cartesian coordinates:
-        x_ball = x_cart + L·sin(θ)·cos(φ)
-        y_ball = y_cart + L·sin(θ)·sin(φ)
-        z_ball = L·cos(θ)  (positive downward from pivot)
-    
-    DYNAMICS:
-    ---------
-    Equations of motion: M(q)·q̈ + C(q,q̇) + G(q) = τ
-    where q = [x_c, y_c, θ, φ]ᵀ
-    
-    Key properties:
-    - Mass matrix: M₄₄ = mL²·sin²(θ) (gimbal lock at θ=0)
-    - Gravity: G = [0, 0, -mgL·sin(θ), 0]ᵀ (only torque about θ)
-    - Potential energy: V = -mgL·cos(θ)
-    
-    See cart_pendulum_eom.pdf in notes_cup/ for complete derivation.
-    """
+    """3D Pendulum with 2-DOF gimbal joints (pitch and roll)."""
     
     def __init__(self, config: PendulumConfig):
         self.config = config
@@ -1370,31 +1024,19 @@ class Pendulum3D:
         
         Returns:
             dict with keys:
-                - ball_wrt_pivot: [x, y, z] relative to pivot frame (Cartesian)
-                - ball_wrt_world: [x, y, z] relative to world frame (Cartesian)
+                - ball_wrt_pivot: [x, y, z] relative to pivot frame (constant for same pendulum angles)
+                - ball_wrt_world: [x, y, z] relative to world frame (changes with manipulator)
                 - ball_in_ball_frame: [x, y, z] in ball's own frame (always [0, 0, -L])
                 - pivot_in_ball_frame: [x, y, z] of pivot as seen from ball frame
-                - theta: polar angle from +z axis (radians), θ ∈ [0, π]
-                - phi: azimuthal angle from +x axis (radians), φ ∈ [0, 2π)
+                - theta: polar angle from vertical (radians)
+                - phi: azimuthal angle in x-y plane (radians)
                 - r: radial distance (should equal L)
-                - x, y, z: Cartesian components of ball_wrt_pivot
                 - roll_wrt_pivot: roll angle of ball frame w.r.t. pivot frame (radians)
                 - pitch_wrt_pivot: pitch angle of ball frame w.r.t. pivot frame (radians)
                 - yaw_wrt_pivot: yaw angle of ball frame w.r.t. pivot frame (radians)
                 - roll_wrt_world: roll angle of ball frame w.r.t. world frame (radians)
                 - pitch_wrt_world: pitch angle of ball frame w.r.t. world frame (radians)
                 - yaw_wrt_world: yaw angle of ball frame w.r.t. world frame (radians)
-                - joint_pitch: gimbal pitch joint angle (radians)
-                - joint_roll: gimbal roll joint angle (radians)
-        
-        SPHERICAL COORDINATES:
-            θ (theta): Polar angle from +z axis
-                - θ = 0: pendulum hanging straight down
-                - θ = π/2: pendulum horizontal
-                - θ = π: pendulum inverted
-            φ (phi): Azimuthal angle from +x axis in xy-plane
-                - φ = 0: projection on +x axis
-                - φ = π/2: projection on +y axis
         """
         if not self.pendulum_body:
             return None
@@ -1408,18 +1050,20 @@ class Pendulum3D:
         ball_wrt_pivot = X_PB.rotation() @ ball_offset_in_body
         
         # Extract roll-pitch-yaw angles of ball frame relative to pivot frame
-        # Method 1: Using Drake's RollPitchYaw class (Z-Y-X intrinsic convention)
-        roll_wrt_pivot, pitch_wrt_pivot, yaw_wrt_pivot = self._extract_rpy_from_rotation(X_PB.rotation())
-
-        # Get actual joint angles (gimbal configuration space coordinates)
-        pitch_angle, roll_angle = self._calculate_ball_angles(context)
+        rpy_pivot = RollPitchYaw(X_PB.rotation())
+        roll_wrt_pivot = rpy_pivot.roll_angle()
+        pitch_wrt_pivot = rpy_pivot.pitch_angle()
+        yaw_wrt_pivot = rpy_pivot.yaw_angle()
         
         # Transform from WORLD frame to ball frame (includes manipulator motion)
         X_WB = plant.CalcRelativeTransform(context, plant.world_frame(), ball_frame)
         ball_wrt_world = X_WB.rotation() @ ball_offset_in_body
         
         # Extract roll-pitch-yaw angles of ball frame relative to world frame
-        roll_wrt_world, pitch_wrt_world, yaw_wrt_world = self._extract_rpy_from_rotation(X_WB.rotation())
+        rpy_world = RollPitchYaw(X_WB.rotation())
+        roll_wrt_world = rpy_world.roll_angle()
+        pitch_wrt_world = rpy_world.pitch_angle()
+        yaw_wrt_world = rpy_world.yaw_angle()
         
         # Ball position in ball_frame coordinates (always constant)
         ball_in_ball_frame = ball_offset_in_body  # [0, 0, -L] by definition
@@ -1429,8 +1073,10 @@ class Pendulum3D:
         pivot_in_ball_frame = X_BP.translation()
         
         # Compute spherical coordinates (relative to pivot frame)
-        r, theta, phi = self._convert_to_spherical(ball_wrt_pivot)
         x, y, z = ball_wrt_pivot
+        r = np.linalg.norm(ball_wrt_pivot)
+        theta = np.arccos(z / r) if r > 1e-10 else 0.0  # Polar angle from -z axis
+        phi = np.arctan2(y, x)  # Azimuthal angle
         
         return {
             'ball_wrt_pivot': ball_wrt_pivot,
@@ -1449,431 +1095,7 @@ class Pendulum3D:
             'roll_wrt_world': roll_wrt_world,
             'pitch_wrt_world': pitch_wrt_world,
             'yaw_wrt_world': yaw_wrt_world,
-            'joint_pitch': pitch_angle,
-            'joint_roll': roll_angle,
         }
-    
-    def _convert_to_spherical(self, cartesian):
-        """
-        Convert Cartesian coordinates to spherical (r, theta, phi).
-        
-        Spherical coordinate convention (matching LaTeX notes):
-            - theta (\u03b8): Polar angle from +z axis (down), \u03b8 \u2208 [0, \u03c0]
-                \u03b8 = 0: pointing straight down (+z direction)
-                \u03b8 = \u03c0/2: horizontal
-                \u03b8 = \u03c0: pointing up (-z direction)
-            - phi (\u03c6): Azimuthal angle from +x axis in xy-plane, \u03c6 \u2208 [0, 2\u03c0)
-                \u03c6 = 0: projection on +x axis
-                \u03c6 = \u03c0/2: projection on +y axis
-            - r: Radial distance from origin
-            
-        Cartesian to spherical:
-            x = r\u00b7sin(\u03b8)\u00b7cos(\u03c6)
-            y = r\u00b7sin(\u03b8)\u00b7sin(\u03c6)
-            z = r\u00b7cos(\u03b8)
-            
-        Args:
-            cartesian: [x, y, z] position vector
-            
-        Returns:
-            (r, theta, phi) in (meters, radians, radians)
-        """
-        x, y, z = cartesian
-        r = np.linalg.norm(cartesian)
-        theta = np.arccos(z / r) if r > 1e-10 else 0.0  # Polar angle from +z axis
-        phi = np.arctan2(y, x)  # Azimuthal angle from +x axis
-        return r, theta, phi
-    
-    def _extract_rpy_from_rotation(self, rotation):
-        """
-        Extract Roll-Pitch-Yaw angles from rotation matrix.
-        
-        Args:
-            rotation: RotationMatrix object or 3x3 numpy array
-            
-        Returns:
-            (roll, pitch, yaw) tuple in radians
-        """
-        rpy = RollPitchYaw(rotation)
-        return rpy.roll_angle(), rpy.pitch_angle(), rpy.yaw_angle()
-    
-    
-    def _calculate_ball_angles(self, context):
-        """Calculate current pendulum angles (pitch, roll) from joint states."""
-        if not self.pitch_joint or not self.roll_joint:
-            return None
-        
-        pitch_angle = self.pitch_joint.get_angle(context)
-        roll_angle = self.roll_joint.get_angle(context)
-        
-        return pitch_angle, roll_angle
-    
-    
-    def compute_mass_matrix(self, theta, phi, M_cart=1.0):
-        """
-        Compute mass matrix M(q) for cart-pendulum system (spherical coordinates).
-        
-        Args:
-            theta: Polar angle from z-axis (radians), θ ∈ [0, π]
-            phi: Azimuthal angle from x-axis (radians), φ ∈ [0, 2π)
-            M_cart: Cart mass (kg)
-            
-        Returns:
-            M: 4x4 mass matrix
-            
-        Spherical coordinates:
-            x_ball = x_c + L·sin(θ)·cos(φ)
-            y_ball = y_c + L·sin(θ)·sin(φ)
-            z_ball = L·cos(θ)
-        """
-        m = self.mass
-        L = self.length
-        
-        c_theta = np.cos(theta)
-        s_theta = np.sin(theta)
-        c_phi = np.cos(phi)
-        s_phi = np.sin(phi)
-        
-        M = np.array([
-            [M_cart + m,              0,                       m*L*c_theta*c_phi,        -m*L*s_theta*s_phi],
-            [0,                       M_cart + m,              m*L*c_theta*s_phi,         m*L*s_theta*c_phi],
-            [m*L*c_theta*c_phi,       m*L*c_theta*s_phi,       m*L**2,                    0],
-            [-m*L*s_theta*s_phi,      m*L*s_theta*c_phi,       0,                         m*L**2*s_theta**2]
-        ])
-        
-        return M
-    
-    def compute_coriolis_vector(self, theta, phi, theta_dot, phi_dot, x_c_dot=0.0, y_c_dot=0.0):
-        """
-        Compute Coriolis/centrifugal vector C(q, q_dot) for spherical coordinates.
-        
-        Args:
-            theta: Polar angle from z-axis (radians)
-            phi: Azimuthal angle from x-axis (radians)
-            theta_dot: θ velocity (rad/s)
-            phi_dot: φ velocity (rad/s)
-            x_c_dot: Cart x velocity (m/s)
-            y_c_dot: Cart y velocity (m/s)
-            
-        Returns:
-            C: 4x1 Coriolis/centrifugal vector
-        """
-        m = self.mass
-        L = self.length
-        
-        c_theta = np.cos(theta)
-        s_theta = np.sin(theta)
-        c_phi = np.cos(phi)
-        s_phi = np.sin(phi)
-        
-        C1 = -m*L*(theta_dot**2*s_theta*c_phi + phi_dot**2*s_theta*c_theta*c_phi + 2*theta_dot*phi_dot*c_theta*s_phi)
-        C2 = -m*L*(theta_dot**2*s_theta*s_phi + phi_dot**2*s_theta*c_theta*s_phi - 2*theta_dot*phi_dot*c_theta*c_phi)
-        C3 = m*L*phi_dot**2*s_theta*c_theta - m*L*phi_dot*s_theta*(x_c_dot*s_phi - y_c_dot*c_phi)
-        C4 = -m*L**2*theta_dot*phi_dot*np.sin(2*theta) - m*L*theta_dot*c_theta*(x_c_dot*s_phi + y_c_dot*c_phi)
-        
-        C = np.array([C1, C2, C3, C4])
-        
-        return C
-    
-    def compute_gravity_vector(self, theta, phi, g=9.81):
-        """
-        Compute gravity vector G(q) for spherical coordinates.
-        
-        Args:
-            theta: Polar angle from z-axis (radians)
-            phi: Azimuthal angle from x-axis (radians)
-            g: Gravitational acceleration (m/s²)
-            
-        Returns:
-            G: 4x1 gravity vector
-            
-        Note: In spherical coordinates, gravity only produces torque about θ axis.
-              There is no gravitational torque about φ axis (symmetry about vertical).
-        """
-        m = self.mass
-        L = self.length
-        
-        s_theta = np.sin(theta)
-        
-        G1 = 0.0
-        G2 = 0.0
-        G3 = -m*g*L*s_theta  # Restoring torque about θ axis
-        G4 = 0.0              # No torque about φ axis (gravity is symmetric)
-        
-        G = np.array([G1, G2, G3, G4])
-        
-        return G
-    
-    def compute_state_space_linearization(self, theta_eq=0.0, phi_eq=0.0, M_cart=1.0, g=9.81):
-        """
-        Compute linearized state-space representation around equilibrium (spherical coords).
-        
-        State vector: x = [x_c, y_c, θ, φ, ẋ_c, ẏ_c, θ̇, φ̇]ᵀ  (8x1)
-        Input vector: u = [F_x, F_y, τ_θ, τ_φ]ᵀ                 (4x1)
-        
-        Linearized dynamics:
-            ẋ = A·x + B·u
-            y = C·x + D·u
-        
-        Args:
-            theta_eq: Equilibrium polar angle from z-axis (radians, typically 0 for hanging down)
-            phi_eq: Equilibrium azimuthal angle (radians, arbitrary for θ=0)
-            M_cart: Cart mass (kg)
-            g: Gravitational acceleration (m/s²)
-            
-        Returns:
-            A: 8x8 state matrix
-            B: 8x4 input matrix
-            C: 8x8 output matrix (identity - full state observable)
-            D: 8x4 feedthrough matrix (zeros)
-        """
-        m = self.mass
-        L = self.length
-        
-        # Evaluate at equilibrium (typically hanging down: θ=0, φ arbitrary)
-        M_eq = self.compute_mass_matrix(theta_eq, phi_eq, M_cart)
-        M_inv = np.linalg.inv(M_eq)
-        
-        # Compute linearized gravity Jacobian: ∂G/∂q evaluated at equilibrium
-        # For spherical coordinates:
-        # G3 = -m*g*L*sin(θ)  →  ∂G3/∂θ = -m*g*L*cos(θ)
-        # G4 = 0              →  ∂G4/∂φ = 0  (no gravitational torque about φ)
-        
-        dG_dq = np.zeros((4, 4))
-        if np.abs(theta_eq) < 0.1:  # Small angle approximation around θ=0 (hanging down)
-            dG_dq[2, 2] = -m*g*L  # ∂G3/∂θ ≈ -m*g*L at θ=0
-            dG_dq[3, 3] = 0.0     # ∂G4/∂φ = 0 (always, due to symmetry)
-        else:
-            # Exact derivatives at arbitrary equilibrium
-            c_theta = np.cos(theta_eq)
-            
-            dG_dq[2, 2] = -m*g*L*c_theta  # ∂G3/∂θ
-            dG_dq[2, 3] = 0.0              # ∂G3/∂φ = 0
-            dG_dq[3, 2] = 0.0              # ∂G4/∂θ = 0
-            dG_dq[3, 3] = 0.0              # ∂G4/∂φ = 0
-        
-        # State-space matrices
-        # x = [q; q_dot] where q = [x_c, y_c, θ, φ]
-        # ẋ = [q_dot; q_ddot] = [q_dot; M^{-1}(Q - C - G)]
-        # At equilibrium (q_dot = 0): C = 0
-        # Linearization: q_ddot ≈ M^{-1}·(Q - G_eq - ∂G/∂q·Δq)
-        
-        A = np.zeros((8, 8))
-        # Upper right block: ∂(q_dot)/∂(q_dot) = I
-        A[0:4, 4:8] = np.eye(4)
-        # Lower left block: ∂(q_ddot)/∂q = -M^{-1}·∂G/∂q
-        A[4:8, 0:4] = -M_inv @ dG_dq
-        # Lower right block: ∂(q_ddot)/∂(q_dot) = -M^{-1}·∂C/∂(q_dot)
-        # At equilibrium with q_dot=0, C=0, and ∂C/∂(q_dot) represents damping
-        # For undamped system: ∂C/∂(q_dot) ≈ 0 (or add joint damping if needed)
-        # If joint damping b: add -b*q_dot terms
-        if hasattr(self, 'damping') and self.damping > 0:
-            A[6, 6] = -self.damping / (m*L**2)  # Pitch damping
-            A[7, 7] = -self.damping / (m*L**2)  # Roll damping
-        
-        B = np.zeros((8, 4))
-        # Lower block: ∂(q_ddot)/∂u = M^{-1}
-        B[4:8, 0:4] = M_inv
-        
-        # Output: full state measurement
-        C = np.eye(8)
-        
-        # No direct feedthrough
-        D = np.zeros((8, 4))
-        
-        return A, B, C, D
-    
-    def compute_nonlinear_dynamics(self, q, q_dot, u, M_cart=1.0, g=9.81):
-        """
-        Compute nonlinear dynamics: q_ddot = M^{-1}(q)·[u - C(q,q_dot) - G(q)]
-        
-        Args:
-            q: Configuration [x_c, y_c, θ, φ] (4x1)
-            q_dot: Velocity [ẋ_c, ẏ_c, θ̇, φ̇] (4x1)
-            u: Control input [F_x, F_y, τ_θ, τ_φ] (4x1)
-            M_cart: Cart mass (kg)
-            g: Gravitational acceleration (m/s²)
-            
-        Returns:
-            q_ddot: Acceleration [ẍ_c, ÿ_c, θ̈, φ̈] (4x1)
-        """
-        x_c, y_c, theta, phi = q
-        x_c_dot, y_c_dot, theta_dot, phi_dot = q_dot
-        
-        M = self.compute_mass_matrix(theta, phi, M_cart)
-        C = self.compute_coriolis_vector(theta, phi, theta_dot, phi_dot, x_c_dot, y_c_dot)
-        G = self.compute_gravity_vector(theta, phi, g)
-        
-        # Solve: M·q_ddot = u - C - G
-        q_ddot = np.linalg.solve(M, u - C - G)
-        
-        return q_ddot
-    
-    # ========================================================================
-    # GIMBAL COORDINATE DYNAMICS (for validation with Drake)
-    # ========================================================================
-    
-    def compute_mass_matrix_gimbal(self, pitch, roll):
-        """
-        Compute mass matrix M(q) for gimbal-mounted pendulum.
-        
-        Gimbal coordinates (YX Euler angles):
-            - pitch (α): rotation about Y-axis  
-            - roll (β): rotation about X-axis (in gimbal1 frame after pitch)
-        
-        Ball position (with Z down):
-            x = -L·sin(α)
-            y = L·cos(α)·sin(β)
-            z = -L·cos(α)·cos(β)
-        
-        Ball velocity:
-            v = [∂x/∂α, ∂y/∂α, ∂z/∂α]·α̇ + [∂x/∂β, ∂y/∂β, ∂z/∂β]·β̇
-            ∂p/∂α = [-L·cos(α), -L·sin(α)·sin(β), L·sin(α)·cos(β)]
-            ∂p/∂β = [0, L·cos(α)·cos(β), L·cos(α)·sin(β)]
-        
-        Kinetic energy: T = (1/2)·m·(|∂p/∂α|²·α̇² + 2·(∂p/∂α·∂p/∂β)·α̇·β̇ + |∂p/∂β|²·β̇²)
-            |∂p/∂α|² = L²·cos²(α) + L²·sin²(α)·sin²(β) + L²·sin²(α)·cos²(β)
-                     = L²·cos²(α) + L²·sin²(α) = L²
-            ∂p/∂α·∂p/∂β = 0
-            |∂p/∂β|² = L²·cos²(α)·cos²(β) + L²·cos²(α)·sin²(β) = L²·cos²(α)
-        
-        Args:
-            pitch: Pitch angle α (radians)
-            roll: Roll angle β (radians)
-            
-        Returns:
-            M: 2x2 mass matrix
-        """
-        m = self.mass
-        L = self.length
-        
-        cos_pitch = np.cos(pitch)
-        
-        # Mass matrix M = m·[L², 0; 0, L²·cos²(α)]
-        M = m * L**2 * np.array([
-            [1.0,              0.0],
-            [0.0,  cos_pitch**2]
-        ])
-        
-        return M
-    
-    def compute_coriolis_vector_gimbal(self, pitch, roll, pitch_dot, roll_dot):
-        """
-        Compute Coriolis/centrifugal vector C(q, q̇) for gimbal coordinates.
-        
-        From Euler-Lagrange equations:
-            d/dt(∂T/∂α̇) - ∂T/∂α = τ_α
-            d/dt(∂T/∂β̇) - ∂T/∂β = τ_β
-        
-        With T = (1/2)·m·L²·(α̇² + cos²(α)·β̇²):
-            ∂T/∂α̇ = m·L²·α̇
-            ∂T/∂β̇ = m·L²·cos²(α)·β̇
-            ∂T/∂α = -m·L²·cos(α)·sin(α)·β̇²
-            ∂T/∂β = 0
-            
-            d/dt(∂T/∂α̇) = m·L²·α̈
-            d/dt(∂T/∂β̇) = m·L²·(cos²(α)·β̈ - 2·cos(α)·sin(α)·α̇·β̇)
-        
-        Coriolis terms: C = M·q̈ - τ (rearranged from EL equations without potential)
-            C_α = -∂T/∂α = m·L²·cos(α)·sin(α)·β̇²
-            C_β = -d/dt(∂T/∂β̇) + ∂T/∂β = -m·L²·cos²(α)·β̈ + m·L²·2·cos(α)·sin(α)·α̇·β̇
-        
-        Actually, Coriolis is: C·q̇ where C_ij = (1/2)·(∂M_ij/∂q_k + ∂M_ik/∂q_j - ∂M_jk/∂q_i)·q̇_k
-        
-        For our system: M = m·L²·[1, 0; 0, cos²(α)]
-            ∂M/∂α = m·L²·[0, 0; 0, -2·cos(α)·sin(α)]
-            ∂M/∂β = 0
-        
-        Coriolis vector:
-            C_α = m·L²·cos(α)·sin(α)·β̇²
-            C_β = -m·L²·cos(α)·sin(α)·α̇·β̇
-        
-        Args:
-            pitch: Pitch angle α (radians)
-            roll: Roll angle β (radians)
-            pitch_dot: Pitch velocity α̇ (rad/s)
-            roll_dot: Roll velocity β̇ (rad/s)
-            
-        Returns:
-            C: 2x1 Coriolis vector
-        """
-        m = self.mass
-        L = self.length
-        
-        sin_pitch = np.sin(pitch)
-        cos_pitch = np.cos(pitch)
-        
-        # Coriolis terms
-        C_alpha = m * L**2 * cos_pitch * sin_pitch * roll_dot**2
-        C_beta = -m * L**2 * cos_pitch * sin_pitch * pitch_dot * roll_dot
-        
-        C = np.array([C_alpha, C_beta])
-        
-        return C
-    
-    def compute_gravity_vector_gimbal(self, pitch, roll, g=9.81):
-        """
-        Compute gravity vector G(q) for gimbal coordinates.
-        
-        Ball position: p = [-L·sin(α), L·cos(α)·sin(β), -L·cos(α)·cos(β)]
-        Potential energy (with Z down, gravity in -Z direction):
-            V = m·g·z = m·g·(-L·cos(α)·cos(β)) = -m·g·L·cos(α)·cos(β)
-        
-        Gravity terms: G_i = ∂V/∂q_i
-            G_α = ∂V/∂α = m·g·L·sin(α)·cos(β)
-            G_β = ∂V/∂β = m·g·L·cos(α)·sin(β)
-        
-        Args:
-            pitch: Pitch angle α (radians)
-            roll: Roll angle β (radians)
-            g: Gravitational acceleration (m/s²), positive value
-            
-        Returns:
-            G: 2x1 gravity vector
-        """
-        m = self.mass
-        L = self.length
-        
-        sin_pitch = np.sin(pitch)
-        cos_pitch = np.cos(pitch)
-        sin_roll = np.sin(roll)
-        cos_roll = np.cos(roll)
-        
-        # Gravity terms (partial derivatives of potential energy)
-        G_alpha = m * g * L * sin_pitch * cos_roll
-        G_beta = m * g * L * cos_pitch * sin_roll
-        
-        G = np.array([G_alpha, G_beta])
-        
-        return G
-    
-    def compute_nonlinear_dynamics_gimbal(self, q, q_dot, u, g=9.81):
-        """
-        Compute forward dynamics for gimbal-mounted pendulum.
-        
-        Equation: M(q)·q̈ + C(q, q̇) + G(q) = τ
-        Solve for: q̈ = M⁻¹·(τ - C - G)
-        
-        Args:
-            q: Position [pitch, roll] (2x1)
-            q_dot: Velocity [pitch_dot, roll_dot] (2x1)
-            u: Control input [τ_pitch, τ_roll] (2x1)
-            g: Gravitational acceleration (m/s²)
-            
-        Returns:
-            q_ddot: Acceleration [pitch_ddot, roll_ddot] (2x1)
-        """
-        pitch, roll = q
-        pitch_dot, roll_dot = q_dot
-        
-        M = self.compute_mass_matrix_gimbal(pitch, roll)
-        C = self.compute_coriolis_vector_gimbal(pitch, roll, pitch_dot, roll_dot)
-        G = self.compute_gravity_vector_gimbal(pitch, roll, g)
-        
-        # Solve: M·q_ddot = u - C - G
-        q_ddot = np.linalg.solve(M, u - C - G)
-        
-        return q_ddot
 
 
 # ============================================================================
@@ -1913,9 +1135,6 @@ class DrakeSceneManager:
         self.cup_manipulator: Optional[CupManipulator] = None
         self.pendulum: Optional[Pendulum3D] = None
         
-        # Trajectory optimizer (for trajectory-optimized mode)
-        self.trajectory_optimizer: Optional[TrajectoryOptimizer] = None
-        
         # Data logging
         self.time_log = []
         self.joint_positions_log = []  # Actual positions [link1, link2]
@@ -1933,17 +1152,6 @@ class DrakeSceneManager:
         self.pendulum_ball_distance_log = []  # Euclidean distance from pivot to ball center (should be constant = L)
         self.pendulum_spherical_log = []  # Pendulum spherical coords [theta (polar), phi (azimuth)] in radians
         self.pendulum_rpy_pivot_log = []  # Pendulum ball frame RPY angles w.r.t. pivot frame [roll, pitch, yaw] in radians
-        
-        # Dynamics validation logs (for dynamics-validation mode)
-        self.validation_time_log = []       # Timestamps for validation (subset of full time_log)
-        self.manual_accelerations_log = []  # Accelerations from manual compute_nonlinear_dynamics
-        self.drake_accelerations_log = []   # Accelerations from Drake's built-in dynamics
-        self.acceleration_errors_log = []   # Difference between manual and Drake
-        self.manual_mass_matrix_log = []    # Mass matrices from manual computation
-        self.drake_mass_matrix_log = []     # Mass matrices from Drake
-        self.manual_coriolis_log = []       # Coriolis vectors from manual computation
-        self.drake_bias_log = []            # Bias terms (C + G) from Drake
-        self.manual_gravity_log = []        # Gravity vectors from manual computation
         
         # Frame visualization
         self.frame_list = []  # List of (frame_name, frame, length) tuples for updating
@@ -2111,90 +1319,6 @@ class DrakeSceneManager:
         print(colored("\n[2/5] Adding controller to diagram (SYSTEM 2: Control Model)...", 'blue', attrs=['bold']))
         
         # ═══════════════════════════════════════════════════════════════════
-        # SKIP CONTROLLER FOR DYNAMICS VALIDATION MODE
-        # ═══════════════════════════════════════════════════════════════════
-        # In validation mode, we want passive dynamics (no control input)
-        # to compare manual equations vs Drake's built-in dynamics
-        # ═══════════════════════════════════════════════════════════════════
-        if CONTROLLER_MODE == 'dynamics-validation':
-            print(colored("\n--- Dynamics Validation Mode: No Controller ---", 'yellow', attrs=['bold']))
-            print(colored("  Passive dynamics (u=0) for pure physics comparison", 'cyan'))
-            print(colored("  Manual spherical equations vs Drake CalcMassMatrix/CalcBiasTerm", 'cyan'))
-            print(colored("✓ Skipping controller creation (passive dynamics)\n", 'green'))
-            return
-        
-        # ═══════════════════════════════════════════════════════════════════
-        # TRAJECTORY OPTIMIZATION MODE
-        # ═══════════════════════════════════════════════════════════════════
-        # Optimize trajectory from start to goal with minimum pendulum swing,
-        # BEFORE finalizing plant (DirectCollocation needs unfinalizedplant)
-        # ═══════════════════════════════════════════════════════════════════
-        if CONTROLLER_MODE == 'trajectory-optimized':
-            print(colored("\n--- Trajectory Optimization (Pre-Finalization) ---", 'yellow', attrs=['bold']))
-            print(colored("  Note: Creating separate plant for trajectory optimization", 'cyan'))
-            print(colored("  This plant is NOT finalized yet (required for DirectCollocation)", 'cyan'))
-            
-            # Create a separate MultibodyPlant for trajectory optimization
-            # DirectCollocation doesn't need visualization, so create plant without scene graph
-            opt_plant = MultibodyPlant(time_step=0.0)  # Continuous-time plant
-            
-            # Load same robot model using CupManipulator to handle package map
-            opt_parser = Parser(opt_plant)
-            opt_manipulator = CupManipulator(self.cup_manipulator_config)
-            opt_manipulator.load_urdf_to_plant(opt_plant, opt_parser)
-            
-            # Weld base
-            opt_base = opt_plant.GetBodyByName("base_mount_manipulator")
-            opt_plant.WeldFrames(opt_plant.world_frame(), opt_base.body_frame())
-            
-            # Add pendulum
-            if PENDULUM_ENABLED:
-                opt_pendulum = Pendulum3D(PENDULUM_CONFIG)
-                opt_link2_body = opt_plant.GetBodyByName("link2")
-                opt_pendulum.attach_to_body(opt_plant, opt_link2_body, opt_plant.GetModelInstanceByName("cup_manipulator"))
-            
-            # Set gravity
-            opt_gravity_field = opt_plant.mutable_gravity_field()
-            opt_gravity_field.set_gravity_vector(list(self.simulation_config.gravity))
-            
-            # Add actuators (required for DirectCollocation)
-            link1_joint_opt = opt_plant.GetJointByName("link1_base")
-            link2_joint_opt = opt_plant.GetJointByName("link2_link1")
-            opt_plant.AddJointActuator("link1_base", link1_joint_opt)
-            opt_plant.AddJointActuator("link2_link1", link2_joint_opt)
-            
-            # Finalize the optimization plant
-            opt_plant.Finalize()
-            opt_plant_context = opt_plant.CreateDefaultContext()
-            
-            print(colored("  ✓ Optimization plant created (without scene graph for speed)", 'green'))
-            
-            # Create trajectory optimizer with the optimization plant
-            self.trajectory_optimizer = TrajectoryOptimizer(
-                opt_plant, 
-                opt_plant_context,
-                num_samples=TRAJECTORY_NUM_SAMPLES
-            )
-            
-            # Optimize trajectory
-            print(colored("\n--- Running Trajectory Optimization ---", 'yellow', attrs=['bold']))
-            optimized_traj = self.trajectory_optimizer.optimize_trajectory(
-                q_start=TRAJECTORY_START,
-                q_goal=TRAJECTORY_GOAL,
-                duration=TRAJECTORY_DURATION,
-                pendulum_weight=TRAJECTORY_PENDULUM_WEIGHT,
-                torque_weight=TRAJECTORY_TORQUE_WEIGHT
-            )
-            
-            # Create trajectory generator wrapper for optimized trajectory
-            self.trajectory_generator = OptimizedTrajectoryGenerator(self.trajectory_optimizer, TRAJECTORY_DURATION)
-            
-            print(colored("✓ Optimized trajectory generator created", 'green'))
-            print(colored("  → Will use Computed Torque control for tracking\n", 'cyan'))
-            
-            # Continue to controller creation below
-        
-        # ═══════════════════════════════════════════════════════════════════
         # SYSTEM 2: Controller - Control Law Computation
         # ═══════════════════════════════════════════════════════════════════
         # This is our custom LeafSystem that computes control torques
@@ -2208,7 +1332,7 @@ class DrakeSceneManager:
         if CONTROLLER_MODE == 'pd':
             Kp = np.array([100.0, 100.0])
             Kd = np.array([10.0, 10.0])
-        elif CONTROLLER_MODE == 'computed-torque' or CONTROLLER_MODE == 'inverse-dynamics' or CONTROLLER_MODE == 'trajectory-optimized':
+        elif CONTROLLER_MODE == 'computed-torque' or CONTROLLER_MODE == 'inverse-dynamics':
             # Reduced gains: feedforward handles dynamics, feedback only corrects errors
             Kp = np.array([20.0, 20.0])  # 5x smaller than PD
             Kd = np.array([5.0, 5.0])    # 2x smaller than PD
@@ -2226,7 +1350,7 @@ class DrakeSceneManager:
             print(colored(f"✓ PDController (SYSTEM 2) added to diagram", 'green'))
             print(colored(f"  Role: Computes control torques τ = Kp*(q_d - q) + Kd*(q_dot_d - q_dot)", 'cyan'))
         
-        elif CONTROLLER_MODE == 'computed-torque' or CONTROLLER_MODE == 'inverse-dynamics' or CONTROLLER_MODE == 'trajectory-optimized':
+        elif CONTROLLER_MODE == 'computed-torque' or CONTROLLER_MODE == 'inverse-dynamics':
             # ═══════════════════════════════════════════════════════════════════
             # CREATE SEPARATE MODEL FOR CONTROLLER (Model-Plant Separation)
             # ═══════════════════════════════════════════════════════════════════
@@ -2460,44 +1584,20 @@ class DrakeSceneManager:
         
         plant_context = self.plant.GetMyMutableContextFromRoot(self.context)
         
-        # For trajectory-optimized mode, use start configuration from trajectory
-        if CONTROLLER_MODE == 'trajectory-optimized':
-            link1_joint = self.plant.GetJointByName("link1_base", self.cup_manipulator.model_instance)
-            link2_joint = self.plant.GetJointByName("link2_link1", self.cup_manipulator.model_instance)
-            link1_joint.set_angle(plant_context, TRAJECTORY_START[0])
-            link2_joint.set_angle(plant_context, TRAJECTORY_START[1])
-            print(colored(f"  ✓ Manipulator joints (trajectory start): link1={np.rad2deg(TRAJECTORY_START[0]):.1f}°, link2={np.rad2deg(TRAJECTORY_START[1]):.1f}°", 'cyan'))
-        else:
-            # Set manipulator joints to zero
-            link1_joint = self.plant.GetJointByName("link1_base", self.cup_manipulator.model_instance)
-            link2_joint = self.plant.GetJointByName("link2_link1", self.cup_manipulator.model_instance)
-            link1_joint.set_angle(plant_context, 0.0)
-            link2_joint.set_angle(plant_context, 0.0)
-            print(colored("  ✓ Manipulator joints: link1=0°, link2=0°", 'cyan'))
+        # Set manipulator joints to zero
+        link1_joint = self.plant.GetJointByName("link1_base", self.cup_manipulator.model_instance)
+        link2_joint = self.plant.GetJointByName("link2_link1", self.cup_manipulator.model_instance)
+        link1_joint.set_angle(plant_context, 0.0)
+        link2_joint.set_angle(plant_context, 0.0)
+        print(colored("  ✓ Manipulator joints: link1=0°, link2=0°", 'cyan'))
         
         # Set pendulum initial swing if enabled
         if PENDULUM_ENABLED and self.pendulum:
             pitch_joint = self.plant.GetJointByName("pendulum_pitch", self.cup_manipulator.model_instance)
             roll_joint = self.plant.GetJointByName("pendulum_roll", self.cup_manipulator.model_instance)
-            
-            # For trajectory-optimized mode, use start configuration (should be zero swing)
-            if CONTROLLER_MODE == 'trajectory-optimized':
-                pitch_joint.set_angle(plant_context, TRAJECTORY_START[2])
-                roll_joint.set_angle(plant_context, TRAJECTORY_START[3])
-                print(colored(f"  ✓ Pendulum (trajectory start): pitch={np.rad2deg(TRAJECTORY_START[2]):.1f}°, roll={np.rad2deg(TRAJECTORY_START[3]):.1f}°", 'cyan'))
-            # For dynamics-validation mode, start away from singularity
-            elif CONTROLLER_MODE == 'dynamics-validation':
-                # Start at θ=30°, φ=45° to avoid singular configuration at θ=0
-                initial_pitch = 30.0  # degrees
-                initial_roll = 45.0   # degrees
-                pitch_joint.set_angle(plant_context, np.deg2rad(initial_pitch))
-                roll_joint.set_angle(plant_context, np.deg2rad(initial_roll))
-                print(colored(f"  ✓ Pendulum (validation mode): pitch={initial_pitch}°, roll={initial_roll}°", 'cyan'))
-                print(colored(f"    (Starting away from θ=0 singularity)", 'yellow'))
-            else:
-                pitch_joint.set_angle(plant_context, np.deg2rad(PENDULUM_CONFIG.initial_pitch))
-                roll_joint.set_angle(plant_context, np.deg2rad(PENDULUM_CONFIG.initial_roll))
-                print(colored(f"  ✓ Pendulum: pitch={PENDULUM_CONFIG.initial_pitch}°, roll={PENDULUM_CONFIG.initial_roll}°", 'cyan'))
+            pitch_joint.set_angle(plant_context, np.deg2rad(PENDULUM_CONFIG.initial_pitch))
+            roll_joint.set_angle(plant_context, np.deg2rad(PENDULUM_CONFIG.initial_roll))
+            print(colored(f"  ✓ Pendulum: pitch={PENDULUM_CONFIG.initial_pitch}°, roll={PENDULUM_CONFIG.initial_roll}°", 'cyan'))
         
         print(colored("\n✓ Initial conditions set", 'green', attrs=['bold']))
     
@@ -2512,12 +1612,7 @@ class DrakeSceneManager:
         print(f"  Timestep: {self.simulation_config.timestep} s")
         print(f"  Realtime Rate: {self.simulation_config.visualization.realtime_rate}x")
         print(f"  Controller: {CONTROLLER_MODE.upper()}")
-        if CONTROLLER_MODE == 'trajectory-optimized':
-            print(f"  Trajectory: {TRAJECTORY_DURATION} s optimized motion")
-            print(f"    Start: [{np.rad2deg(TRAJECTORY_START[0]):.1f}°, {np.rad2deg(TRAJECTORY_START[1]):.1f}°]")
-            print(f"    Goal:  [{np.rad2deg(TRAJECTORY_GOAL[0]):.1f}°, {np.rad2deg(TRAJECTORY_GOAL[1]):.1f}°]")
-        else:
-            print(f"  Motion Duration: {MANIPULATOR_MOTION_DURATION} s (then settling)")
+        print(f"  Motion Duration: {MANIPULATOR_MOTION_DURATION} s (then settling)")
         print()
         
         # Initialize and configure simulator
@@ -2557,36 +1652,28 @@ class DrakeSceneManager:
                 # Compute desired trajectory using trajectory generator
                 q_desired, q_dot_desired, q_ddot_desired = self.trajectory_generator.compute_trajectory(t)
                 
-                # Get control torques and compute errors (skip for dynamics-validation mode)
-                if CONTROLLER_MODE == 'dynamics-validation':
-                    # Dynamics validation mode: passive dynamics (no controller)
-                    control_torques = np.zeros(2)
-                    position_error = np.zeros(2)
-                    velocity_error = np.zeros(2)
-                    q_ddot_commanded = np.zeros(2)
-                else:
-                    # Get control torques from controller output port
-                    controller_context = self.controller.GetMyContextFromRoot(self.context)
-                    control_torques = self.controller.get_output_port(0).Eval(controller_context)
-                    
-                    # Compute errors
-                    position_error = q_desired - np.array([link1_pos, link2_pos])
-                    velocity_error = q_dot_desired - np.array([link1_vel, link2_vel])
-                    
-                    # Compute commanded acceleration (includes feedback for computed torque mode)
-                    # For computed torque: q_ddot_cmd = q_ddot_d + Kp*e + Kd*e_dot
-                    if CONTROLLER_MODE == 'computed-torque' or CONTROLLER_MODE == 'inverse-dynamics':
-                        # Get gains from controller
-                        if t < MANIPULATOR_MOTION_DURATION:
-                            Kp = self.controller.Kp
-                            Kd = self.controller.Kd
-                        else:
-                            Kp = self.controller.Kp_hold
-                            Kd = self.controller.Kd_hold
-                        q_ddot_commanded = q_ddot_desired + Kp * position_error + Kd * velocity_error
+                # Get control torques from controller output port
+                controller_context = self.controller.GetMyContextFromRoot(self.context)
+                control_torques = self.controller.get_output_port(0).Eval(controller_context)
+                
+                # Compute errors
+                position_error = q_desired - np.array([link1_pos, link2_pos])
+                velocity_error = q_dot_desired - np.array([link1_vel, link2_vel])
+                
+                # Compute commanded acceleration (includes feedback for computed torque mode)
+                # For computed torque: q_ddot_cmd = q_ddot_d + Kp*e + Kd*e_dot
+                if CONTROLLER_MODE == 'computed-torque' or CONTROLLER_MODE == 'inverse-dynamics':
+                    # Get gains from controller
+                    if t < MANIPULATOR_MOTION_DURATION:
+                        Kp = self.controller.Kp
+                        Kd = self.controller.Kd
                     else:
-                        # For PD mode, commanded acceleration is just desired (no feedforward)
-                        q_ddot_commanded = q_ddot_desired.copy()
+                        Kp = self.controller.Kp_hold
+                        Kd = self.controller.Kd_hold
+                    q_ddot_commanded = q_ddot_desired + Kp * position_error + Kd * velocity_error
+                else:
+                    # For PD mode, commanded acceleration is just desired (no feedforward)
+                    q_ddot_commanded = q_ddot_desired.copy()
                 
                 # Log data at high frequency for smooth plots
                 self.time_log.append(t)
@@ -2628,10 +1715,6 @@ class DrakeSceneManager:
                             self.pendulum_rpy_pivot_log.append([ball_state['roll_wrt_pivot'], 
                                                                 ball_state['pitch_wrt_pivot'], 
                                                                 ball_state['yaw_wrt_pivot']])
-                            
-                            # DYNAMICS VALIDATION: Compare manual vs Drake accelerations
-                            if CONTROLLER_MODE == 'dynamics-validation':
-                                self._validate_dynamics(plant_context, ball_state, joint_positions, joint_velocities)
                     
                     # Update frame positions
                     self._update_frame_positions(plant_context)
@@ -2647,13 +1730,12 @@ class DrakeSceneManager:
                         if len(self.pendulum_spherical_log) > 0 and len(self.pendulum_rpy_pivot_log) > 0:
                             theta, phi = self.pendulum_spherical_log[-1]
                             rpy_roll, rpy_pitch, rpy_yaw = self.pendulum_rpy_pivot_log[-1]
-                            # Note: pitch, roll are joint angles (gimbal q). RPY are Euler angles from rotation matrix
-                            print(f" | Jt[P={np.rad2deg(pitch):6.1f}° R={np.rad2deg(roll):6.1f}°] | θ={np.rad2deg(theta):5.1f}° φ={np.rad2deg(phi):6.1f}° | RPY[{np.rad2deg(rpy_roll):5.1f}°,{np.rad2deg(rpy_pitch):5.1f}°,{np.rad2deg(rpy_yaw):5.1f}°]", end='')
+                            print(f" | P={np.rad2deg(pitch):6.1f}° R={np.rad2deg(roll):6.1f}° | θ={np.rad2deg(theta):5.1f}° φ={np.rad2deg(phi):6.1f}° | RPY=[{np.rad2deg(rpy_roll):5.1f}°,{np.rad2deg(rpy_pitch):5.1f}°,{np.rad2deg(rpy_yaw):5.1f}°]", end='')
                         elif len(self.pendulum_spherical_log) > 0:
                             theta, phi = self.pendulum_spherical_log[-1]
-                            print(f" | Jt[P={np.rad2deg(pitch):6.1f}° R={np.rad2deg(roll):6.1f}°] | θ={np.rad2deg(theta):5.1f}° φ={np.rad2deg(phi):6.1f}°", end='')
+                            print(f" | P={np.rad2deg(pitch):6.1f}° R={np.rad2deg(roll):6.1f}° | θ={np.rad2deg(theta):5.1f}° φ={np.rad2deg(phi):6.1f}°", end='')
                         else:
-                            print(f" | Jt[P={np.rad2deg(pitch):6.1f}° R={np.rad2deg(roll):6.1f}°]", end='')
+                            print(f" | P={np.rad2deg(pitch):6.1f}° R={np.rad2deg(roll):6.1f}°", end='')
                     
                     print()  # New line
                     next_print_time += print_interval
@@ -2844,11 +1926,23 @@ class DrakeSceneManager:
                     
                     # Display spherical coordinates if pendulum enabled
                     if PENDULUM_ENABLED and self.pendulum and ball_state:
-                        print(colored(f"\n⚙️  Joint Angles (q):", 'cyan', attrs=['bold']), colored(f"Pitch={np.rad2deg(ball_state['joint_pitch']):+6.2f}°  Roll={np.rad2deg(ball_state['joint_roll']):+6.2f}°", 'cyan'))
-                        print(colored(f"📐 Spherical (θ,φ,r):", 'cyan', attrs=['bold']), colored(f"{np.rad2deg(ball_state['theta']):+6.2f}°, {np.rad2deg(ball_state['phi']):+6.2f}°, {ball_state['r']:.4f}m", 'cyan'))
+                        print(colored(f"\n📐 Spherical (θ,φ,r):", 'cyan', attrs=['bold']), colored(f"{np.rad2deg(ball_state['theta']):+6.2f}°, {np.rad2deg(ball_state['phi']):+6.2f}°, {ball_state['r']:.4f}m", 'cyan'))
                         print(colored(f"🔄 RPY (pivot):", 'cyan', attrs=['bold']), colored(f"R={np.rad2deg(ball_state['roll_wrt_pivot']):+6.2f}°  P={np.rad2deg(ball_state['pitch_wrt_pivot']):+6.2f}°  Y={np.rad2deg(ball_state['yaw_wrt_pivot']):+6.2f}°", 'cyan'))
                         print(colored(f"📍 Ball (pivot):", 'cyan', attrs=['bold']), colored(f"[{ball_state['x']:+.4f}, {ball_state['y']:+.4f}, {ball_state['z']:+.4f}]m", 'cyan'))
                         print(colored(f"📍 Ball (world):", 'cyan', attrs=['bold']), colored(f"[{ball_state['ball_wrt_world'][0]:+.4f}, {ball_state['ball_wrt_world'][1]:+.4f}, {ball_state['ball_wrt_world'][2]:+.4f}]m", 'cyan'))
+                        print(colored(f"\n� Roll-Pitch-Yaw Angles (ball frame w.r.t. PIVOT frame):", 'cyan', attrs=['bold']))
+                        print(colored(f"    Roll:                           {np.rad2deg(ball_state['roll_wrt_pivot']):+7.2f}° ({ball_state['roll_wrt_pivot']:+.4f} rad)", 'cyan'))
+                        print(colored(f"    Pitch:                          {np.rad2deg(ball_state['pitch_wrt_pivot']):+7.2f}° ({ball_state['pitch_wrt_pivot']:+.4f} rad)", 'cyan'))
+                        print(colored(f"    Yaw:                            {np.rad2deg(ball_state['yaw_wrt_pivot']):+7.2f}° ({ball_state['yaw_wrt_pivot']:+.4f} rad)", 'cyan'))
+                        print(colored(f"\n�📍 Ball Position (relative to PIVOT frame - constant for same pendulum angles):", 'cyan', attrs=['bold']))
+                        print(colored(f"    [x,y,z]:                        [{ball_state['x']:+.4f}, {ball_state['y']:+.4f}, {ball_state['z']:+.4f}] m", 'cyan'))
+                        print(colored(f"\n📍 Ball Position (relative to WORLD frame - changes with manipulator):", 'cyan', attrs=['bold']))
+                        print(colored(f"    [x,y,z]:                        [{ball_state['ball_wrt_world'][0]:+.4f}, {ball_state['ball_wrt_world'][1]:+.4f}, {ball_state['ball_wrt_world'][2]:+.4f}] m", 'cyan'))
+                        print(colored(f"\n📍 Ball Position (in ball_frame coordinates):", 'cyan', attrs=['bold']))
+                        print(colored(f"    [x,y,z]:                        [{ball_state['ball_in_ball_frame'][0]:+.4f}, {ball_state['ball_in_ball_frame'][1]:+.4f}, {ball_state['ball_in_ball_frame'][2]:+.4f}] m (constant)", 'cyan'))
+                        print(colored(f"\n📍 Pivot Position (as seen from ball frame):", 'cyan', attrs=['bold']))
+                        print(colored(f"    [x,y,z]:                        [{ball_state['pivot_in_ball_frame'][0]:+.4f}, {ball_state['pivot_in_ball_frame'][1]:+.4f}, {ball_state['pivot_in_ball_frame'][2]:+.4f}] m", 'cyan'))
+                    
                     # Check for discrepancies
                     print(colored(f"\n🔍 Verification (set vs. read):", 'magenta'))
                     for joint_name, set_value in zip(joint_names, values):
@@ -2874,98 +1968,6 @@ class DrakeSceneManager:
         print(colored("\n" + "="*70, 'green'))
         print(colored("Scene visualization complete!", 'green', attrs=['bold']))
         print(colored("="*70 + "\n", 'green'))
-    
-    def _validate_dynamics(self, plant_context, ball_state, joint_positions, joint_velocities):
-        """
-        Validate manual gimbal dynamics against Drake's built-in dynamics.
-        
-        Args:
-            plant_context: Plant context for Drake calculations
-            ball_state: Ball state dictionary from compute_ball_state
-            joint_positions: Dict of joint positions
-            joint_velocities: Dict of joint velocities
-        """
-        # Get gimbal joint angles (these ARE the generalized coordinates)
-        pitch = joint_positions.get('pendulum_pitch', 0.0)
-        roll = joint_positions.get('pendulum_roll', 0.0)
-        
-        # Get full system velocities (manipulator + pendulum)
-        v = self.plant.GetVelocities(plant_context)
-        
-        # Extract pendulum joint velocities (indices 2, 3)
-        pitch_dot = v[2]
-        roll_dot = v[3]
-        
-        # Check for numerical issues near singularities
-        # Gimbal singularity occurs when roll = ±π/2 (gimbal lock)
-        SINGULARITY_THRESHOLD = np.deg2rad(85)  # Avoid within 5° of gimbal lock
-        if abs(roll) > SINGULARITY_THRESHOLD:
-            return  # Skip validation near gimbal lock
-        
-        # Log timestamp for this validation point
-        current_time = plant_context.get_time()
-        self.validation_time_log.append(current_time)
-        
-        # Generalized coordinates for gimbal system
-        q = np.array([pitch, roll])
-        q_dot = np.array([pitch_dot, roll_dot])
-        
-        # Control inputs (zero for passive dynamics validation)
-        u = np.zeros(2)
-        
-        # Get gravity magnitude from configuration (Drake uses negative z-direction)
-        # gravity_config = (0, 0, -9.81) means magnitude is 9.81 m/s²
-        g_magnitude = abs(self.simulation_config.gravity[2])
-        
-        # 1. MANUAL: Compute accelerations using gimbal dynamics equations
-        manual_q_ddot = self.pendulum.compute_nonlinear_dynamics_gimbal(q, q_dot, u, g=g_magnitude)
-        
-        # 2. DRAKE: Get accelerations from Drake's dynamics
-        # Compute mass matrix from Drake
-        M_drake = self.plant.CalcMassMatrix(plant_context)
-        
-        # Compute bias term (Coriolis + Gravity) from Drake: b = C(q,v)v + g(q)
-        bias_drake = self.plant.CalcBiasTerm(plant_context)
-        
-        # For our 4-DOF system (2 manipulator + 2 pendulum):
-        # The pendulum DOFs are indices 2 and 3
-        # Extract pendulum sub-matrices
-        M_pendulum_drake = M_drake[2:4, 2:4]
-        bias_pendulum_drake = bias_drake[2:4]
-        
-        # Solve for accelerations: M·q̈ = -bias (for passive dynamics, u=0)
-        drake_q_ddot = -np.linalg.solve(M_pendulum_drake, bias_pendulum_drake)
-        
-        # 3. COMPUTE ERRORS
-        acceleration_error = manual_q_ddot - drake_q_ddot
-        
-        # Also compute individual components for detailed comparison
-        M_manual = self.pendulum.compute_mass_matrix_gimbal(pitch, roll)
-        C_manual = self.pendulum.compute_coriolis_vector_gimbal(pitch, roll, pitch_dot, roll_dot)
-        G_manual = self.pendulum.compute_gravity_vector_gimbal(pitch, roll, g=g_magnitude)
-        
-        # Debug: print first few comparisons
-        if len(self.validation_time_log) <= 3:
-            print(colored(f"\n[Debug Validation t={current_time:.3f}s]", 'yellow'))
-            print(colored(f"  Pitch={np.rad2deg(pitch):.1f}°, Roll={np.rad2deg(roll):.1f}°", 'cyan'))
-            print(colored(f"  Manual M:\n{M_manual}", 'cyan'))
-            print(colored(f"  Drake M:\n{M_pendulum_drake}", 'cyan'))
-            print(colored(f"  Manual G: {G_manual}", 'cyan'))
-            print(colored(f"  Drake bias: {bias_pendulum_drake}", 'cyan'))
-            print(colored(f"  Manual C: {C_manual}", 'cyan'))
-            print(colored(f"  Manual accel: {manual_q_ddot}", 'cyan'))
-            print(colored(f"  Drake accel: {drake_q_ddot}", 'cyan'))
-            print(colored(f"  Error: {acceleration_error}", 'magenta'))
-        
-        # Store validation data
-        self.manual_accelerations_log.append(manual_q_ddot.copy())
-        self.drake_accelerations_log.append(drake_q_ddot.copy())
-        self.acceleration_errors_log.append(acceleration_error.copy())
-        self.manual_mass_matrix_log.append(M_manual.copy())
-        self.drake_mass_matrix_log.append(M_pendulum_drake.copy())
-        self.manual_coriolis_log.append(C_manual.copy())
-        self.drake_bias_log.append(bias_pendulum_drake.copy())
-        self.manual_gravity_log.append(G_manual.copy())
     
     def plot_results(self):
         """Plot simulation results with desired vs actual trajectories and errors."""
@@ -3142,155 +2144,6 @@ class DrakeSceneManager:
                 else:
                     print(colored(f"  ✗ FAILED: Distance varies beyond numerical precision", 'red', attrs=['bold']))
                 print(colored(f"{'='*70}\n", 'yellow'))
-        
-        # ===================================================================
-        # Dynamics Validation Plots (if validation mode)
-        # ===================================================================
-        if CONTROLLER_MODE == 'dynamics-validation' and len(self.manual_accelerations_log) > 0:
-            # Create separate figure for validation results
-            fig_val = plt.figure(figsize=(16, 12))
-            gs_val = GridSpec(4, 2, figure=fig_val, hspace=0.35, wspace=0.25)
-            
-            # Use validation-specific time array (subset of full time due to singularity skipping)
-            val_time = np.array(self.validation_time_log)
-            manual_accel = np.array(self.manual_accelerations_log)  # [N x 2] (pitch, roll)
-            drake_accel = np.array(self.drake_accelerations_log)    # [N x 2]
-            accel_errors = np.array(self.acceleration_errors_log)   # [N x 2]
-            
-            # Row 1: Accelerations comparison
-            ax = fig_val.add_subplot(gs_val[0, 0])
-            ax.plot(val_time, manual_accel[:, 0], label='Manual α̈ (pitch)', 
-                   color='#E63946', linewidth=1.5)
-            ax.plot(val_time, drake_accel[:, 0], '--', label='Drake α̈', 
-                   color='#457B9D', linewidth=1.5)
-            ax.set_xlabel('Time (s)', fontsize=11)
-            ax.set_ylabel('α̈ (rad/s²)', fontsize=11)
-            ax.set_title('Pitch Acceleration Comparison', fontsize=12, fontweight='bold')
-            ax.legend(loc='best', fontsize=9)
-            ax.grid(True, alpha=0.3)
-            
-            ax = fig_val.add_subplot(gs_val[0, 1])
-            ax.plot(val_time, manual_accel[:, 1], label='Manual β̈ (roll)', 
-                   color='#E63946', linewidth=1.5)
-            ax.plot(val_time, drake_accel[:, 1], '--', label='Drake β̈', 
-                   color='#457B9D', linewidth=1.5)
-            ax.set_xlabel('Time (s)', fontsize=11)
-            ax.set_ylabel('β̈ (rad/s²)', fontsize=11)
-            ax.set_title('Roll Acceleration Comparison', fontsize=12, fontweight='bold')
-            ax.legend(loc='best', fontsize=9)
-            ax.grid(True, alpha=0.3)
-            
-            # Row 2: Acceleration errors
-            ax = fig_val.add_subplot(gs_val[1, 0])
-            ax.plot(val_time, accel_errors[:, 0], color='#E63946', linewidth=1.5)
-            ax.axhline(0, color='black', linestyle='--', linewidth=1, alpha=0.5)
-            ax.set_xlabel('Time (s)', fontsize=11)
-            ax.set_ylabel('Error (rad/s²)', fontsize=11)
-            ax.set_title('Pitch Acceleration Error (Manual - Drake)', fontsize=12, fontweight='bold')
-            ax.grid(True, alpha=0.3)
-            
-            ax = fig_val.add_subplot(gs_val[1, 1])
-            ax.plot(val_time, accel_errors[:, 1], color='#457B9D', linewidth=1.5)
-            ax.axhline(0, color='black', linestyle='--', linewidth=1, alpha=0.5)
-            ax.set_xlabel('Time (s)', fontsize=11)
-            ax.set_ylabel('Error (rad/s²)', fontsize=11)
-            ax.set_title('Roll Acceleration Error (Manual - Drake)', fontsize=12, fontweight='bold')
-            ax.grid(True, alpha=0.3)
-            
-            # Row 3: Mass matrix diagonal elements (M[0,0] and M[1,1])
-            if len(self.manual_mass_matrix_log) > 0:
-                manual_M = np.array(self.manual_mass_matrix_log)  # [N x 2 x 2]
-                drake_M = np.array(self.drake_mass_matrix_log)    # [N x 2 x 2]
-                
-                ax = fig_val.add_subplot(gs_val[2, 0])
-                ax.plot(val_time, manual_M[:, 0, 0], label='Manual M[α,α]', 
-                       color='#E63946', linewidth=1.5)
-                ax.plot(val_time, drake_M[:, 0, 0], '--', label='Drake M[α,α]', 
-                       color='#457B9D', linewidth=1.5)
-                ax.set_xlabel('Time (s)', fontsize=11)
-                ax.set_ylabel('M[α,α] (kg⋅m²)', fontsize=11)
-                ax.set_title('Mass Matrix M[α,α] = mL²cos²(β)', fontsize=12, fontweight='bold')
-                ax.legend(loc='best', fontsize=9)
-                ax.grid(True, alpha=0.3)
-                
-                ax = fig_val.add_subplot(gs_val[2, 1])
-                ax.plot(val_time, manual_M[:, 1, 1], label='Manual M[β,β]', 
-                       color='#E63946', linewidth=1.5)
-                ax.plot(val_time, drake_M[:, 1, 1], '--', label='Drake M[β,β]', 
-                       color='#457B9D', linewidth=1.5)
-                ax.set_xlabel('Time (s)', fontsize=11)
-                ax.set_ylabel('M[β,β] (kg⋅m²)', fontsize=11)
-                ax.set_title('Mass Matrix M[β,β] = mL² (constant)', fontsize=12, fontweight='bold')
-                ax.legend(loc='best', fontsize=9)
-                ax.grid(True, alpha=0.3)
-            
-            # Row 4: Gravity and Coriolis comparison
-            if len(self.manual_gravity_log) > 0:
-                manual_G = np.array(self.manual_gravity_log)  # [N x 2]
-                drake_bias = np.array(self.drake_bias_log)    # [N x 2]
-                manual_C = np.array(self.manual_coriolis_log)  # [N x 2]
-                
-                ax = fig_val.add_subplot(gs_val[3, 0])
-                ax.plot(val_time, manual_G[:, 0], label='Manual G[α]', 
-                       color='#E63946', linewidth=1.5)
-                ax.plot(val_time, -drake_bias[:, 0] - manual_C[:, 0], '--', label='Drake G[α] (bias-C)', 
-                       color='#457B9D', linewidth=1.5)
-                ax.set_xlabel('Time (s)', fontsize=11)
-                ax.set_ylabel('G[α] (N⋅m)', fontsize=11)
-                ax.set_title('Gravity Torque (pitch) = -mgL⋅sin(α)⋅cos(β)', fontsize=12, fontweight='bold')
-                ax.legend(loc='best', fontsize=9)
-                ax.grid(True, alpha=0.3)
-                
-                ax = fig_val.add_subplot(gs_val[3, 1])
-                ax.plot(val_time, manual_G[:, 1], label='Manual G[β]', 
-                       color='#E63946', linewidth=1.5)
-                ax.plot(val_time, -drake_bias[:, 1] - manual_C[:, 1], '--', label='Drake G[β] (bias-C)', 
-                       color='#457B9D', linewidth=1.5)
-                ax.set_xlabel('Time (s)', fontsize=11)
-                ax.set_ylabel('G[β] (N⋅m)', fontsize=11)
-                ax.set_title('Gravity Torque (roll) = mgL⋅cos(α)⋅sin(β)', fontsize=12, fontweight='bold')
-                ax.legend(loc='best', fontsize=9)
-                ax.grid(True, alpha=0.3)
-            
-            # Overall title for validation
-            fig_val.suptitle('Dynamics Validation: Manual Gimbal Coordinates vs Drake', 
-                            fontsize=14, fontweight='bold', y=0.995)
-            
-            plt.figure(fig_val.number)
-            plt.tight_layout()
-            
-            # Save validation plot
-            from datetime import datetime
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            val_plot_filename = f'plots/validation_results_{timestamp}.png'
-            os.makedirs('plots', exist_ok=True)
-            plt.savefig(val_plot_filename, dpi=150, bbox_inches='tight')
-            print(colored(f"\n✓ Validation plot saved: {val_plot_filename}", 'green', attrs=['bold']))
-            
-            # Print validation statistics
-            print(colored("\n" + "="*70, 'cyan', attrs=['bold']))
-            print(colored("Dynamics Validation Statistics (Gimbal Coordinates)", 'cyan', attrs=['bold']))
-            print(colored("="*70, 'cyan', attrs=['bold']))
-            
-            rms_pitch = np.sqrt(np.mean(accel_errors[:, 0]**2))
-            rms_roll = np.sqrt(np.mean(accel_errors[:, 1]**2))
-            max_pitch = np.max(np.abs(accel_errors[:, 0]))
-            max_roll = np.max(np.abs(accel_errors[:, 1]))
-            
-            print(colored(f"Acceleration Errors:", 'cyan'))
-            print(colored(f"  α̈ (pitch) RMS Error:  {rms_pitch:.6e} rad/s²", 'cyan'))
-            print(colored(f"  α̈ (pitch) Max Error:  {max_pitch:.6e} rad/s²", 'cyan'))
-            print(colored(f"  β̈ (roll) RMS Error:   {rms_roll:.6e} rad/s²", 'cyan'))
-            print(colored(f"  β̈ (roll) Max Error:   {max_roll:.6e} rad/s²", 'cyan'))
-            
-            if max_pitch < 1e-5 and max_roll < 1e-5:
-                print(colored(f"\n  ✓ PASSED: Manual gimbal dynamics match Drake (error < 10⁻⁵)", 'green', attrs=['bold']))
-            elif max_pitch < 1e-3 and max_roll < 1e-3:
-                print(colored(f"\n  ⚠ WARNING: Small discrepancies detected (error < 10⁻³)", 'yellow', attrs=['bold']))
-            else:
-                print(colored(f"\n  ✗ FAILED: Significant dynamics errors detected", 'red', attrs=['bold']))
-            
-            print(colored("="*70 + "\n", 'cyan', attrs=['bold']))
         
         # Overall title
         fig.suptitle(f'Simulation Results - Controller: {CONTROLLER_MODE.upper()}', 

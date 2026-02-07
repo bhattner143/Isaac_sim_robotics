@@ -1,0 +1,415 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usepackage{tikz-3dplot}
+\usetikzlibrary{arrows.meta, calc, decorations.markings, positioning}
+
+\geometry{margin=1in}
+
+\title{Equations of Motion: 2D Cart + 3D Pendulum System\\(Spherical Coordinates)}
+\author{Derived from Pendulum3D Class}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{System Description}
+
+\begin{itemize}
+    \item \textbf{Cart}: mass $M$, can translate in 2D ($x$-$y$ plane)
+    \item \textbf{Pendulum}: mass $m$, length $L$, attached to cart at pivot point
+    \begin{itemize}
+        \item \textbf{Spherical coordinates}: $\theta$ (polar angle from $z$-axis) and $\phi$ (azimuthal angle from $x$-axis)
+    \end{itemize}
+\end{itemize}
+
+\section{Reference Frames}
+
+The system uses multiple coordinate frames for the derivation:
+
+\subsection{Frame Definitions}
+
+\begin{enumerate}
+    \item \textbf{World Frame (W)}: Inertial reference frame
+    \begin{itemize}
+        \item Origin: Fixed in space
+        \item Axes: $\hat{x}_W$ (left), $\hat{y}_W$ (into page/forward), $\hat{z}_W$ (down)
+        \item Right-handed coordinate system
+    \end{itemize}
+    
+    \item \textbf{Cart Frame (C)}: Translates with the cart
+    \begin{itemize}
+        \item Origin: Cart center of mass at $(x_c, y_c, 0)$
+        \item Axes: Parallel to world frame (no rotation)
+        \item Translation: $\mathbf{r}_{W,C} = [x_c, y_c, 0]^T$
+    \end{itemize}
+    
+    \item \textbf{Pivot Frame (P)}: Fixed to cart at pendulum attachment point
+    \begin{itemize}
+        \item Origin: Pendulum attachment point on cart (top of cart)
+        \item Axes: Parallel to cart frame (no relative rotation)
+        \item This is where the pendulum is attached
+    \end{itemize}
+    
+    \item \textbf{Ball Frame (B)}: Location of pendulum mass
+    \begin{itemize}
+        \item Position: Distance $L$ from pivot in direction $(\theta, \phi)$
+        \item Spherical coordinates from pivot frame
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Frame Transformation Sequence}
+
+The transformation from world frame to ball position follows:
+\begin{equation}
+    W \xrightarrow{\text{translate}} C \xrightarrow{\text{translate}} P \xrightarrow{\text{spherical coords } (\theta, \phi)} B
+\end{equation}
+
+\section{Generalized Coordinates}
+
+The system has 4 degrees of freedom using spherical coordinates for the pendulum:
+\begin{equation}
+    \mathbf{q} = \begin{bmatrix} x_c \\ y_c \\ \theta \\ \phi \end{bmatrix}
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $x_c, y_c$: Cart position in horizontal plane
+    \item $\theta$: Polar angle from $z$-axis (zenith angle), $\theta \in [0, \pi]$
+    \begin{itemize}
+        \item $\theta = 0$: pendulum points straight down (along $+z$)
+        \item $\theta = \pi/2$: pendulum horizontal
+        \item $\theta = \pi$: pendulum points up
+    \end{itemize}
+    \item $\phi$: Azimuthal angle from $x$-axis in $xy$-plane, $\phi \in [0, 2\pi)$
+    \begin{itemize}
+        \item $\phi = 0$: pendulum projects onto $+x$ axis
+        \item $\phi = \pi/2$: pendulum projects onto $+y$ axis
+    \end{itemize}
+\end{itemize}
+
+\textbf{Note}: This is the standard spherical coordinate parameterization.
+
+\section{Kinematics}
+
+\subsection{Spherical Coordinate Formulation}
+
+In spherical coordinates, the unit vector pointing from the pivot to the ball is:
+
+\begin{equation}
+    \hat{\mathbf{r}} = 
+    \begin{bmatrix}
+        \sin\theta\cos\phi \\
+        \sin\theta\sin\phi \\
+        \cos\theta
+    \end{bmatrix}
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $\theta$ is the polar angle measured from the $+z$ axis (down)
+    \item $\phi$ is the azimuthal angle measured from the $+x$ axis in the $xy$-plane
+\end{itemize}
+
+\textbf{Physical interpretation}:
+\begin{align}
+    \theta &= 0 \quad &\Rightarrow \quad &\hat{\mathbf{r}} = [0, 0, 1]^T \quad &\text{(pointing straight down)} \\
+    \theta &= \pi/2, \phi = 0 \quad &\Rightarrow \quad &\hat{\mathbf{r}} = [1, 0, 0]^T \quad &\text{(pointing left)} \\
+    \theta &= \pi/2, \phi = \pi/2 \quad &\Rightarrow \quad &\hat{\mathbf{r}} = [0, 1, 0]^T \quad &\text{(pointing into page)} \\
+    \theta &= \pi \quad &\Rightarrow \quad &\hat{\mathbf{r}} = [0, 0, -1]^T \quad &\text{(pointing up, inverted)}
+\end{align}
+
+\textbf{Spherical basis vectors}:
+
+The natural basis vectors in spherical coordinates are:
+\begin{align}
+    \hat{\boldsymbol{\theta}} &= \frac{\partial \hat{\mathbf{r}}}{\partial \theta} = 
+    \begin{bmatrix}
+        \cos\theta\cos\phi \\
+        \cos\theta\sin\phi \\
+        -\sin\theta
+    \end{bmatrix}
+    \quad \text{(direction of increasing $\theta$)} \\
+    \hat{\boldsymbol{\phi}} &= \frac{1}{\sin\theta}\frac{\partial \hat{\mathbf{r}}}{\partial \phi} = 
+    \begin{bmatrix}
+        -\sin\phi \\
+        \cos\phi \\
+        0
+    \end{bmatrix}
+    \quad \text{(direction of increasing $\phi$)}
+\end{align}
+
+\subsection{Pendulum Ball Position}
+
+The ball position relative to the cart (pivot at cart) in spherical coordinates:
+\begin{equation}
+    \mathbf{r}_{\text{ball}} = \mathbf{r}_{\text{cart}} + L
+    \begin{bmatrix}
+        \sin\theta\cos\phi \\
+        \sin\theta\sin\phi \\
+        \cos\theta
+    \end{bmatrix}
+\end{equation}
+
+\subsection{Ball Position Components}
+\begin{align}
+    x_{\text{ball}} &= x_c + L\sin\theta\cos\phi \\
+    y_{\text{ball}} &= y_c + L\sin\theta\sin\phi \\
+    z_{\text{ball}} &= L\cos\theta \quad \text{(positive down from pivot)}
+\end{align}
+
+\textbf{Physical interpretation}:
+\begin{itemize}
+    \item When $\theta = 0$: ball hangs straight down at $(x_c, y_c, L)$
+    \item When $\theta = \pi/2, \phi = 0$: ball is horizontal along $+x$ at $(x_c + L, y_c, 0)$
+    \item When $\theta = \pi/2, \phi = \pi/2$: ball is horizontal along $+y$ at $(x_c, y_c + L, 0)$
+\end{itemize}
+
+\subsection{Ball Velocity (Time Derivatives)}
+
+Taking time derivatives of the ball position:
+\begin{align}
+    \dot{x}_{\text{ball}} &= \dot{x}_c + L(\dot{\theta}\cos\theta\cos\phi - \dot{\phi}\sin\theta\sin\phi) \\
+    \dot{y}_{\text{ball}} &= \dot{y}_c + L(\dot{\theta}\cos\theta\sin\phi + \dot{\phi}\sin\theta\cos\phi) \\
+    \dot{z}_{\text{ball}} &= -L\dot{\theta}\sin\theta
+\end{align}
+
+The velocity magnitude squared:
+\begin{align}
+    \dot{\mathbf{r}}_{\text{ball}}^2 &= \dot{x}_{\text{ball}}^2 + \dot{y}_{\text{ball}}^2 + \dot{z}_{\text{ball}}^2 \nonumber \\
+    &= \dot{x}_c^2 + \dot{y}_c^2 + L^2(\dot{\theta}^2 + \dot{\phi}^2\sin^2\theta) \nonumber \\
+    &\quad + 2L\dot{x}_c(\dot{\theta}\cos\theta\cos\phi - \dot{\phi}\sin\theta\sin\phi) \nonumber \\
+    &\quad + 2L\dot{y}_c(\dot{\theta}\cos\theta\sin\phi + \dot{\phi}\sin\theta\cos\phi)
+\end{align}
+
+\section{Lagrangian Formulation}
+
+\subsection{Kinetic Energy}
+
+\textbf{Total Kinetic Energy:}
+\begin{equation}
+    T = T_{\text{cart}} + T_{\text{ball}}
+\end{equation}
+
+\textbf{Cart Kinetic Energy:}
+\begin{equation}
+    T_{\text{cart}} = \frac{1}{2}M(\dot{x}_c^2 + \dot{y}_c^2)
+\end{equation}
+
+\textbf{Ball Kinetic Energy:}
+\begin{align}
+    T_{\text{ball}} &= \frac{1}{2}m(\dot{x}_{\text{ball}}^2 + \dot{y}_{\text{ball}}^2 + \dot{z}_{\text{ball}}^2) \nonumber \\
+    &= \frac{1}{2}m\left[\dot{x}_c^2 + \dot{y}_c^2 + L^2(\dot{\theta}^2 + \dot{\phi}^2\sin^2\theta) \right. \nonumber \\
+    &\quad + 2L\dot{x}_c(\dot{\theta}\cos\theta\cos\phi - \dot{\phi}\sin\theta\sin\phi) \nonumber \\
+    &\quad \left. + 2L\dot{y}_c(\dot{\theta}\cos\theta\sin\phi + \dot{\phi}\sin\theta\cos\phi)\right]
+\end{align}
+
+\textbf{Total Kinetic Energy:}
+\begin{align}
+    T &= \frac{1}{2}(M + m)(\dot{x}_c^2 + \dot{y}_c^2) + \frac{1}{2}mL^2(\dot{\theta}^2 + \dot{\phi}^2\sin^2\theta) \nonumber \\
+    &\quad + mL\dot{x}_c(\dot{\theta}\cos\theta\cos\phi - \dot{\phi}\sin\theta\sin\phi) \nonumber \\
+    &\quad + mL\dot{y}_c(\dot{\theta}\cos\theta\sin\phi + \dot{\phi}\sin\theta\cos\phi)
+\end{align}
+
+\subsection{Potential Energy}
+
+With $z$ pointing down, the gravitational potential energy is (taking $V = 0$ at pivot level):
+\begin{equation}
+    V = -mgz_{\text{ball}} = -mgL\cos\theta
+\end{equation}
+
+Note: The negative sign arises because gravity acts in the positive $z$-direction (down), and potential energy decreases as the ball goes down.
+
+\subsection{Lagrangian}
+\begin{align}
+    \mathcal{L} &= T - V \nonumber \\
+    &= \frac{1}{2}(M + m)(\dot{x}_c^2 + \dot{y}_c^2) + \frac{1}{2}mL^2(\dot{\theta}^2 + \dot{\phi}^2\sin^2\theta) \nonumber \\
+    &\quad + mL\dot{x}_c(\dot{\theta}\cos\theta\cos\phi - \dot{\phi}\sin\theta\sin\phi) \nonumber \\
+    &\quad + mL\dot{y}_c(\dot{\theta}\cos\theta\sin\phi + \dot{\phi}\sin\theta\cos\phi) \nonumber \\
+    &\quad + mgL\cos\theta
+\end{align}
+
+\section{Euler-Lagrange Equations}
+
+The equations of motion are derived from:
+\begin{equation}
+    \frac{d}{dt}\left(\frac{\partial\mathcal{L}}{\partial\dot{q}_i}\right) - \frac{\partial\mathcal{L}}{\partial q_i} = Q_i
+\end{equation}
+
+where $Q_i$ are generalized forces (control inputs, friction, etc.).
+
+For this system:
+\begin{align}
+    Q_{x_c} &= F_x \quad \text{(horizontal force on cart in $x$-direction)} \\
+    Q_{y_c} &= F_y \quad \text{(horizontal force on cart in $y$-direction)} \\
+    Q_\theta &= \tau_\theta \quad \text{(torque about polar axis)} \\
+    Q_\phi &= \tau_\phi \quad \text{(torque about azimuthal axis)}
+\end{align}
+
+\section{Equations of Motion (Compact Form)}
+
+The equations of motion can be written in the standard manipulator form:
+\begin{equation}
+    \mathbf{M}(\mathbf{q})\ddot{\mathbf{q}} + \mathbf{C}(\mathbf{q},\dot{\mathbf{q}}) + \mathbf{G}(\mathbf{q}) = \boldsymbol{\tau}
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $\mathbf{M}(\mathbf{q})$: Configuration-dependent mass/inertia matrix (4×4, symmetric, positive definite)
+    \item $\mathbf{C}(\mathbf{q},\dot{\mathbf{q}})$: Coriolis and centrifugal forces (4×1)
+    \item $\mathbf{G}(\mathbf{q})$: Gravitational forces (4×1)
+    \item $\boldsymbol{\tau} = [F_x, F_y, \tau_\theta, \tau_\phi]^T$: Control inputs (4×1)
+\end{itemize}
+
+\subsection{Mass Matrix $\mathbf{M}(\mathbf{q})$}
+
+\begin{equation}
+    \mathbf{M}(\mathbf{q}) = 
+    \begin{bmatrix}
+        M+m & 0 & mL\cos\theta\cos\phi & -mL\sin\theta\sin\phi \\
+        0 & M+m & mL\cos\theta\sin\phi & mL\sin\theta\cos\phi \\
+        mL\cos\theta\cos\phi & mL\cos\theta\sin\phi & mL^2 & 0 \\
+        -mL\sin\theta\sin\phi & mL\sin\theta\cos\phi & 0 & mL^2\sin^2\theta
+    \end{bmatrix}
+\end{equation}
+
+Note: The $\phi$-inertia term is $mL^2\sin^2\theta$, which goes to zero at $\theta = 0$ (pendulum hanging down, gimbal lock) and is maximum at $\theta = \pi/2$ (horizontal).
+
+\subsection{Coriolis/Centrifugal Vector $\mathbf{C}(\mathbf{q},\dot{\mathbf{q}})$}
+
+\begin{align}
+    C_1 &= -mL\left[\dot{\theta}^2\sin\theta\cos\phi + \dot{\phi}^2\sin\theta\cos\theta\cos\phi + 2\dot{\theta}\dot{\phi}\cos\theta\sin\phi\right] \\
+    C_2 &= -mL\left[\dot{\theta}^2\sin\theta\sin\phi + \dot{\phi}^2\sin\theta\cos\theta\sin\phi - 2\dot{\theta}\dot{\phi}\cos\theta\cos\phi\right] \\
+    C_3 &= mL\dot{\phi}^2\sin\theta\cos\theta - mL\dot{\phi}\sin\theta(\dot{x}_c\sin\phi - \dot{y}_c\cos\phi) \\
+    C_4 &= -mL^2\dot{\theta}\dot{\phi}\sin(2\theta) - mL\dot{\theta}\cos\theta(\dot{x}_c\sin\phi + \dot{y}_c\cos\phi)
+\end{align}
+
+\subsection{Gravity Vector $\mathbf{G}(\mathbf{q})$}
+
+With gravity acting in the positive $z$-direction (down):
+\begin{align}
+    G_1 &= 0 \\
+    G_2 &= 0 \\
+    G_3 &= -mgL\sin\theta \\
+    G_4 &= 0
+\end{align}
+
+Note: In spherical coordinates, gravity only produces a torque about the $\theta$ axis (trying to bring the pendulum back to $\theta = 0$). There is no gravitational torque about the $\phi$ axis since gravity is symmetric about the vertical.
+
+\subsection{Final Equations of Motion}
+
+\textbf{Expanded Form:}
+\begin{equation}
+    \begin{bmatrix}
+        M+m & 0 & mL\cos\theta\cos\phi & -mL\sin\theta\sin\phi \\
+        0 & M+m & mL\cos\theta\sin\phi & mL\sin\theta\cos\phi \\
+        mL\cos\theta\cos\phi & mL\cos\theta\sin\phi & mL^2 & 0 \\
+        -mL\sin\theta\sin\phi & mL\sin\theta\cos\phi & 0 & mL^2\sin^2\theta
+    \end{bmatrix}
+    \begin{bmatrix}
+        \ddot{x}_c \\ \ddot{y}_c \\ \ddot{\theta} \\ \ddot{\phi}
+    \end{bmatrix}
+    +
+    \begin{bmatrix}
+        C_1 \\ C_2 \\ C_3 \\ C_4
+    \end{bmatrix}
+    +
+    \begin{bmatrix}
+        0 \\ 0 \\ -mgL\sin\theta \\ 0
+    \end{bmatrix}
+    =
+    \begin{bmatrix}
+        F_x \\ F_y \\ \tau_\theta \\ \tau_\phi
+    \end{bmatrix}
+\end{equation}
+
+\section{Special Cases}
+
+\subsection{Fixed Cart ($x_c = y_c = 0$)}
+\begin{itemize}
+    \item Reduces to standard spherical pendulum
+    \item Mass matrix becomes diagonal: $\text{diag}(mL^2, mL^2\sin^2\theta)$
+    \item Classic problem with conserved angular momentum about vertical axis when $\tau_\phi = 0$
+\end{itemize}
+
+\subsection{Small Angles ($\theta \approx 0$)}
+\begin{itemize}
+    \item $\sin\theta \approx \theta$, $\cos\theta \approx 1$
+    \item Pendulum near vertical (hanging down)
+    \item Linearized system:
+    \begin{align}
+        x_{\text{ball}} &\approx x_c + L\theta\cos\phi \\
+        y_{\text{ball}} &\approx y_c + L\theta\sin\phi \\
+        z_{\text{ball}} &\approx L
+    \end{align}
+    \item Useful for LQR controller design
+\end{itemize}
+
+\subsection{Planar Motion ($\phi = \text{const}$)}
+\begin{itemize}
+    \item Motion confined to a vertical plane
+    \item 3 DOF: $[x_c, y_c, \theta]$
+    \item If $\phi = 0$: motion in $x$-$z$ plane
+    \item If $\phi = \pi/2$: motion in $y$-$z$ plane
+\end{itemize}
+
+\subsection{Equilibrium Points}
+\begin{itemize}
+    \item \textbf{Stable}: $\theta = 0$ (pendulum hanging down), $\phi$ arbitrary
+    \item \textbf{Unstable}: $\theta = \pi$ (inverted pendulum), $\phi$ arbitrary
+    \item At $\theta = 0$: Mass matrix becomes singular for $\phi$-coordinate (gimbal lock)
+\end{itemize}
+
+\section{Drake MultibodyPlant Usage}
+
+In Drake, the system is constructed using:
+\begin{itemize}
+    \item \texttt{AddRigidBody()}: Cart and ball bodies
+    \item \texttt{AddJoint()}: Prismatic joints for cart translation, revolute joints for gimbal
+    \item \texttt{CalcMassMatrix()}: Computes $\mathbf{M}(\mathbf{q})$ automatically
+    \item \texttt{CalcBiasTerm()}: Computes $\mathbf{C}(\mathbf{q},\dot{\mathbf{q}}) + \mathbf{G}(\mathbf{q})$
+\end{itemize}
+
+\section{State-Space Representation}
+
+For control design, define state vector:
+\begin{equation}
+    \mathbf{x} = \begin{bmatrix} \mathbf{q} \\ \dot{\mathbf{q}} \end{bmatrix} = 
+    \begin{bmatrix} x_c \\ y_c \\ \theta \\ \phi \\ \dot{x}_c \\ \dot{y}_c \\ \dot{\theta} \\ \dot{\phi} \end{bmatrix}
+    \in \mathbb{R}^8
+\end{equation}
+
+State-space form:
+\begin{equation}
+    \dot{\mathbf{x}} = 
+    \begin{bmatrix}
+        \dot{\mathbf{q}} \\
+        \mathbf{M}^{-1}(\mathbf{q})[\boldsymbol{\tau} - \mathbf{C}(\mathbf{q},\dot{\mathbf{q}}) - \mathbf{G}(\mathbf{q})]
+    \end{bmatrix}
+\end{equation}
+
+For linearization about equilibrium $(\mathbf{q}_0, \dot{\mathbf{q}}_0)$, typically $\theta_0 = 0$ (hanging down):
+\begin{equation}
+    \dot{\mathbf{x}} \approx \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u}
+\end{equation}
+
+where $\mathbf{A} \in \mathbb{R}^{8 \times 8}$ and $\mathbf{B} \in \mathbb{R}^{8 \times 4}$ are obtained from:
+\begin{align}
+    \mathbf{A} &= \begin{bmatrix}
+        \mathbf{0}_{4 \times 4} & \mathbf{I}_{4 \times 4} \\
+        \mathbf{M}^{-1}\frac{\partial \mathbf{G}}{\partial \mathbf{q}}\bigg|_{\mathbf{q}_0} & -\mathbf{M}^{-1}\mathbf{K}_d
+    \end{bmatrix} \\
+    \mathbf{B} &= \begin{bmatrix}
+        \mathbf{0}_{4 \times 4} \\
+        \mathbf{M}^{-1}
+    \end{bmatrix}
+\end{align}
+
+where $\mathbf{K}_d$ is joint damping (if present).
+
+\end{document}
