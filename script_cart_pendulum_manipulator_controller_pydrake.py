@@ -85,9 +85,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--mode",
     type=str,
-    choices=["scene-viz", "simulation", "coupled-motion", "cart-toward-manipulator"],
+    choices=["scene-viz", "simulation", "coupled-motion", "cart-toward-manipulator", "min-jerk-joint"],
     default="coupled-motion",
-    help="Simulation mode: 'scene-viz' (static), 'simulation' (physics), 'coupled-motion' (manipulator moves cart), 'cart-toward-manipulator' (cart moves toward manipulator EE)",
+    help="Simulation mode: 'scene-viz' (static), 'simulation' (physics), 'coupled-motion' (manipulator moves cart), 'cart-toward-manipulator' (cart moves toward manipulator EE), 'min-jerk-joint' (minimum-jerk joint trajectory)",
 )
 parser.add_argument(
     "--visualize",
@@ -156,6 +156,29 @@ PD_KD = 100.0/2   # Derivative gain for joint PD
 IMPEDANCE_KP = 100000.0   # End-effector position gain (N/m)
 IMPEDANCE_KD = 50.0    # End-effector velocity gain (N*s/m)
 IMPEDANCE_MASS = 1.0    # Virtual mass for impedance control
+
+# --- Minimum-Jerk Joint-Space Trajectory ---
+MIN_JERK_DURATION = 6.0  # seconds
+
+
+# =========================================================================
+# TRAJECTORY UTILITIES
+# =========================================================================
+
+def min_jerk_profile(t: float, T: float) -> Tuple[float, float, float]:
+    """
+    Minimum-jerk time-scaling profile.
+
+    Returns:
+        h(s), hdot(s), hddot(s) where s = t/T (clamped to [0, 1]).
+    """
+    if T <= 0:
+        return 1.0, 0.0, 0.0
+    s = np.clip(t / T, 0.0, 1.0)
+    h = 10 * s**3 - 15 * s**4 + 6 * s**5
+    hdot = (30 * s**2 - 60 * s**3 + 30 * s**4) / T
+    hddot = (60 * s - 180 * s**2 + 120 * s**3) / (T**2)
+    return h, hdot, hddot
 
 # ============================================================================
 # PARAMETER CLASSES
@@ -1776,6 +1799,143 @@ class DrakeSceneManager:
         print(f"{'='*70}\n")
         self.plot_results()
         self.save_configuration_to_json()
+
+    def run_min_jerk_joint(self):
+        """Run simulation with minimum-jerk joint-space trajectory for the manipulator."""
+        print(f"\n{'='*70}")
+        print("MINIMUM-JERK JOINT-SPACE MODE")
+        print(f"{'='*70}\n")
+
+        # Save configuration for this run
+        self.save_configuration_to_json()
+
+        self.setup_drake_system()
+        self.create_simulator()
+        self.set_initial_conditions()
+
+        # Publish initial scene to Meshcat
+        context = self.simulator.get_context()
+        self.diagram.ForcedPublish(context)
+
+        # Get initial joint positions
+        context = self.simulator.get_mutable_context()
+        plant_context = self.diagram.GetMutableSubsystemContext(self.plant, context)
+        all_positions = self.plant.GetPositions(plant_context)
+        manip_indices = self.plant.GetJointIndices(self.manipulator.model_instance)
+        q0 = []
+        for joint_idx in manip_indices:
+            joint = self.plant.get_joint(joint_idx)
+            if joint.num_velocities() == 1:
+                q0.append(all_positions[joint.position_start()])
+
+        # Target joint positions from IK of desired EE final position
+        target_ee_world = tuple(self.manipulator.params.ee_final_position)
+        qf = None
+        ik_result = self.manipulator.inverse_kinematics(*target_ee_world)
+        if ik_result is not None:
+            qf = list(ik_result)
+        else:
+            qf = q0.copy()
+            print("⚠ Warning: IK failed for final EE target; holding initial joints.")
+
+        print(f"\n{'='*70}")
+        print("MINIMUM-JERK TRAJECTORY SETUP")
+        print(f"{'='*70}")
+        print(f"Duration: {MIN_JERK_DURATION:.2f}s")
+        print(f"q0 (deg): {[round(np.degrees(v), 2) for v in q0]}")
+        print(f"qf (deg): {[round(np.degrees(v), 2) for v in qf]}")
+        print(f"{'='*70}\n")
+
+        # Print table header
+        print(f"{'Time (s)':>10} | {'Joint1 (°)':>12} | {'Joint2 (°)':>12} | {'Cart X (m)':>12} | {'Pend (°)':>12}")
+        print(f"{'-'*10}-+-{'-'*12}-+-{'-'*12}-+-{'-'*12}-+-{'-'*12}")
+        print(f"Running simulation with JOINT PD control (min-jerk reference)...")
+        print(f"Visualizing in Meshcat at http://127.0.0.1:7000")
+        print(f"Visualization: {'Every timestep' if VISUALIZATION_UPDATE_EVERY_STEP else f'{VISUALIZATION_FRAME_RATE} FPS'}\n")
+
+        # Simulation loop
+        dt = SIMULATOR_TIME_STEP
+        time_s = 0.0
+        frame_count = 0
+        print_interval_frames = max(1, int(PRINT_INTERVAL / SIMULATOR_TIME_STEP))
+
+        while time_s < SIMULATION_DURATION:
+            context = self.simulator.get_mutable_context()
+            plant_context = self.diagram.GetMutableSubsystemContext(self.plant, context)
+            all_positions = self.plant.GetPositions(plant_context)
+            all_velocities = self.plant.GetVelocities(plant_context)
+
+            # Current joint positions/velocities
+            current_positions = []
+            current_velocities = []
+            for joint_idx in manip_indices:
+                joint = self.plant.get_joint(joint_idx)
+                if joint.num_velocities() == 1:
+                    current_positions.append(all_positions[joint.position_start()])
+                    current_velocities.append(all_velocities[joint.velocity_start()])
+
+            # Minimum-jerk reference
+            h, hdot, _ = min_jerk_profile(time_s, MIN_JERK_DURATION)
+            target_positions = [q0[i] + (qf[i] - q0[i]) * h for i in range(len(q0))]
+            target_velocities = [(qf[i] - q0[i]) * hdot for i in range(len(q0))]
+
+            num_actuators = self.plant.num_actuators()
+            actuation = np.zeros(num_actuators)
+
+            # Track errors and torques for logging
+            control_errors = []
+            control_error_dots = []
+            control_torques = []
+
+            # Joint-space PD control
+            actuator_indices = self.plant.GetJointActuatorIndices(self.manipulator_instance)
+            for i, actuator_idx in enumerate(actuator_indices):
+                if i < len(target_positions):
+                    error = target_positions[i] - current_positions[i]
+                    error_dot = target_velocities[i] - current_velocities[i]
+                    torque = PD_KP * error + PD_KD * error_dot
+                    actuation[actuator_idx] = torque
+
+                    control_errors.append(error)
+                    control_error_dots.append(error_dot)
+                    control_torques.append(torque)
+
+            # Set actuation
+            self.plant.get_actuation_input_port().FixValue(plant_context, actuation)
+
+            # Log data
+            self.log_data(time_s, control_errors, control_error_dots, control_torques)
+
+            # Print progress
+            if frame_count % print_interval_frames == 0:
+                # Extract cart and pendulum positions (if available)
+                cart_indices = self.plant.GetJointIndices(self.cart_pendulum.model_instance)
+                cart_pos_data = []
+                for joint_idx in cart_indices:
+                    joint = self.plant.get_joint(joint_idx)
+                    if joint.num_velocities() == 1:
+                        cart_pos_data.append(all_positions[joint.position_start()])
+                cart_x = cart_pos_data[0] if len(cart_pos_data) > 0 else 0.0
+                pend_angle = cart_pos_data[1] if len(cart_pos_data) > 1 else 0.0
+
+                j1 = np.degrees(current_positions[0]) if len(current_positions) > 0 else 0.0
+                j2 = np.degrees(current_positions[1]) if len(current_positions) > 1 else 0.0
+                print(f"{time_s:10.2f} | {j1:12.2f} | {j2:12.2f} | {cart_x:12.4f} | {np.degrees(pend_angle):12.2f}")
+
+            # Publish visualization update
+            if VISUALIZATION_UPDATE_EVERY_STEP:
+                self.diagram.ForcedPublish(self.simulator.get_context())
+            elif frame_count % max(1, int(1.0 / (VISUALIZATION_FRAME_RATE * dt))) == 0:
+                self.diagram.ForcedPublish(self.simulator.get_context())
+
+            # Advance simulator
+            self.simulator.AdvanceTo(time_s + dt)
+            time_s += dt
+            frame_count += 1
+
+        print(f"\n✓ Simulation complete")
+        self.plot_results()
+        self.save_configuration_to_json()
     
     def run_cart_toward_manipulator(self):
         """Run simulation where cart edge moves toward manipulator end-effector."""
@@ -2017,6 +2177,8 @@ def main():
             scene.run_coupled_motion()
         elif SIMULATION_MODE == "cart-toward-manipulator":
             scene.run_cart_toward_manipulator()
+        elif SIMULATION_MODE == "min-jerk-joint":
+            scene.run_min_jerk_joint()
         else:
             print(f"Unknown mode: {SIMULATION_MODE}")
     

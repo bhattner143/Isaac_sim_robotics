@@ -103,9 +103,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--mode",
     type=str,
-    choices=["scene-viz", "simulation", "joint-motion", "run-all-jts"],
+    choices=["scene-viz", "simulation", "joint-motion", "run-all-jts", "min-jerk-joint"],
     default="simulation",
-    help="Simulation mode: 'scene-viz' (static), 'simulation' (physics), 'joint-motion' (animated joint movement), 'run-all-jts' (interactive terminal control of all joints)",
+    help="Simulation mode: 'scene-viz' (static), 'simulation' (physics), 'joint-motion' (animated joint movement), 'run-all-jts' (interactive terminal control of all joints), 'min-jerk-joint' (minimum-jerk joint-space motion)",
 )
 parser.add_argument(
     "--visualize",
@@ -160,7 +160,7 @@ VISUALIZATION_CONFIG = VisualizationConfig(
 
 # --- Simulation Configuration ---
 SIMULATION_CONFIG = SimulationConfig(
-    mode=args.mode,  # Simulation mode from command-line: 'scene-viz', 'simulation', 'joint-motion', 'run-all-jts'
+    mode=args.mode,  # Simulation mode from command-line: 'scene-viz', 'simulation', 'joint-motion', 'run-all-jts', 'min-jerk-joint'
     timestep=0.001,  # 1 kHz simulation
     simulation_time=15.0,  # seconds - longer to see ball swing dynamics
     gravity=(0.0, 0.0, -9.81),
@@ -187,6 +187,7 @@ PENDULUM_CONFIG = create_pendulum_config(
 # - 'simulation': Full physics simulation with PD control on manipulator joints
 # - 'joint-motion': Smooth joint motion demonstration
 # - 'run-all-jts': Interactive terminal control of both joints
+# - 'min-jerk-joint': Minimum-jerk joint-space motion
 # 
 # Note: This is now a 2-DOF manipulator (link1_base, link2_link1)
 # The ball is rigidly attached to link2
@@ -196,6 +197,29 @@ JOINT_MOTION_FREQUENCY = [0.8, 0.6]  # Frequency for manipulator joints (Hz) - f
 
 # --- Manipulator Motion Duration ---
 MANIPULATOR_MOTION_DURATION = 3.0  # seconds - manipulator moves for this duration, then stops to let ball settle
+
+# --- Minimum-Jerk Joint-Space Parameters ---
+MIN_JERK_DURATION = 4.0  # seconds
+MIN_JERK_TARGET_ANGLES = (np.deg2rad(45.0), np.deg2rad(-30.0))  # [link1_base, link2_link1]
+
+# =========================================================================
+# TRAJECTORY UTILITIES
+# =========================================================================
+
+def min_jerk_profile(t: float, T: float) -> Tuple[float, float, float]:
+    """
+    Minimum-jerk time-scaling profile.
+
+    Returns:
+        h(s), hdot(s), hddot(s) where s = t/T (clamped to [0, 1]).
+    """
+    if T <= 0:
+        return 1.0, 0.0, 0.0
+    s = np.clip(t / T, 0.0, 1.0)
+    h = 10 * s**3 - 15 * s**4 + 6 * s**5
+    hdot = (30 * s**2 - 60 * s**3 + 30 * s**4) / T
+    hddot = (60 * s - 180 * s**2 + 120 * s**3) / (T**2)
+    return h, hdot, hddot
 
 # ============================================================================
 # ROBOT BASE CLASS (ABSTRACT)
@@ -1385,6 +1409,123 @@ class DrakeSceneManager:
         # Plot results
         self.plot_results()
 
+    def run_min_jerk_joint(self):
+        """Run minimum-jerk joint-space trajectory with PD control."""
+        print("\n[4/4] Running minimum-jerk joint-space simulation...")
+        print("=" * 70)
+
+        # Initialize simulation
+        self.simulator.Initialize()
+        self.simulator.set_target_realtime_rate(SIMULATION_CONFIG.visualization.realtime_rate)
+
+        print(f"\nSimulation Duration: {self.simulation_config.simulation_time} s")
+        print(f"Time Step: {self.simulation_config.timestep} s")
+        print(f"Realtime Rate: {SIMULATION_CONFIG.visualization.realtime_rate}x")
+        print(f"\nActuated Joints (PD Control): link1_base, link2_link1")
+        print(f"Ball: Rigidly attached to link2")
+        print(f"\nMinimum-Jerk Duration: {MIN_JERK_DURATION:.1f}s")
+        print(f"Target Angles: link1={np.rad2deg(MIN_JERK_TARGET_ANGLES[0]):+.1f}°, link2={np.rad2deg(MIN_JERK_TARGET_ANGLES[1]):+.1f}°")
+        print(f"\nPD Control Gains: Kp=100, Kd=10")
+        print(f"\n⚠️  Manipulator will HOLD at t={MIN_JERK_DURATION:.1f}s")
+        print("\nStarting simulation...\n")
+
+        # Get joint references (only 2 joints now)
+        plant_context = self.plant.GetMyMutableContextFromRoot(self.context)
+        link1_base_joint = self.plant.GetJointByName("link1_base", self.cup_manipulator.model_instance)
+        link2_link1_joint = self.plant.GetJointByName("link2_link1", self.cup_manipulator.model_instance)
+
+        # Initial joint positions
+        q0_link1 = link1_base_joint.get_angle(plant_context)
+        q0_link2 = link2_link1_joint.get_angle(plant_context)
+        qf_link1, qf_link2 = MIN_JERK_TARGET_ANGLES
+
+        # PD control gains
+        Kp = 100.0
+        Kd = 10.0
+        Kp_hold = 1000.0
+        Kd_hold = 100.0
+
+        # Simulation loop
+        last_print_time = 0.0
+        holding_phase = False
+
+        while self.context.get_time() < self.simulation_config.simulation_time:
+            current_time = self.context.get_time()
+
+            # Minimum-jerk profile
+            if current_time <= MIN_JERK_DURATION:
+                h, hdot, _ = min_jerk_profile(current_time, MIN_JERK_DURATION)
+                link1_desired = q0_link1 + (qf_link1 - q0_link1) * h
+                link2_desired = q0_link2 + (qf_link2 - q0_link2) * h
+                link1_desired_vel = (qf_link1 - q0_link1) * hdot
+                link2_desired_vel = (qf_link2 - q0_link2) * hdot
+                current_Kp = Kp
+                current_Kd = Kd
+                phase = "[MOVING]"
+            else:
+                if not holding_phase:
+                    holding_phase = True
+                    print(f"\n{'='*70}")
+                    print(f"t={current_time:.2f}s: HOLDING FINAL POSE")
+                    print(f"  Holding position: Link1={np.rad2deg(qf_link1):+.1f}°, Link2={np.rad2deg(qf_link2):+.1f}°")
+                    print(f"  PD gains increased to: Kp={Kp_hold}, Kd={Kd_hold} (rigid hold)")
+                    print(f"{'='*70}\n")
+
+                link1_desired = qf_link1
+                link2_desired = qf_link2
+                link1_desired_vel = 0.0
+                link2_desired_vel = 0.0
+                current_Kp = Kp_hold
+                current_Kd = Kd_hold
+                phase = "[HOLD]"
+
+            # Get current joint states
+            link1_actual = link1_base_joint.get_angle(plant_context)
+            link2_actual = link2_link1_joint.get_angle(plant_context)
+            link1_actual_vel = link1_base_joint.get_angular_rate(plant_context)
+            link2_actual_vel = link2_link1_joint.get_angular_rate(plant_context)
+
+            # PD control torques
+            link1_torque = current_Kp * (link1_desired - link1_actual) + current_Kd * (link1_desired_vel - link1_actual_vel)
+            link2_torque = current_Kp * (link2_desired - link2_actual) + current_Kd * (link2_desired_vel - link2_actual_vel)
+
+            # Apply torques
+            self.cup_manipulator.apply_torques(self.plant, plant_context, link1_torque, link2_torque)
+
+            # Advance simulation
+            self.simulator.AdvanceTo(current_time + self.simulation_config.timestep)
+
+            # Log data
+            self.log_data(current_time)
+
+            # Print status
+            if current_time - last_print_time >= SIMULATION_CONFIG.visualization.print_interval:
+                joint_positions = self.cup_manipulator.get_joint_positions(self.plant, plant_context)
+                link1_pos = joint_positions.get('link1_base', 0)
+                link2_pos = joint_positions.get('link2_link1', 0)
+
+                if PENDULUM_ENABLED:
+                    pitch_pos = joint_positions.get('pendulum_pitch', 0)
+                    roll_pos = joint_positions.get('pendulum_roll', 0)
+                    print(colored(f"t={current_time:.2f}s {phase}", 'blue') +
+                          colored(f" | link1_base: {np.rad2deg(link1_pos):+6.1f}°", 'cyan') +
+                          colored(f" | link2_link1: {np.rad2deg(link2_pos):+6.1f}°", 'cyan') +
+                          colored(f" | pendulum_pitch: {np.rad2deg(pitch_pos):+6.1f}°", 'yellow') +
+                          colored(f" | pendulum_roll: {np.rad2deg(roll_pos):+6.1f}°", 'yellow'))
+                else:
+                    print(colored(f"t={current_time:.2f}s {phase}", 'blue') +
+                          colored(f" | link1_base: {np.rad2deg(link1_pos):+6.1f}°", 'cyan') +
+                          colored(f" | link2_link1: {np.rad2deg(link2_pos):+6.1f}°", 'cyan'))
+                last_print_time = current_time
+
+        print("\n" + "=" * 70)
+        print("Minimum-jerk simulation complete!")
+        print(f"Manipulator moved for {MIN_JERK_DURATION:.1f}s, then held.")
+        print("=" * 70)
+
+        # Plot results
+        self.plot_results()
+
 
     def run_all_jts(self):
         """Interactive mode: control all joints from terminal input."""
@@ -1512,6 +1653,8 @@ def main():
             scene_manager.run_joint_motion()
         elif SIMULATION_CONFIG.mode == "run-all-jts":
             scene_manager.run_all_jts()
+        elif SIMULATION_CONFIG.mode == "min-jerk-joint":
+            scene_manager.run_min_jerk_joint()
         else:
             raise ValueError(f"Unknown simulation mode: {SIMULATION_CONFIG.mode}")
     

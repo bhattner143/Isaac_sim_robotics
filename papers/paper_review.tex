@@ -1,0 +1,133 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\title{Short Review: Stability, Robustness, and Control of Complex Object Manipulation}
+\author{Compiled for project notes}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section*{Overview}
+This short review summarizes four papers on human control of dynamically complex objects (e.g., a ``cup of coffee'') and the implications for robot control. Each summary highlights the task setup, experiments, and main results.
+
+\section{Bazzi et al., 2018 (Chaos): Stability and Predictability in Human Control of Complex Objects}
+\textbf{Focus.} Proposes contraction theory as a stability analysis tool for transient, nonlinear, underactuated interactions, and tests it on a ``cup-of-coffee'' proxy task.
+
+\textbf{Experimental task.}
+\begin{itemize}[leftmargin=1.2em]
+  \item A virtual cart--pendulum system models a cup with internal dynamics.
+  \item Participants transport the cart along a horizontal line to a target as fast as possible.
+  \item Each block includes a visible perturbation (assistive or resistive) along the path.
+\end{itemize}
+
+\textbf{Analysis.}
+\begin{itemize}[leftmargin=1.2em]
+  \item Computes contraction regions for the unforced dynamics by solving a PDE to obtain a contraction metric.
+  \item Compares human trajectories to these regions to test whether stability is exploited for predictability.
+\end{itemize}
+
+\textbf{Key results.}
+\begin{itemize}[leftmargin=1.2em]
+  \item Human trajectories pass through contraction regions, which attenuates perturbations.
+  \item Exploiting contraction reduces the need for corrective feedback and improves predictability of interaction dynamics.
+\end{itemize}
+
+\section{Ebert et al., 2020 (ICRA manuscript): Stability and Predictability in Dynamically Complex Physical Interactions}
+\textbf{Focus.} Empirical evidence that humans organize trajectories around contraction regions to manage assistive versus resistive perturbations.
+
+\textbf{Experimental task.}
+\begin{itemize}[leftmargin=1.2em]
+  \item Same ``cup-of-coffee'' proxy: cart--pendulum with a haptic interface.
+  \item Participants move to a target while encountering visible perturbations.
+  \item Block design: baseline (no perturbation), then assistive and resistive perturbation blocks.
+\end{itemize}
+
+\textbf{Key results.}
+\begin{itemize}[leftmargin=1.2em]
+  \item For assistive perturbations, subjects enter contraction regions \,\emph{before} the perturbation.
+  \item For resistive perturbations, subjects enter contraction regions \,\emph{after} the perturbation.
+  \item Entering contraction regions stabilizes performance and enhances predictability.
+\end{itemize}
+
+\section{Bazzi \& Sternad, 2020 (RA-L): Robustness in Human Manipulation of Dynamically Complex Objects through Control Contraction Metrics}
+\textbf{Focus.} Uses control contraction metrics to test whether practice yields exponentially stable (robust) trajectories in a complex-object manipulation task.
+
+\textbf{Experimental task.}
+\begin{itemize}[leftmargin=1.2em]
+  \item Virtual cart--pendulum task with a haptic manipulandum.
+  \item Participants transport the system quickly without ``spilling'' while anticipating visible perturbations.
+\end{itemize}
+
+\textbf{Key results.}
+\begin{itemize}[leftmargin=1.2em]
+  \item With practice, trajectories become exponentially stable in the neighborhood of perturbations.
+  \item Findings support the hypothesis that humans learn stability to achieve robustness and predictability.
+\end{itemize}
+
+\section{Razavian et al., 2021 (IROS/ICRA-style): Dynamic Primitives and Optimal Feedback Control for the Manipulation of Complex Objects}
+\textbf{Focus.} Compares classic human motor-control models against data from a cup-and-ball task and proposes an extended dynamic-primitives framework.
+
+\textbf{Experimental task.}
+\begin{itemize}[leftmargin=1.2em]
+  \item A cup with a rolling ball is modeled as a cart--pendulum system.
+  \item Participants use a haptic interface to move the cup to a target (with and without perturbations).
+  \item Four participants performed the protocol.
+\end{itemize}
+
+\textbf{Modeling comparisons.}
+\begin{itemize}[leftmargin=1.2em]
+  \item Baselines: minimum-jerk (maximum smoothness), optimal feedback control with minimum effort, and dynamic primitives with impedance.
+  \item These models can match rigid-object transport but fail when internal dynamics (ball/coffee) introduce interaction forces.
+\end{itemize}
+
+\textbf{Key results.}
+\begin{itemize}[leftmargin=1.2em]
+  \item An extended dynamic-primitives framework with an optimal ``zero-force'' trajectory improves fit to complex-object behavior.
+  \item Suggests that impedance and task-specific optimality are required to capture human strategies in dynamic interactions.
+\end{itemize}
+
+\subsection*{Proposed model in detail}
+The paper models a cup with internal dynamics (ball/slosh) as a cart--pendulum system. The user manipulates the cart position $y(t)$; the internal state is the pendulum angle $\phi(t)$. A linearized coupling is used for control synthesis and the same model is simulated in the virtual experiment. A representative form of the dynamics is:
+\begin{align}
+ (M+m)\ddot{y} &= -m l\ddot{\phi} + F_{\text{inter}} + F_{\text{pert}}, \\
+ l\ddot{\phi} &= -g\,\phi - G\ddot{y}.
+\end{align}
+Here $M$ is the cup/cart mass, $m$ the internal mass, $l$ the effective pendulum length, $g$ gravity, $G$ a coupling term, $F_{\text{inter}}$ the interaction force between user and cup, and $F_{\text{pert}}$ external perturbations.
+
+\textbf{Control models compared.}
+\begin{itemize}[leftmargin=1.2em]
+  \item \emph{Minimum-jerk (maximum smoothness):} generate a desired $y(t)$ that minimizes $\int_0^T \dddot{y}(t)^2\,dt$.
+  \item \emph{Optimal feedback control (minimum effort):} choose $u(t)$ to minimize $\int_0^T (\|x(t)-x^*(t)\|_Q^2 + \|u(t)\|_R^2)\,dt$ with linearized dynamics.
+  \item \emph{Dynamic primitives with impedance:} represent motion as an attractor plus an impedance operator that shapes interaction forces.
+\end{itemize}
+
+\textbf{Extended model (zero-force trajectory).} The proposed extension computes a ``zero-force'' trajectory for the impedance operator: an optimal, maximally smooth trajectory that minimizes interaction forces induced by the internal dynamics. This improves prediction of human behavior in the complex-object task.
+
+\subsection*{Worked example (for notes)}
+Assume a planar cup--ball model with small angles. Pick $M=0.6\,\mathrm{kg}$, $m=0.2\,\mathrm{kg}$, $l=0.12\,\mathrm{m}$, $G=5$. For a $T=2\,\mathrm{s}$ transport from $y(0)=0$ to $y(T)=0.4\,\mathrm{m}$:
+\begin{enumerate}[leftmargin=1.2em]
+  \item Generate a minimum-jerk $y(t)$ (closed-form polynomial).
+  \item Simulate the coupled dynamics to obtain $\phi(t)$ and interaction forces.
+  \item Compute the ``zero-force'' trajectory by optimizing $y(t)$ to minimize $\int_0^T F_{\text{inter}}(t)^2\,dt$ subject to boundary conditions.
+\end{enumerate}
+
+\subsection*{How to implement in the cup manipulator system}
+\begin{itemize}[leftmargin=1.2em]
+  \item \textbf{State definition:} set $x=[y,\dot{y},\phi,\dot{\phi}]^\top$ from the cart position and pendulum angle already logged in the PyDrake simulation.
+  \item \textbf{Model fitting:} estimate $M,m,l,G$ from URDF inertial parameters or fit them to free-swing responses (log $y,\phi$ and identify parameters).
+  \item \textbf{Controller baseline:} implement minimum-jerk $y(t)$ as the desired cart trajectory and apply a PD/impedance controller to track it.
+  \item \textbf{Zero-force trajectory:} add an optimization step that adjusts $y(t)$ to minimize interaction forces (approximate with $F_{\text{inter}}\approx (M+m)\ddot{y}+m l\ddot{\phi}$). Use a spline parameterization and solve a small least-squares problem.
+  \item \textbf{Perturbations:} add $F_{\text{pert}}$ as a time-windowed force on the cart (assistive/resistive blocks) to reproduce the experimental protocol.
+  \item \textbf{Evaluation:} compare trajectory error, peak $|\phi|$, and force norms between (i) minimum-jerk, (ii) OFC, and (iii) zero-force trajectory.
+\end{itemize}
+
+\section*{Cross-paper synthesis}
+\begin{itemize}[leftmargin=1.2em]
+  \item Across studies, humans appear to seek stability---specifically, contraction or exponential convergence---to handle perturbations and internal dynamics.
+  \item The ``cup-of-coffee'' proxy (cart--pendulum or cup--ball) is a consistent benchmark for studying underactuated manipulation.
+  \item Stability-centered analyses (contraction metrics) and impedance-aware control models are promising templates for robot control in dynamic interactions.
+\end{itemize}
+
+\end{document}
