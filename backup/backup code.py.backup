@@ -1,0 +1,376 @@
+class CupManipulatorLinearizedSystem(RobotBase):
+    """
+    Linearized Cup Manipulator System (Using Drake's Linearize or Numerical).
+    
+    ARCHITECTURE:
+    - Builds full nonlinear MultibodyPlant for cup manipulator
+    - Uses Drake's Linearize() OR custom finite difference for linearization
+    - Linearizes around specified equilibrium (e.g., upright configuration)
+    
+    ADVANTAGES:
+    - Drake method: Uses built-in Jacobian computation (numerical differentiation)
+    - Numerical method: Custom finite difference implementation
+    - Works for ANY nonlinear system (no manual formula derivation needed)
+    - Scales to complex systems easily
+    - Automatically handles all state/input interactions
+    
+    STATE: [q₁, q₂, q̇₁, q̇₂] (4D)
+    - q₁, q₂: joint positions
+    - q̇₁, q̇₂: joint velocities
+    
+    INPUT: τ (joint torques)
+    OUTPUT: [q₁, q₂, q̇₁, q̇₂] (joint state)
+    """
+
+    def __init__(
+        self,
+        config: ManipulatorConfig,
+        enable_visualization: bool = False,
+        linearization_method: str = 'drake',
+        equilibrium_state: np.ndarray | None = None,
+        equilibrium_input: np.ndarray | None = None,
+    ):
+        """Initialize linearized system.
+        
+        Args:
+            config: ManipulatorConfig with physics parameters
+            enable_visualization: If True, initialize Meshcat (default False for component usage)
+            linearization_method: Method for linearization ('numerical' or 'drake')
+                - 'numerical': Custom finite difference implementation
+                - 'drake': Drake's built-in Linearize() function
+            equilibrium_state: State to linearize around [q₁, q₂, q̇₁, q̇₂]
+                              (if None, uses zeros)
+            equilibrium_input: Input to linearize around [τ₁, τ₂]
+                              (if None, uses zeros)
+        """
+        super().__init__(config, enable_visualization=enable_visualization)
+        self.linearization_method = linearization_method
+        
+        # Linearized plant system objects
+        self.nonlinear_plant = None
+        self.linearized_io_sys = None
+        self.linearized_system = None
+        self.command_input_port = None
+        self.context = None
+        
+        # Linearization point (equilibrium)
+        self.equilibrium_state = equilibrium_state if equilibrium_state is not None else np.zeros(4)
+        self.equilibrium_input = equilibrium_input if equilibrium_input is not None else np.zeros(2)
+        self.linearized_matrices = dict(A_plant=None, B_plant=None, C_plant=None, D_plant=None)
+    
+    def weld_base_to_world(self, plant: MultibodyPlant):
+        """
+        Weld the manipulator base to the world frame (ground).
+        
+        Args:
+            plant: MultibodyPlant instance (must be called before Finalize)
+        """
+        base_frame = plant.GetFrameByName("base_mount_manipulator", self.model_instance)
+        plant.WeldFrames(plant.world_frame(), base_frame)
+    
+    def get_body_by_name(self, plant: MultibodyPlant, body_name: str):
+        """
+        Get a body from the manipulator by name.
+        
+        Args:
+            plant: MultibodyPlant instance
+            body_name: Name of the body (e.g., 'link2')
+        
+        Returns:
+            Body instance
+        """
+        return plant.GetBodyByName(body_name, self.model_instance)
+    
+    def setup_in_plant(self, plant: MultibodyPlant, parser: Parser, weld_base: bool = True):
+        """
+        Complete setup of cup manipulator in plant.
+        
+        This is a convenience method that:
+        1. Loads URDF
+        2. Optionally welds base to world
+        
+        Args:
+            plant: MultibodyPlant instance (must be called before Finalize)
+            parser: Parser instance for URDF loading
+            weld_base: If True, weld base to world frame
+        """
+        # Load URDF
+        self.load_urdf_to_plant(plant, parser)
+        
+        # Weld base if requested
+        if weld_base:
+            self.weld_base_to_world(plant)
+    
+    def get_end_effector_position(self, plant: MultibodyPlant, context) -> np.ndarray:
+        """Get end effector (cup) position in world frame."""
+        try:
+            cup_body = plant.GetBodyByName("link2", self.model_instance)
+            world_frame = plant.world_frame()
+            cup_frame = cup_body.body_frame()
+            
+            X_WC = plant.CalcRelativeTransform(context, world_frame, cup_frame)
+            return X_WC.translation()
+        except Exception as e:
+            print(f"Warning: Could not get end effector position: {e}")
+            return np.array([0.0, 0.0, 0.0])
+        
+    def build_in_plant(self, plant: MultibodyPlant, parser: Parser, weld_base: bool = True):
+        """
+        Complete build of cup manipulator in plant including all setup.
+        
+        This method handles:
+        1. URDF loading
+        2. Base welding (optional)
+        3. Adding actuators
+        4. Setting joint properties
+        
+        Args:
+            plant: MultibodyPlant instance (must be called before Finalize)
+            parser: Parser instance for URDF loading
+            weld_base: If True, weld base to world frame
+        """
+        # Step 1: Load URDF and weld base
+        self.setup_in_plant(plant, parser, weld_base=weld_base)
+        
+        # Step 2: Add actuators (must be before Finalize)
+        for joint_name in ["link1_base", "link2_link1"]:
+            joint = plant.GetJointByName(joint_name, self.model_instance)
+            plant.AddJointActuator(joint_name, joint)
+        
+        # Step 3: Set joint properties (damping, friction, stiffness)
+        # Note: This can be called before or after Finalize
+        self.set_joint_properties(plant)
+
+    def build_plant_for_linearization(self, builder: DiagramBuilder):
+        """
+        Build linearized cup manipulator using Drake's Linearize() or custom numerical method.
+        
+        This method creates a separate nonlinear plant for linearization purposes.
+        It does not interfere with the main plant used by the system.
+        
+        Process:
+        1. Create nonlinear MultibodyPlant from URDF
+        2. Set equilibrium point
+        3. Use Drake's Linearize() or custom finite difference to compute Jacobians
+        
+        Args:
+            builder: DiagramBuilder instance for creating the linearization plant
+        """
+        print(colored("\n" + "=" * 70, "yellow"))
+        print(colored(f"Building Linearized Cup Manipulator ({self.linearization_method})", "yellow", attrs=["bold"]))
+        print(colored("=" * 70, "yellow"))
+
+        # Step 1: Build nonlinear plant (without visualization, just dynamics)
+        print(colored("  [1/3] Creating nonlinear MultibodyPlant from URDF...", "cyan"))
+        nonlinear_plant, scene_graph = AddMultibodyPlantSceneGraph(
+            builder, time_step=0.0
+        )
+
+        # Load URDF using parent class method
+        parser = Parser(nonlinear_plant)
+        self.load_urdf_to_plant(nonlinear_plant, parser)
+        
+        # Add actuators (required before Finalize)
+        for joint_name in ["link1_base", "link2_link1"]:
+            joint = nonlinear_plant.GetJointByName(joint_name, self.model_instance)
+            nonlinear_plant.AddJointActuator(joint_name, joint)
+        
+        nonlinear_plant.Finalize()
+        print(colored(f"    ✓ Nonlinear plant created from URDF: {self.config.get_urdf_path()}", "green"))
+
+        # Step 2: Define equilibrium point
+        print(colored("  [2/3] Computing linearization at equilibrium...", "cyan"))
+        
+        # Create a context for linearization
+        self.context = nonlinear_plant.CreateDefaultContext()
+        nonlinear_plant.SetPositionsAndVelocities(self.context, self.equilibrium_state)
+        nonlinear_plant.get_actuation_input_port().FixValue(self.context, self.equilibrium_input)
+        
+        self.nonlinear_plant = nonlinear_plant
+        
+        print(colored(f"    Equilibrium state: {self.equilibrium_state}", "cyan"))
+        print(colored(f"    Equilibrium input: {self.equilibrium_input}", "cyan"))
+        
+        # Step 3: Compute linearization
+        print(colored("  [3/3] Computing linearization...", "cyan"))
+        if self.linearization_method == 'drake':
+            self._linearize_by_drake()
+        elif self.linearization_method == 'numerical':
+            self._linearize_by_numerical()
+        else:
+            raise ValueError(f"Unknown linearization method: {self.linearization_method}")
+        
+        print(colored("\n" + "=" * 70, "green"))
+        print(colored("✓ Linearization Complete", "green", attrs=["bold"]))
+        print(colored("=" * 70, "green"))
+
+
+    def _linearize_by_drake(self):
+        """
+        Linearize using Drake's built-in Linearize() function.
+        Uses automatic differentiation for exact Jacobians.
+        """
+        from pydrake.all import Linearize
+        
+        linearized_io_sys = Linearize(
+            self.nonlinear_plant,
+            self.context,
+            input_port_index=self.nonlinear_plant.get_actuation_input_port().get_index(),
+            output_port_index=self.nonlinear_plant.get_state_output_port().get_index(),
+        )
+        
+        # Store linearized matrices
+        self.linearized_matrices['A_plant'] = linearized_io_sys.A()
+        self.linearized_matrices['B_plant'] = linearized_io_sys.B()
+        self.linearized_matrices['C_plant'] = linearized_io_sys.C()
+        self.linearized_matrices['D_plant'] = linearized_io_sys.D()
+        
+        # Store the LinearSystem
+        self.linearized_io_sys = linearized_io_sys
+        
+        print(colored("    ✓ Drake Jacobian-based linearization computed", "green"))
+        print(colored(f"    Linearization matrices from Drake's Linearize():", "cyan"))
+        print(colored(f"      A matrix shape: {linearized_io_sys.A().shape}", "cyan"))
+        print(colored(f"      B matrix shape: {linearized_io_sys.B().shape}", "cyan"))
+        print(colored(f"      C matrix shape: {linearized_io_sys.C().shape}", "cyan"))
+        print(colored(f"      D matrix shape: {linearized_io_sys.D().shape}", "cyan"))
+    
+    def _linearize_by_numerical(self):
+        """
+        Linearize using custom numerical finite difference implementation.
+        Computes Jacobians via central finite differences.
+        """
+        from pydrake.systems.primitives import LinearSystem
+        
+        A_plant, B_plant = self.finite_difference_linearization(self.nonlinear_plant, self.context, epsilon=1e-6)
+        
+        # Get actual state dimension from nonlinear plant
+        n_x = len(self.equilibrium_state)
+        n_u = len(self.equilibrium_input)
+        
+        # Store linearized matrices
+        self.linearized_matrices['A_plant'] = A_plant
+        self.linearized_matrices['B_plant'] = B_plant
+        self.linearized_matrices['C_plant'] = np.eye(n_x)  # Output = state
+        self.linearized_matrices['D_plant'] = np.zeros((n_x, n_u))  # No direct feedthrough
+        
+        # Create LinearSystem from computed matrices
+        self.linearized_io_sys = LinearSystem(
+            A=A_plant,
+            B=B_plant,
+            C=self.linearized_matrices['C_plant'],
+            D=self.linearized_matrices['D_plant']
+        )
+        
+        print(colored("    ✓ Numerical finite-difference linearization computed", "green"))
+        print(colored(f"    Linearization matrices from finite differences:", "cyan"))
+        print(colored(f"      A matrix shape: {A_plant.shape}", "cyan"))
+        print(colored(f"      B matrix shape: {B_plant.shape}", "cyan"))
+        print(colored(f"      C matrix shape: {self.linearized_matrices['C_plant'].shape}", "cyan"))
+        print(colored(f"      D matrix shape: {self.linearized_matrices['D_plant'].shape}", "cyan"))
+
+    def finite_difference_linearization(self, plant, context, epsilon=1e-6):
+        """
+        Compute linearization A, B matrices using numerical finite differences.
+        
+        Method:
+        - A matrix: ∂f/∂x ≈ [f(x+ε) - f(x-ε)] / (2ε)
+        - B matrix: ∂f/∂u ≈ [f(u+ε) - f(u-ε)] / (2ε)
+        
+        Args:
+            plant: Drake MultibodyPlant
+            context: Context at equilibrium point
+            epsilon: Perturbation size for finite differences
+        
+        Returns:
+            A, B: Linearized system matrices
+        """
+        # Get state and input dimensions
+        x0 = plant.GetPositionsAndVelocities(context)
+        u0 = plant.get_actuation_input_port().Eval(context)
+        
+        n_x = len(x0)  # State dimension
+        n_u = len(u0)  # Input dimension
+        
+        # Create derivative function
+        def get_state_derivative(x, u):
+            """Compute state derivative ẋ = f(x, u)"""
+            temp_context = plant.CreateDefaultContext()
+            plant.SetPositionsAndVelocities(temp_context, x)
+            plant.get_actuation_input_port().FixValue(temp_context, u)
+            
+            # Get continuous state derivatives
+            derivatives = plant.EvalTimeDerivatives(temp_context)
+            x_dot = derivatives.CopyToVector()
+            return x_dot
+        
+        # Compute A matrix: ∂f/∂x (central differences)
+        A = np.zeros((n_x, n_x))
+        for i in range(n_x):
+            x_plus = x0.copy()
+            x_minus = x0.copy()
+            x_plus[i] += epsilon
+            x_minus[i] -= epsilon
+            
+            f_plus = get_state_derivative(x_plus, u0)
+            f_minus = get_state_derivative(x_minus, u0)
+            
+            A[:, i] = (f_plus - f_minus) / (2 * epsilon)
+        
+        # Compute B matrix: ∂f/∂u (central differences)
+        B = np.zeros((n_x, n_u))
+        for i in range(n_u):
+            u_plus = u0.copy()
+            u_minus = u0.copy()
+            u_plus[i] += epsilon
+            u_minus[i] -= epsilon
+            
+            f_plus = get_state_derivative(x0, u_plus)
+            f_minus = get_state_derivative(x0, u_minus)
+            
+            B[:, i] = (f_plus - f_minus) / (2 * epsilon)
+        
+        return A, B
+    
+
+    def get_output_port(self):
+        """Get full state output from linearized plant."""
+        return self.linearized_system.get_output_port(0)
+    
+    def get_input_port(self):
+        """Get control input port (either muscle command or direct torque input)."""
+        return self.command_input_port
+    
+    def print_linearization_summary(self):
+        """Print summary of linearization matrices."""
+        print(colored("\n" + "=" * 70, "cyan"))
+        print(colored("LINEARIZATION SUMMARY", "cyan", attrs=["bold"]))
+        print(colored("=" * 70, "cyan"))
+        
+        A = self.linearized_matrices['A_plant']
+        B = self.linearized_matrices['B_plant']
+        C = self.linearized_matrices['C_plant']
+        D = self.linearized_matrices['D_plant']
+        
+        print(colored("\nA matrix (state dynamics):", "yellow"))
+        print(A)
+        print(colored("\nB matrix (input influence):", "yellow"))
+        print(B)
+        print(colored("\nC matrix (output mapping):", "yellow"))
+        print(C)
+        print(colored("\nD matrix (feedthrough):", "yellow"))
+        print(D)
+        
+        print(colored("\n" + "=" * 70, "cyan"))
+
+
+
+
+
+
+
+
+
+
+
+

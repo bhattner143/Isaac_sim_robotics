@@ -1,0 +1,95 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{float}
+
+% Code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    language=Python
+}
+
+\title{Comprehensive Notes: Cart-Pendulum with 2-DOF Planar Manipulator\\
+\large Coupled Multi-Robot System in NVIDIA Isaac Sim}
+\author{Script: \texttt{script\_cart\_pendulum\_manipulator\_basic\_run.py}}
+\date{\today}
+
+\begin{document}
+
+% Cart–pendulum (small-angle, 2D horizontal) + impedance + muscle actuator
+% Symbols:
+%   x, x_ref, beta, F_imp, F_muscle, u \in R^2
+%   m_c, m_b, l, g, tau_f scalars
+%   K, D, M_ref \in R^{2x2} (typically diagonal)
+
+\subsection*{Variables}
+\begin{align*}
+x &\in \mathbb{R}^2, & \dot{x} &\in \mathbb{R}^2,\\
+\beta &\in \mathbb{R}^2, & \dot{\beta} &\in \mathbb{R}^2,\\
+x_{ref} &\in \mathbb{R}^2, & \dot{x}_{ref} &\in \mathbb{R}^2,\\
+F_{imp} &\in \mathbb{R}^2, & F_{muscle} &\in \mathbb{R}^2,\\
+u &\in \mathbb{R}^2.
+\end{align*}
+Parameters:
+\[
+m_c,\; m_b,\; l,\; g,\; \tau_f \in \mathbb{R}, 
+\qquad
+K,\; D,\; M_{ref} \in \mathbb{R}^{2\times 2}.
+\]
+
+\subsection*{Impedance + muscle model}
+\begin{align}
+F_{imp} &= K\,(x-x_{ref}) + D\,(\dot{x}-\dot{x}_{ref}), \label{eq:impedance}\\
+M_{ref}\,\ddot{x}_{ref} &= -F_{imp} + F_{muscle}, \label{eq:ref_dyn}\\
+\tau_f\,\dot{F}_{muscle} &= u - F_{muscle}. \label{eq:muscle_filter}
+\end{align}
+
+\subsection*{Cart--pendulum dynamics (small-angle, spherical pendulum linearization)}
+\begin{align}
+m_c\,\ddot{x} &= F_{imp} + m_b\,g\,\beta, \label{eq:cart}\\
+\ddot{\beta} &=
+-\frac{(m_c+m_b)g}{l\,m_c}\,\beta
+-\frac{1}{l\,m_c}\,F_{imp}. \label{eq:pend}
+\end{align}
+
+\subsection*{First-order state-space form}
+Define the state:
+\[
+z =
+\begin{bmatrix}
+x\\ \dot{x}\\ \beta\\ \dot{\beta}\\ x_{ref}\\ \dot{x}_{ref}\\ F_{muscle}
+\end{bmatrix}
+\in\mathbb{R}^{14}.
+\]
+Then:
+\begin{align}
+\dot{x} &= \dot{x}, \label{eq:ss1}\\
+\ddot{x} &= \frac{1}{m_c}F_{imp} + \frac{m_b g}{m_c}\beta, \label{eq:ss2}\\
+\dot{\beta} &= \dot{\beta}, \label{eq:ss3}\\
+\ddot{\beta} &=
+-\frac{(m_c+m_b)g}{l\,m_c}\beta
+-\frac{1}{l\,m_c}F_{imp}, \label{eq:ss4}\\
+\dot{x}_{ref} &= \dot{x}_{ref}, \label{eq:ss5}\\
+\ddot{x}_{ref} &= M_{ref}^{-1}\left(-F_{imp} + F_{muscle}\right), \label{eq:ss6}\\
+\dot{F}_{muscle} &= -\frac{1}{\tau_f}F_{muscle} + \frac{1}{\tau_f}u, \label{eq:ss7}
+\end{align}
+with the algebraic force law \eqref{eq:impedance}:
+\[
+F_{imp} = K\,(x-x_{ref}) + D\,(\dot{x}-\dot{x}_{ref}).
+\]
+
+\end{document}

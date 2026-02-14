@@ -110,6 +110,24 @@ class PendulumConfig:
 
 
 @dataclass
+class CartPendulumConfig:
+    """Configuration for cart-pendulum 3D system with 2D cart motion."""
+    cart_mass: float = 1.0
+    cart_size: float = 0.1
+    cart_damping: float = 0.0
+    pendulum_mass: float = 0.5
+    pendulum_length: float = 0.2
+    pendulum_radius: float = 0.05
+    pendulum_damping: float = 0.0
+    attachment_offset: Vec3 = (0.0, 0.0, 0.0)
+    initial_cart_x: float = 0.0
+    initial_cart_y: float = 0.0
+    initial_pitch: float = 0.0
+    initial_roll: float = 0.0
+    name: str = "cart_pendulum"
+
+
+@dataclass
 class SceneConfig:
     """Configuration for a complete multi-robot scene."""
     name: str
@@ -203,6 +221,39 @@ def create_ball_config(
         joint_configs={},  # No actuated joints - free floating
         base_pose=Pose(xyz=initial_position),
         package_map={"ball_assets": urdf_dir + "/assets/"}
+    )
+
+
+def create_cart_pendulum_config(
+    cart_mass: float = 1.0,
+    cart_size: float = 0.1,
+    cart_damping: float = 0.0,
+    pendulum_mass: float = 0.5,
+    pendulum_length: float = 0.2,
+    pendulum_radius: float = 0.05,
+    pendulum_damping: float = 0.0,
+    attachment_offset: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    initial_cart_x: float = 0.0,
+    initial_cart_y: float = 0.0,
+    initial_pitch: float = 0.0,
+    initial_roll: float = 0.0,
+    name: str = "cart_pendulum",
+) -> CartPendulumConfig:
+    """Factory function to create a CartPendulumConfig."""
+    return CartPendulumConfig(
+        cart_mass=cart_mass,
+        cart_size=cart_size,
+        cart_damping=cart_damping,
+        pendulum_mass=pendulum_mass,
+        pendulum_length=pendulum_length,
+        pendulum_radius=pendulum_radius,
+        pendulum_damping=pendulum_damping,
+        attachment_offset=attachment_offset,
+        initial_cart_x=initial_cart_x,
+        initial_cart_y=initial_cart_y,
+        initial_pitch=initial_pitch,
+        initial_roll=initial_roll,
+        name=name,
     )
 
 

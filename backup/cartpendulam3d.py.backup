@@ -1,0 +1,780 @@
+PENDULUM_CONFIG = create_pendulum_config(
+    mass=0.5,
+    length=0.2,
+    radius=0.05,
+    damping=0.1,
+    attachment_point=(-1.2545, 0.0, -0.188125),
+    initial_pitch=0.0,
+    initial_roll=180.0,
+    name="pendulum"
+)
+
+
+
+
+
+
+
+
+
+# ============================================================================
+# PENDULUM 3D CLASS
+# ============================================================================
+
+class Pendulum3D:
+    """
+    3D Pendulum with 2-DOF gimbal joints using spherical coordinates.
+    
+    COORDINATE SYSTEM (matches LaTeX documentation):
+    --------------------------------------------------
+    The pendulum orientation is described using spherical coordinates:
+    
+    - θ (theta): Polar angle from +z axis (down), θ ∈ [0, π]
+        * θ = 0: pendulum hanging straight down (stable equilibrium)
+        * θ = π/2: pendulum horizontal
+        * θ = π: pendulum pointing up (unstable equilibrium)
+    
+    - φ (phi): Azimuthal angle from +x axis in xy-plane, φ ∈ [0, 2π)
+        * φ = 0: pendulum projects onto +x axis
+        * φ = π/2: pendulum projects onto +y axis
+    
+    KINEMATICS:
+    -----------
+    Ball position in Cartesian coordinates:
+        x_ball = x_cart + L·sin(θ)·cos(φ)
+        y_ball = y_cart + L·sin(θ)·sin(φ)
+        z_ball = L·cos(θ)  (positive downward from pivot)
+    
+    DYNAMICS:
+    ---------
+    Equations of motion: M(q)·q̈ + C(q,q̇) + G(q) = τ
+    where q = [x_c, y_c, θ, φ]ᵀ
+    
+    Key properties:
+    - Mass matrix: M₄₄ = mL²·sin²(θ) (gimbal lock at θ=0)
+    - Gravity: G = [0, 0, -mgL·sin(θ), 0]ᵀ (only torque about θ)
+    - Potential energy: V = -mgL·cos(θ)
+    
+    See cart_pendulum_eom.pdf in notes_cup/ for complete derivation.
+    """
+    
+    def __init__(self, config: PendulumConfig):
+        self.config = config
+        self.mass = config.mass
+        self.length = config.length
+        self.radius = config.radius
+        self.damping = config.damping
+        self.attachment_point = config.attachment_point
+        self.name = config.name
+        
+        self.pivot_frame = None
+        self.pitch_parent_frame = None
+        self.gimbal1_body = None
+        self.pendulum_body = None
+        self.pitch_joint = None
+        self.roll_joint = None
+    
+    def attach_to_body(self, plant: MultibodyPlant, parent_body, model_instance):
+        """Attach pendulum to parent body."""
+        # Create pivot frame
+        roll = np.deg2rad(0)
+        pitch = np.deg2rad(0)
+        yaw = np.deg2rad(0)
+        pivot_rotation = RotationMatrix(RollPitchYaw(roll, pitch, yaw))
+        
+        X_parent_pivot = RigidTransform(pivot_rotation, self.attachment_point)
+        self.pivot_frame = plant.AddFrame(
+            FixedOffsetFrame(
+                name=f"{self.name}_pivot_frame",
+                P=parent_body.body_frame(),
+                X_PF=X_parent_pivot,
+                model_instance=model_instance,
+            )
+        )
+        
+        # Create gimbal1 intermediate body (for pitch rotation)
+        gimbal1_inertia = SpatialInertia(
+            mass=0.01,
+            p_PScm_E=np.zeros(3),
+            G_SP_E=UnitInertia(1e-4, 1e-4, 1e-4),
+        )
+        self.gimbal1_body = plant.AddRigidBody(
+            f"{self.name}_gimbal1", model_instance, gimbal1_inertia
+        )
+        
+        # Add pitch joint (Y-axis rotation)
+        self.pitch_joint = plant.AddJoint(
+            RevoluteJoint(
+                name=f"{self.name}_pitch",
+                frame_on_parent=self.pivot_frame,
+                frame_on_child=self.gimbal1_body.body_frame(),
+                axis=[0.0, 1.0, 0.0],
+                damping=self.damping,
+            )
+        )
+        
+        # Create pendulum body with proper inertia
+        m = float(self.mass)
+        r = float(self.radius)
+        L = float(self.length)
+        
+        I_ball_com = (2.0 / 5.0) * m * (r ** 2)
+        I_pivot_x = I_ball_com + m * (L ** 2)
+        I_pivot_y = I_ball_com + m * (L ** 2)
+        I_pivot_z = I_ball_com
+        
+        G_ball = UnitInertia(I_pivot_x / m, I_pivot_y / m, I_pivot_z / m)
+        pendulum_inertia = SpatialInertia(
+            mass=m,
+            p_PScm_E=[0.0, 0.0, -L],
+            G_SP_E=G_ball,
+        )
+        self.pendulum_body = plant.AddRigidBody(
+            f"{self.name}_ball", model_instance, pendulum_inertia
+        )
+        
+        # Add roll joint (X-axis rotation)
+        self.roll_joint = plant.AddJoint(
+            RevoluteJoint(
+                name=f"{self.name}_roll",
+                frame_on_parent=self.gimbal1_body.body_frame(),
+                frame_on_child=self.pendulum_body.body_frame(),
+                axis=[1.0, 0.0, 0.0],
+                damping=self.damping,
+            )
+        )
+        
+        # Add visual/collision geometry (only if plant has SceneGraph registered)
+        if plant.geometry_source_is_registered():
+            self._add_geometry(plant, L, r)
+        
+        print(colored(f"\n✓ 3D Pendulum Attached to {parent_body.name()}:", 'green', attrs=['bold']))
+        print(colored(f"  Mass: {m} kg", 'cyan'))
+        print(colored(f"  Length: {L} m", 'cyan'))
+        print(colored(f"  Radius: {r} m", 'cyan'))
+        print(colored(f"  Damping: {self.damping}", 'cyan'))
+        print(colored(f"  Attachment point: {self.attachment_point}", 'cyan'))
+        print(colored(f"  Joints: {self.name}_pitch (Y-axis), {self.name}_roll (X-axis)", 'cyan'))
+    
+    def _add_geometry(self, plant, L, r):
+        """Add visual and collision geometry."""
+        from pydrake.geometry import Cylinder, Sphere
+        
+        # Rod visual
+        plant.RegisterVisualGeometry(
+            self.pendulum_body,
+            RigidTransform([0.0, 0.0, -L / 2.0]),
+            Cylinder(radius=0.001, length=L),
+            f"{self.name}_rod_visual",
+            [0.6, 0.4, 0.2, 1.0],
+        )
+        
+        # Ball visual
+        plant.RegisterVisualGeometry(
+            self.pendulum_body,
+            RigidTransform([0.0, 0.0, -L]),
+            Sphere(r),
+            f"{self.name}_ball_visual",
+            [0.8, 0.2, 0.2, 1.0],
+        )
+        
+        # Ball collision
+        plant.RegisterCollisionGeometry(
+            self.pendulum_body,
+            RigidTransform([0.0, 0.0, -L]),
+            Sphere(r),
+            f"{self.name}_ball_collision",
+            CoulombFriction(0.3, 0.2),
+        )
+    
+    def set_initial_swing(self, context, pitch_angle: float = 0.0, roll_angle: float = 0.0):
+        """Set initial swing angles."""
+        if self.pitch_joint:
+            self.pitch_joint.set_angle(context, pitch_angle)
+        if self.roll_joint:
+            self.roll_joint.set_angle(context, roll_angle)
+    
+    def compute_ball_state(self, plant: MultibodyPlant, context):
+        """
+        Compute ball position and spherical coordinates.
+        
+        Returns:
+            dict with keys:
+                - ball_wrt_pivot: [x, y, z] relative to pivot frame (Cartesian)
+                - ball_wrt_world: [x, y, z] relative to world frame (Cartesian)
+                - ball_in_ball_frame: [x, y, z] in ball's own frame (always [0, 0, -L])
+                - pivot_in_ball_frame: [x, y, z] of pivot as seen from ball frame
+                - theta: polar angle from +z axis (radians), θ ∈ [0, π]
+                - phi: azimuthal angle from +x axis (radians), φ ∈ [0, 2π)
+                - r: radial distance (should equal L)
+                - x, y, z: Cartesian components of ball_wrt_pivot
+                - roll_wrt_pivot: roll angle of ball frame w.r.t. pivot frame (radians)
+                - pitch_wrt_pivot: pitch angle of ball frame w.r.t. pivot frame (radians)
+                - yaw_wrt_pivot: yaw angle of ball frame w.r.t. pivot frame (radians)
+                - roll_wrt_world: roll angle of ball frame w.r.t. world frame (radians)
+                - pitch_wrt_world: pitch angle of ball frame w.r.t. world frame (radians)
+                - yaw_wrt_world: yaw angle of ball frame w.r.t. world frame (radians)
+                - joint_pitch: gimbal pitch joint angle (radians)
+                - joint_roll: gimbal roll joint angle (radians)
+        
+        SPHERICAL COORDINATES:
+            θ (theta): Polar angle from +z axis
+                - θ = 0: pendulum hanging straight down
+                - θ = π/2: pendulum horizontal
+                - θ = π: pendulum inverted
+            φ (phi): Azimuthal angle from +x axis in xy-plane
+                - φ = 0: projection on +x axis
+                - φ = π/2: projection on +y axis
+        """
+        if not self.pendulum_body:
+            return None
+        
+        ball_frame = self.pendulum_body.body_frame()
+        pivot_frame = self.pivot_frame
+        ball_offset_in_body = np.array([0.0, 0.0, -self.length])
+        
+        # Transform from PIVOT frame to ball frame (only depends on pendulum angles!)
+        X_PB = plant.CalcRelativeTransform(context, pivot_frame, ball_frame)
+        ball_wrt_pivot = X_PB.rotation() @ ball_offset_in_body
+        
+        # Extract roll-pitch-yaw angles of ball frame relative to pivot frame
+        # Method 1: Using Drake's RollPitchYaw class (Z-Y-X intrinsic convention)
+        roll_wrt_pivot, pitch_wrt_pivot, yaw_wrt_pivot = self._extract_rpy_from_rotation(X_PB.rotation())
+
+        # Get actual joint angles (gimbal configuration space coordinates)
+        pitch_angle, roll_angle = self._calculate_ball_angles(context)
+        
+        # Transform from WORLD frame to ball frame (includes manipulator motion)
+        X_WB = plant.CalcRelativeTransform(context, plant.world_frame(), ball_frame)
+        ball_wrt_world = X_WB.rotation() @ ball_offset_in_body
+        
+        # Extract roll-pitch-yaw angles of ball frame relative to world frame
+        roll_wrt_world, pitch_wrt_world, yaw_wrt_world = self._extract_rpy_from_rotation(X_WB.rotation())
+        
+        # Ball position in ball_frame coordinates (always constant)
+        ball_in_ball_frame = ball_offset_in_body  # [0, 0, -L] by definition
+        
+        # Pivot position as seen from ball frame (inverse perspective)
+        X_BP = X_PB.inverse()
+        pivot_in_ball_frame = X_BP.translation()
+        
+        # Compute spherical coordinates (relative to pivot frame)
+        r, theta, phi = self._convert_to_spherical(ball_wrt_pivot)
+        x, y, z = ball_wrt_pivot
+        
+        return {
+            'ball_wrt_pivot': ball_wrt_pivot,
+            'ball_wrt_world': ball_wrt_world,
+            'ball_in_ball_frame': ball_in_ball_frame,
+            'pivot_in_ball_frame': pivot_in_ball_frame,
+            'theta': theta,
+            'phi': phi,
+            'r': r,
+            'x': x,
+            'y': y,
+            'z': z,
+            'roll_wrt_pivot': roll_wrt_pivot,
+            'pitch_wrt_pivot': pitch_wrt_pivot,
+            'yaw_wrt_pivot': yaw_wrt_pivot,
+            'roll_wrt_world': roll_wrt_world,
+            'pitch_wrt_world': pitch_wrt_world,
+            'yaw_wrt_world': yaw_wrt_world,
+            'joint_pitch': pitch_angle,
+            'joint_roll': roll_angle,
+        }
+    
+    def _convert_to_spherical(self, cartesian):
+        """
+        Convert Cartesian coordinates to spherical (r, theta, phi).
+        
+        Spherical coordinate convention (matching LaTeX notes):
+            - theta (\u03b8): Polar angle from +z axis (down), \u03b8 \u2208 [0, \u03c0]
+                \u03b8 = 0: pointing straight down (+z direction)
+                \u03b8 = \u03c0/2: horizontal
+                \u03b8 = \u03c0: pointing up (-z direction)
+            - phi (\u03c6): Azimuthal angle from +x axis in xy-plane, \u03c6 \u2208 [0, 2\u03c0)
+                \u03c6 = 0: projection on +x axis
+                \u03c6 = \u03c0/2: projection on +y axis
+            - r: Radial distance from origin
+            
+        Cartesian to spherical:
+            x = r\u00b7sin(\u03b8)\u00b7cos(\u03c6)
+            y = r\u00b7sin(\u03b8)\u00b7sin(\u03c6)
+            z = r\u00b7cos(\u03b8)
+            
+        Args:
+            cartesian: [x, y, z] position vector
+            
+        Returns:
+            (r, theta, phi) in (meters, radians, radians)
+        """
+        x, y, z = cartesian
+        r = np.linalg.norm(cartesian)
+        theta = np.arccos(z / r) if r > 1e-10 else 0.0  # Polar angle from +z axis
+        phi = np.arctan2(y, x)  # Azimuthal angle from +x axis
+        return r, theta, phi
+    
+    def _extract_rpy_from_rotation(self, rotation):
+        """
+        Extract Roll-Pitch-Yaw angles from rotation matrix.
+        
+        Args:
+            rotation: RotationMatrix object or 3x3 numpy array
+            
+        Returns:
+            (roll, pitch, yaw) tuple in radians
+        """
+        rpy = RollPitchYaw(rotation)
+        return rpy.roll_angle(), rpy.pitch_angle(), rpy.yaw_angle()
+    
+    
+    def _calculate_ball_angles(self, context):
+        """Calculate current pendulum angles (pitch, roll) from joint states."""
+        if not self.pitch_joint or not self.roll_joint:
+            return None
+        
+        pitch_angle = self.pitch_joint.get_angle(context)
+        roll_angle = self.roll_joint.get_angle(context)
+        
+        return pitch_angle, roll_angle
+    
+    
+    def compute_mass_matrix(self, theta, phi, M_cart=1.0):
+        """
+        Compute mass matrix M(q) for cart-pendulum system (spherical coordinates).
+        
+        Args:
+            theta: Polar angle from z-axis (radians), θ ∈ [0, π]
+            phi: Azimuthal angle from x-axis (radians), φ ∈ [0, 2π)
+            M_cart: Cart mass (kg)
+            
+        Returns:
+            M: 4x4 mass matrix
+            
+        Spherical coordinates:
+            x_ball = x_c + L·sin(θ)·cos(φ)
+            y_ball = y_c + L·sin(θ)·sin(φ)
+            z_ball = L·cos(θ)
+        """
+        m = self.mass
+        L = self.length
+        
+        c_theta = np.cos(theta)
+        s_theta = np.sin(theta)
+        c_phi = np.cos(phi)
+        s_phi = np.sin(phi)
+        
+        M = np.array([
+            [M_cart + m,              0,                       m*L*c_theta*c_phi,        -m*L*s_theta*s_phi],
+            [0,                       M_cart + m,              m*L*c_theta*s_phi,         m*L*s_theta*c_phi],
+            [m*L*c_theta*c_phi,       m*L*c_theta*s_phi,       m*L**2,                    0],
+            [-m*L*s_theta*s_phi,      m*L*s_theta*c_phi,       0,                         m*L**2*s_theta**2]
+        ])
+        
+        return M
+    
+    def compute_coriolis_vector(self, theta, phi, theta_dot, phi_dot, x_c_dot=0.0, y_c_dot=0.0):
+        """
+        Compute Coriolis/centrifugal vector C(q, q_dot) for spherical coordinates.
+        
+        Args:
+            theta: Polar angle from z-axis (radians)
+            phi: Azimuthal angle from x-axis (radians)
+            theta_dot: θ velocity (rad/s)
+            phi_dot: φ velocity (rad/s)
+            x_c_dot: Cart x velocity (m/s)
+            y_c_dot: Cart y velocity (m/s)
+            
+        Returns:
+            C: 4x1 Coriolis/centrifugal vector
+        """
+        m = self.mass
+        L = self.length
+        
+        c_theta = np.cos(theta)
+        s_theta = np.sin(theta)
+        c_phi = np.cos(phi)
+        s_phi = np.sin(phi)
+        
+        C1 = -m*L*(theta_dot**2*s_theta*c_phi + phi_dot**2*s_theta*c_theta*c_phi + 2*theta_dot*phi_dot*c_theta*s_phi)
+        C2 = -m*L*(theta_dot**2*s_theta*s_phi + phi_dot**2*s_theta*c_theta*s_phi - 2*theta_dot*phi_dot*c_theta*c_phi)
+        C3 = m*L*phi_dot**2*s_theta*c_theta - m*L*phi_dot*s_theta*(x_c_dot*s_phi - y_c_dot*c_phi)
+        C4 = -m*L**2*theta_dot*phi_dot*np.sin(2*theta) - m*L*theta_dot*c_theta*(x_c_dot*s_phi + y_c_dot*c_phi)
+        
+        C = np.array([C1, C2, C3, C4])
+        
+        return C
+    
+    def compute_gravity_vector(self, theta, phi, g=9.81):
+        """
+        Compute gravity vector G(q) for spherical coordinates.
+        
+        Args:
+            theta: Polar angle from z-axis (radians)
+            phi: Azimuthal angle from x-axis (radians)
+            g: Gravitational acceleration (m/s²)
+            
+        Returns:
+            G: 4x1 gravity vector
+            
+        Note: In spherical coordinates, gravity only produces torque about θ axis.
+              There is no gravitational torque about φ axis (symmetry about vertical).
+        """
+        m = self.mass
+        L = self.length
+        
+        s_theta = np.sin(theta)
+        
+        G1 = 0.0
+        G2 = 0.0
+        G3 = -m*g*L*s_theta  # Restoring torque about θ axis
+        G4 = 0.0              # No torque about φ axis (gravity is symmetric)
+        
+        G = np.array([G1, G2, G3, G4])
+        
+        return G
+    
+    def compute_state_space_linearization(self, theta_eq=0.0, phi_eq=0.0, M_cart=1.0, g=9.81):
+        """
+        Compute linearized state-space representation around equilibrium (spherical coords).
+        
+        State vector: x = [x_c, y_c, θ, φ, ẋ_c, ẏ_c, θ̇, φ̇]ᵀ  (8x1)
+        Input vector: u = [F_x, F_y, τ_θ, τ_φ]ᵀ                 (4x1)
+        
+        Linearized dynamics:
+            ẋ = A·x + B·u
+            y = C·x + D·u
+        
+        Args:
+            theta_eq: Equilibrium polar angle from z-axis (radians, typically 0 for hanging down)
+            phi_eq: Equilibrium azimuthal angle (radians, arbitrary for θ=0)
+            M_cart: Cart mass (kg)
+            g: Gravitational acceleration (m/s²)
+            
+        Returns:
+            A: 8x8 state matrix
+            B: 8x4 input matrix
+            C: 8x8 output matrix (identity - full state observable)
+            D: 8x4 feedthrough matrix (zeros)
+        """
+        m = self.mass
+        L = self.length
+        
+        # Evaluate at equilibrium (typically hanging down: θ=0, φ arbitrary)
+        M_eq = self.compute_mass_matrix(theta_eq, phi_eq, M_cart)
+        M_inv = np.linalg.inv(M_eq)
+        
+        # Compute linearized gravity Jacobian: ∂G/∂q evaluated at equilibrium
+        # For spherical coordinates:
+        # G3 = -m*g*L*sin(θ)  →  ∂G3/∂θ = -m*g*L*cos(θ)
+        # G4 = 0              →  ∂G4/∂φ = 0  (no gravitational torque about φ)
+        
+        dG_dq = np.zeros((4, 4))
+        if np.abs(theta_eq) < 0.1:  # Small angle approximation around θ=0 (hanging down)
+            dG_dq[2, 2] = -m*g*L  # ∂G3/∂θ ≈ -m*g*L at θ=0
+            dG_dq[3, 3] = 0.0     # ∂G4/∂φ = 0 (always, due to symmetry)
+        else:
+            # Exact derivatives at arbitrary equilibrium
+            c_theta = np.cos(theta_eq)
+            
+            dG_dq[2, 2] = -m*g*L*c_theta  # ∂G3/∂θ
+            dG_dq[2, 3] = 0.0              # ∂G3/∂φ = 0
+            dG_dq[3, 2] = 0.0              # ∂G4/∂θ = 0
+            dG_dq[3, 3] = 0.0              # ∂G4/∂φ = 0
+        
+        # State-space matrices
+        # x = [q; q_dot] where q = [x_c, y_c, θ, φ]
+        # ẋ = [q_dot; q_ddot] = [q_dot; M^{-1}(Q - C - G)]
+        # At equilibrium (q_dot = 0): C = 0
+        # Linearization: q_ddot ≈ M^{-1}·(Q - G_eq - ∂G/∂q·Δq)
+        
+        A = np.zeros((8, 8))
+        # Upper right block: ∂(q_dot)/∂(q_dot) = I
+        A[0:4, 4:8] = np.eye(4)
+        # Lower left block: ∂(q_ddot)/∂q = -M^{-1}·∂G/∂q
+        A[4:8, 0:4] = -M_inv @ dG_dq
+        # Lower right block: ∂(q_ddot)/∂(q_dot) = -M^{-1}·∂C/∂(q_dot)
+        # At equilibrium with q_dot=0, C=0, and ∂C/∂(q_dot) represents damping
+        # For undamped system: ∂C/∂(q_dot) ≈ 0 (or add joint damping if needed)
+        # If joint damping b: add -b*q_dot terms
+        if hasattr(self, 'damping') and self.damping > 0:
+            A[6, 6] = -self.damping / (m*L**2)  # Pitch damping
+            A[7, 7] = -self.damping / (m*L**2)  # Roll damping
+        
+        B = np.zeros((8, 4))
+        # Lower block: ∂(q_ddot)/∂u = M^{-1}
+        B[4:8, 0:4] = M_inv
+        
+        # Output: full state measurement
+        C = np.eye(8)
+        
+        # No direct feedthrough
+        D = np.zeros((8, 4))
+        
+        return A, B, C, D
+    
+    def compute_nonlinear_dynamics(self, q, q_dot, u, M_cart=1.0, g=9.81):
+        """
+        Compute nonlinear dynamics: q_ddot = M^{-1}(q)·[u - C(q,q_dot) - G(q)]
+        
+        Args:
+            q: Configuration [x_c, y_c, θ, φ] (4x1)
+            q_dot: Velocity [ẋ_c, ẏ_c, θ̇, φ̇] (4x1)
+            u: Control input [F_x, F_y, τ_θ, τ_φ] (4x1)
+            M_cart: Cart mass (kg)
+            g: Gravitational acceleration (m/s²)
+            
+        Returns:
+            q_ddot: Acceleration [ẍ_c, ÿ_c, θ̈, φ̈] (4x1)
+        """
+        x_c, y_c, theta, phi = q
+        x_c_dot, y_c_dot, theta_dot, phi_dot = q_dot
+        
+        M = self.compute_mass_matrix(theta, phi, M_cart)
+        C = self.compute_coriolis_vector(theta, phi, theta_dot, phi_dot, x_c_dot, y_c_dot)
+        G = self.compute_gravity_vector(theta, phi, g)
+        
+        # Solve: M·q_ddot = u - C - G
+        q_ddot = np.linalg.solve(M, u - C - G)
+        
+        return q_ddot
+    
+    # ========================================================================
+    # GIMBAL COORDINATE DYNAMICS (for validation with Drake)
+    # ========================================================================
+    
+    def compute_mass_matrix_gimbal(self, pitch, roll):
+        """
+        Compute mass matrix M(q) for gimbal-mounted pendulum.
+        
+        Gimbal coordinates (YX Euler angles):
+            - pitch (α): rotation about Y-axis  
+            - roll (β): rotation about X-axis (in gimbal1 frame after pitch)
+        
+        Ball position (with Z down):
+            x = -L·sin(α)
+            y = L·cos(α)·sin(β)
+            z = -L·cos(α)·cos(β)
+        
+        Ball velocity:
+            v = [∂x/∂α, ∂y/∂α, ∂z/∂α]·α̇ + [∂x/∂β, ∂y/∂β, ∂z/∂β]·β̇
+            ∂p/∂α = [-L·cos(α), -L·sin(α)·sin(β), L·sin(α)·cos(β)]
+            ∂p/∂β = [0, L·cos(α)·cos(β), L·cos(α)·sin(β)]
+        
+        Kinetic energy: T = (1/2)·m·(|∂p/∂α|²·α̇² + 2·(∂p/∂α·∂p/∂β)·α̇·β̇ + |∂p/∂β|²·β̇²)
+            |∂p/∂α|² = L²·cos²(α) + L²·sin²(α)·sin²(β) + L²·sin²(α)·cos²(β)
+                     = L²·cos²(α) + L²·sin²(α) = L²
+            ∂p/∂α·∂p/∂β = 0
+            |∂p/∂β|² = L²·cos²(α)·cos²(β) + L²·cos²(α)·sin²(β) = L²·cos²(α)
+        
+        Args:
+            pitch: Pitch angle α (radians)
+            roll: Roll angle β (radians)
+            
+        Returns:
+            M: 2x2 mass matrix
+        """
+        m = self.mass
+        L = self.length
+        
+        cos_pitch = np.cos(pitch)
+        
+        # Mass matrix M = m·[L², 0; 0, L²·cos²(α)]
+        M = m * L**2 * np.array([
+            [1.0,              0.0],
+            [0.0,  cos_pitch**2]
+        ])
+        
+        return M
+    
+    def compute_coriolis_vector_gimbal(self, pitch, roll, pitch_dot, roll_dot):
+        """
+        Compute Coriolis/centrifugal vector C(q, q̇) for gimbal coordinates.
+        
+        From Euler-Lagrange equations:
+            d/dt(∂T/∂α̇) - ∂T/∂α = τ_α
+            d/dt(∂T/∂β̇) - ∂T/∂β = τ_β
+        
+        With T = (1/2)·m·L²·(α̇² + cos²(α)·β̇²):
+            ∂T/∂α̇ = m·L²·α̇
+            ∂T/∂β̇ = m·L²·cos²(α)·β̇
+            ∂T/∂α = -m·L²·cos(α)·sin(α)·β̇²
+            ∂T/∂β = 0
+            
+            d/dt(∂T/∂α̇) = m·L²·α̈
+            d/dt(∂T/∂β̇) = m·L²·(cos²(α)·β̈ - 2·cos(α)·sin(α)·α̇·β̇)
+        
+        Coriolis terms: C = M·q̈ - τ (rearranged from EL equations without potential)
+            C_α = -∂T/∂α = m·L²·cos(α)·sin(α)·β̇²
+            C_β = -d/dt(∂T/∂β̇) + ∂T/∂β = -m·L²·cos²(α)·β̈ + m·L²·2·cos(α)·sin(α)·α̇·β̇
+        
+        Actually, Coriolis is: C·q̇ where C_ij = (1/2)·(∂M_ij/∂q_k + ∂M_ik/∂q_j - ∂M_jk/∂q_i)·q̇_k
+        
+        For our system: M = m·L²·[1, 0; 0, cos²(α)]
+            ∂M/∂α = m·L²·[0, 0; 0, -2·cos(α)·sin(α)]
+            ∂M/∂β = 0
+        
+        Coriolis vector:
+            C_α = m·L²·cos(α)·sin(α)·β̇²
+            C_β = -m·L²·cos(α)·sin(α)·α̇·β̇
+        
+        Args:
+            pitch: Pitch angle α (radians)
+            roll: Roll angle β (radians)
+            pitch_dot: Pitch velocity α̇ (rad/s)
+            roll_dot: Roll velocity β̇ (rad/s)
+            
+        Returns:
+            C: 2x1 Coriolis vector
+        """
+        m = self.mass
+        L = self.length
+        
+        sin_pitch = np.sin(pitch)
+        cos_pitch = np.cos(pitch)
+        
+        # Coriolis terms
+        C_alpha = m * L**2 * cos_pitch * sin_pitch * roll_dot**2
+        C_beta = -m * L**2 * cos_pitch * sin_pitch * pitch_dot * roll_dot
+        
+        C = np.array([C_alpha, C_beta])
+        
+        return C
+    
+    def compute_gravity_vector_gimbal(self, pitch, roll, g=9.81):
+        """
+        Compute gravity vector G(q) for gimbal coordinates.
+        
+        Ball position: p = [-L·sin(α), L·cos(α)·sin(β), -L·cos(α)·cos(β)]
+        Potential energy (with Z down, gravity in -Z direction):
+            V = m·g·z = m·g·(-L·cos(α)·cos(β)) = -m·g·L·cos(α)·cos(β)
+        
+        Gravity terms: G_i = ∂V/∂q_i
+            G_α = ∂V/∂α = m·g·L·sin(α)·cos(β)
+            G_β = ∂V/∂β = m·g·L·cos(α)·sin(β)
+        
+        Args:
+            pitch: Pitch angle α (radians)
+            roll: Roll angle β (radians)
+            g: Gravitational acceleration (m/s²), positive value
+            
+        Returns:
+            G: 2x1 gravity vector
+        """
+        m = self.mass
+        L = self.length
+        
+        sin_pitch = np.sin(pitch)
+        cos_pitch = np.cos(pitch)
+        sin_roll = np.sin(roll)
+        cos_roll = np.cos(roll)
+        
+        # Gravity terms (partial derivatives of potential energy)
+        G_alpha = m * g * L * sin_pitch * cos_roll
+        G_beta = m * g * L * cos_pitch * sin_roll
+        
+        G = np.array([G_alpha, G_beta])
+        
+        return G
+    
+    def compute_nonlinear_dynamics_gimbal(self, q, q_dot, u, g=9.81):
+        """
+        Compute forward dynamics for gimbal-mounted pendulum.
+        
+        Equation: M(q)·q̈ + C(q, q̇) + G(q) = τ
+        Solve for: q̈ = M⁻¹·(τ - C - G)
+        
+        Args:
+            q: Position [pitch, roll] (2x1)
+            q_dot: Velocity [pitch_dot, roll_dot] (2x1)
+            u: Control input [τ_pitch, τ_roll] (2x1)
+            g: Gravitational acceleration (m/s²)
+            
+        Returns:
+            q_ddot: Acceleration [pitch_ddot, roll_ddot] (2x1)
+        """
+        pitch, roll = q
+        pitch_dot, roll_dot = q_dot
+        
+        M = self.compute_mass_matrix_gimbal(pitch, roll)
+        C = self.compute_coriolis_vector_gimbal(pitch, roll, pitch_dot, roll_dot)
+        G = self.compute_gravity_vector_gimbal(pitch, roll, g)
+        
+        # Solve: M·q_ddot = u - C - G
+        q_ddot = np.linalg.solve(M, u - C - G)
+        
+        return q_ddot
+    
+    def finite_difference_linearization(self, plant, context, epsilon=1e-6):
+        """
+        Compute linearization A, B matrices using numerical finite differences.
+        
+        This method linearizes the pendulum dynamics around the current state
+        using central finite differences. It works with the full MultibodyPlant
+        that includes both the manipulator and pendulum.
+        
+        Method:
+        - A matrix: ∂f/∂x ≈ [f(x+ε) - f(x-ε)] / (2ε)
+        - B matrix: ∂f/∂u ≈ [f(u+ε) - f(u-ε)] / (2ε)
+        
+        Args:
+            plant: Drake MultibodyPlant (full system with manipulator + pendulum)
+            context: Context at equilibrium point (current state)
+            epsilon: Perturbation size for finite differences
+        
+        Returns:
+            A, B: Linearized system matrices for the full system
+                  - A: (n_x × n_x) where n_x = state dimension
+                  - B: (n_x × n_u) where n_u = input dimension
+        
+        Example:
+            For manipulator (2-DOF) + pendulum (2-DOF):
+            - State: [q₁, q₂, α, β, q̇₁, q̇₂, α̇, β̇] (8D)
+            - Input: [τ₁, τ₂] + optional pendulum torques (2D or 4D)
+        """
+        # Get state and input dimensions
+        x0 = plant.GetPositionsAndVelocities(context)
+        u0 = plant.get_actuation_input_port().Eval(context)
+        
+        n_x = len(x0)  # State dimension (manipulator + pendulum)
+        n_u = len(u0)  # Input dimension (actuators)
+        
+        # Create derivative function
+        def get_state_derivative(x, u):
+            """Compute state derivative ẋ = f(x, u)"""
+            temp_context = plant.CreateDefaultContext()
+            plant.SetPositionsAndVelocities(temp_context, x)
+            plant.get_actuation_input_port().FixValue(temp_context, u)
+            
+            # Get continuous state derivatives
+            derivatives = plant.EvalTimeDerivatives(temp_context)
+            x_dot = derivatives.CopyToVector()
+            return x_dot
+        
+        # Compute A matrix: ∂f/∂x (central differences)
+        A = np.zeros((n_x, n_x))
+        for i in range(n_x):
+            x_plus = x0.copy()
+            x_minus = x0.copy()
+            x_plus[i] += epsilon
+            x_minus[i] -= epsilon
+            
+            f_plus = get_state_derivative(x_plus, u0)
+            f_minus = get_state_derivative(x_minus, u0)
+            
+            A[:, i] = (f_plus - f_minus) / (2 * epsilon)
+        
+        # Compute B matrix: ∂f/∂u (central differences)
+        B = np.zeros((n_x, n_u))
+        for i in range(n_u):
+            u_plus = u0.copy()
+            u_minus = u0.copy()
+            u_plus[i] += epsilon
+            u_minus[i] -= epsilon
+            
+            f_plus = get_state_derivative(x0, u_plus)
+            f_minus = get_state_derivative(x0, u_minus)
+            
+            B[:, i] = (f_plus - f_minus) / (2 * epsilon)
+        
+        return A, B

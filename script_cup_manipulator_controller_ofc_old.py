@@ -158,20 +158,10 @@ from pydrake.all import (
     Sphere,
     Rgba,
     
-    # TVLQR and Trajectories
-    PiecewisePolynomial,
-    LinearQuadraticRegulator,
-    FiniteHorizonLinearQuadraticRegulatorOptions,
-    MakeFiniteHorizonLinearQuadraticRegulator,
-    
     # Controllers
     InverseDynamicsController,
-    
-    # Trajectories
-    PiecewisePolynomial,
-    
-    # LQR
     LinearQuadraticRegulator,
+    Linearize,
     
     # Mathematical utilities
     Quaternion,
@@ -204,8 +194,8 @@ from joint_space_ofc_implementation import JointSpaceOFC
 # ============================================================================
 
 parser = argparse.ArgumentParser(description='Drake Diagram-based controller architecture')
-parser.add_argument('--mode', type=str, choices=['pd', 'inverse-dynamics', 'computed-torque', 'scene-viz', 'min-jerk-joint', 'task-space-ofc', 'ofc-effort', 'ofc-smoothness', 'coupling-test', 'tvlqr'],
-                    default='tvlqr', help='Controller type (scene-viz = static visualization only, coupling-test = test L1/L2 coupling to pitch/roll, tvlqr = time-varying LQR)')
+parser.add_argument('--mode', type=str, choices=['pd', 'inverse-dynamics', 'computed-torque', 'scene-viz', 'min-jerk-joint', 'task-space-ofc', 'ofc-effort', 'ofc-smoothness', 'lqr'],
+                    default='lqr', help='Controller type (scene-viz = static visualization only, lqr = LQR with minimum jerk)')
 parser.add_argument('--visualize', type=bool, default=True, help='Enable visualization')
 parser.add_argument('--plot_frames', type=bool, default=True, help='Plot coordinate frames')
 args, _ = parser.parse_known_args()
@@ -284,6 +274,14 @@ JOINT_SPACE_MA = 1.0      # Virtual mass [kg]
 JOINT_SPACE_KP = 100.0    # Spring stiffness [N/m]
 JOINT_SPACE_KD = 20.0     # Damping [N·s/m]
 JOINT_SPACE_TAU_FILTER = 0.01  # F-dot filter time constant [s]
+
+# --- LQR Configuration ---
+LQR_Q_START = np.deg2rad(np.array([80.0, -160.0, 0.0, 180.0]))  # [link1, link2, pitch, roll]
+LQR_Q_GOAL = np.deg2rad(np.array([20.0, -40.0, 0.0, 180.0]))     # [link1, link2, pitch, roll]
+LQR_DURATION = MANIPULATOR_MOTION_DURATION
+LQR_Q_WEIGHTS = np.array([100.0, 100.0, 500.0, 500.0])  # State cost for positions [manip, manip, pend, pend]
+LQR_QDOT_WEIGHTS = np.array([10.0, 10.0, 50.0, 50.0])   # State cost for velocities
+LQR_R_WEIGHTS = np.array([0.1, 0.1])                     # Control effort cost
 
 # ============================================================================
 # TRAJECTORY GENERATOR CLASS
@@ -702,131 +700,181 @@ class PDController(LeafSystem):
 
 
 # ============================================================================
-# COUPLING TEST CONTROLLER - Test L1 and L2 coupling independently
+# LQR CONTROLLER WITH MINIMUM JERK TRAJECTORY
 # ============================================================================
 
-class CouplingTestController(LeafSystem):
+class LQRController(LeafSystem):
     """
-    Coupling Test Controller - Move L1 and L2 independently to verify coupling.
+    LQR controller for equilibrium regulation (not trajectory tracking).
     
-    ═══════════════════════════════════════════════════════════════════════
-    EXPERIMENTAL VERIFICATION OF MASS MATRIX COUPLING
-    ═══════════════════════════════════════════════════════════════════════
+    Linearizes plant dynamics ONCE at the goal equilibrium and computes
+    constant LQR gains for stabilization.
     
-    Test Protocol:
-    ─────────────
-    Phase 1 (0-3s): Move ONLY L1 (sinusoidal), keep L2 fixed at 0°
-        → Observe pitch and roll angles
-        → Expected: Both pitch AND roll change (roll changes MORE)
-        → Verifies: M[2,0] ≠ 0 (pitch), M[3,0] ≈ 0.20 (roll, STRONGER)
+    Control Law:
+        τ = τ_ff + K·[x_goal - x]
     
-    Phase 2 (3-6s): Move ONLY L2 (sinusoidal), keep L1 fixed
-        → Observe pitch and roll angles  
-        → Expected: Only ROLL changes, pitch stays constant
-        → Verifies: M[2,1] ≈ 0 (no pitch), M[3,1] ≈ 0.13 (roll only)
+    Where:
+        - τ_ff: Feedforward torque (gravity compensation at equilibrium)
+        - K: LQR gain matrix (CONSTANT, computed at initialization)
+        - x_goal: Goal equilibrium state [q_goal, 0]
+        - x: Current state [q, v]
     
-    This directly demonstrates the asymmetric coupling pattern:
-        - L1 couples to BOTH pitch (weak) and roll (strong)
-        - L2 couples to ONLY roll (moderate)
-    
-    ═══════════════════════════════════════════════════════════════════════
+    This approach works for underactuated systems because we're regulating
+    around an equilibrium point (like cart-pole stabilization), not tracking
+    arbitrary trajectories.
     """
     
-    def __init__(self, plant: MultibodyPlant, model_instance,
-                 amplitude: float = np.pi/4,
-                 frequency: float = 0.5):
+    def __init__(self, plant: MultibodyPlant, model: MultibodyPlant, model_instance,
+                 goal_position: np.ndarray,
+                 Q: np.ndarray, R: np.ndarray, use_drake_linearization: bool = False):
+        """
+        Initialize LQR controller for equilibrium regulation.
+        
+        Args:
+            plant: Physics plant (for actuation)
+            model: Controller's model (for dynamics computation)
+            model_instance: Model instance ID
+            goal_position: Target equilibrium configuration [L1, L2, P, R]
+            Q: State cost matrix (8x8 for 4 DOF system)
+            R: Control cost matrix (2x2 for 2 actuators)
+            use_drake_linearization: If True, use Drake's automatic linearization (default)
+        """
         LeafSystem.__init__(self)
         
         self.plant = plant
+        self.model = model
         self.model_instance = model_instance
-        self.amplitude = amplitude
-        self.frequency = frequency
+        self.goal_position = goal_position
+        self.use_drake_linearization = use_drake_linearization
         
-        # Phase durations with settling time
-        self.phase1_duration = 3.0      # Test L1 only
-        self.settling1_start = 3.0      # Start settling after L1
-        self.settling1_duration = 2.0   # Allow pendulum to settle
-        self.phase2_start = 5.0         # Start L2 test after settling
-        self.phase2_duration = 3.0      # Test L2 only
-        self.total_duration = 8.0       # Total test duration
+        # Dimensions
+        self.num_positions = model.num_positions()
+        self.num_velocities = model.num_velocities()
+        self.num_actuated = 2  # Manipulator joints
         
-        # High gains for position holding
-        self.Kp = np.array([200.0, 200.0])
-        self.Kd = np.array([40.0, 40.0])
+        # Cost matrices
+        self.Q = Q
+        self.R = R
         
-        self.num_actuated = 2
-        self.num_positions = plant.num_positions()
-        self.num_velocities = plant.num_velocities()
+        # Create model context
+        self.model_context = self.model.CreateDefaultContext()
         
-        # Input port: full state [q, v]
-        self.DeclareVectorInputPort(
-            "estimated_state",
-            BasicVector(self.num_positions + self.num_velocities)
-        )
+        # Compute LQR gain ONCE at equilibrium
+        self.K = self._compute_equilibrium_lqr_gain()
         
-        # Output port: actuator torques
-        self.DeclareVectorOutputPort(
-            "control_torque",
-            BasicVector(self.num_actuated),
-            self.CalcControlTorque
-        )
+        # Input port: state from plant
+        self.DeclareVectorInputPort("state", BasicVector(self.num_positions + self.num_velocities))
         
-        print(colored(f"\n=== COUPLING TEST CONTROLLER ===", 'yellow', attrs=['bold']))
-        print(colored(f"Phase 1 (0-{self.phase1_duration}s): Move L1 only (amplitude={np.rad2deg(amplitude):.1f}°)", 'cyan'))
-        print(colored(f"Settling ({self.settling1_start}-{self.phase2_start}s): Hold both at 0° (pendulum settles)", 'magenta'))
-        print(colored(f"Phase 2 ({self.phase2_start}-{self.total_duration}s): Move L2 only (amplitude={np.rad2deg(amplitude):.1f}°)", 'cyan'))
-        print(colored(f"Expected Results:", 'green'))
-        print(colored(f"  • L1 motion → pitch changes (weak), roll changes (STRONG)", 'green'))
-        print(colored(f"  • L2 motion → pitch constant, roll changes (moderate)", 'green'))
+        # Output port: control torques
+        self.DeclareVectorOutputPort("control", BasicVector(self.num_actuated), self.CalcControl)
+        
+        linearization_method = "Drake's automatic linearization" if use_drake_linearization else "manual analytical"
+        print(colored(f"✓ LQR Equilibrium Regulation Controller Initialized", 'green', attrs=['bold']))
+        print(colored(f"  Goal: {np.rad2deg(goal_position)} deg", 'green'))
+        print(colored(f"  Linearization: {linearization_method}", 'green'))
+        print(colored(f"  State dimension: {self.num_positions + self.num_velocities}", 'green'))
+        print(colored(f"  Control dimension: {self.num_actuated}", 'green'))
+        print(colored(f"  Q: diag({np.diag(Q)})", 'cyan'))
+        print(colored(f"  R: diag({np.diag(R)})", 'cyan'))
     
-    def CalcControlTorque(self, context, output):
-        # Get current state
-        state = self.get_input_port(0).Eval(context)
-        q = state[:self.num_positions]
-        q_dot = state[self.num_positions:]
+    def _compute_equilibrium_lqr_gain(self):
+        """Compute LQR gain matrix at the goal equilibrium."""
+        # Set equilibrium state (zero velocities)
+        self.model.SetPositions(self.model_context, self.goal_position)
+        self.model.SetVelocities(self.model_context, np.zeros(self.num_velocities))
         
-        q_actuated = q[:self.num_actuated]
-        q_dot_actuated = q_dot[:self.num_actuated]
+        # Compute dynamics at equilibrium
+        M = self.model.CalcMassMatrix(self.model_context)
+        C = self.model.CalcBiasTerm(self.model_context)
         
-        t = context.get_time()
-        
-        # Initialize desired state
-        q_desired = np.zeros(self.num_actuated)
-        q_dot_desired = np.zeros(self.num_actuated)
-        
-        if t < self.phase1_duration:
-            # Phase 1: Move L1 only, hold L2 at 0
-            omega = 2 * np.pi * self.frequency
-            q_desired[0] = self.amplitude * np.sin(omega * t)
-            q_dot_desired[0] = self.amplitude * omega * np.cos(omega * t)
-            q_desired[1] = 0.0
-            q_dot_desired[1] = 0.0
-            
-        elif t < self.phase2_start:
-            # Settling phase: Hold both at 0, let pendulum settle
-            q_desired = np.zeros(self.num_actuated)
-            q_dot_desired = np.zeros(self.num_actuated)
-            
-        elif t < self.total_duration:
-            # Phase 2: Hold L1 constant, move L2 only
-            t_phase2 = t - self.phase2_start
-            omega = 2 * np.pi * self.frequency
-            q_desired[0] = 0.0
-            q_dot_desired[0] = 0.0
-            q_desired[1] = self.amplitude * np.sin(omega * t_phase2)
-            q_dot_desired[1] = self.amplitude * omega * np.cos(omega * t_phase2)
-            
+        if self.use_drake_linearization:
+            try:
+                # Linearize the plant around equilibrium
+                linearized_system = Linearize(
+                    self.model,
+                    self.model_context,
+                    input_port_index=self.model.get_actuation_input_port(self.model_instance).get_index(),
+                    output_port_index=self.model.get_state_output_port(self.model_instance).get_index(),
+                    equilibrium_check_tolerance=1e-3
+                )
+                
+                A = linearized_system.A()
+                B = linearized_system.B()
+                
+            except Exception as e:
+                print(colored(f"Warning: Drake linearization failed, using manual approximation", 'yellow'))
+                print(colored(f"  Error: {e}", 'yellow'))
+                A, B = self._manual_linearization(M, C)
         else:
-            # After both phases: hold both at 0
-            q_desired = np.zeros(self.num_actuated)
-            q_dot_desired = np.zeros(self.num_actuated)
+            A, B = self._manual_linearization(M, C)
         
-        # PD control law
-        error_pos = q_desired - q_actuated
-        error_vel = q_dot_desired - q_dot_actuated
-        tau = self.Kp * error_pos + self.Kd * error_vel
+        # Compute LQR gain
+        try:
+            K, S = LinearQuadraticRegulator(A, B, self.Q, self.R)
+            print(colored(f"✓ LQR gain computed successfully at equilibrium", 'green'))
+            print(colored(f"  K shape: {K.shape}", 'cyan'))
+            return K
+        except Exception as e:
+            print(colored(f"✗ LQR failed even at equilibrium!", 'red', attrs=['bold']))
+            print(colored(f"  Error: {e}", 'red'))
+            print(colored(f"  A shape: {A.shape}, B shape: {B.shape}", 'yellow'))
+            print(colored(f"  System may not be stabilizable even at equilibrium", 'yellow'))
+            return np.zeros((self.num_actuated, self.num_positions + self.num_velocities))
+    
+    def CalcControl(self, context, output):
+        """Compute LQR control for equilibrium regulation."""
+        # Get current state from plant
+        state = self.get_input_port(0).Eval(context)
+        q = state[0:self.num_positions]
+        v = state[self.num_positions:]
         
-        output.SetFromVector(tau)
+        # Goal equilibrium state (zero velocities)
+        x_goal = np.concatenate([self.goal_position, np.zeros(self.num_velocities)])
+        
+        # Current state
+        x = np.concatenate([q, v])
+        
+        # State error
+        x_error = x_goal - x
+        
+        # LQR feedback control
+        tau_fb = self.K @ x_error
+        
+        # Feedforward: gravity compensation at goal
+        self.model.SetPositions(self.model_context, self.goal_position)
+        self.model.SetVelocities(self.model_context, np.zeros(self.num_velocities))
+        C_goal = self.model.CalcBiasTerm(self.model_context)
+        tau_ff = C_goal[0:self.num_actuated]  # Gravity term for actuated joints
+        
+        # Total control
+        torque = tau_ff + tau_fb
+        
+        # Set output
+        output.SetFromVector(torque)
+    
+    def _manual_linearization(self, M, C):
+        """
+        Manual linearization (simplified approximation).
+        
+        Linearizes: ẋ = [q̇, v̇] = [v, M⁻¹(τ - C)]
+        
+        Returns approximate A, B matrices assuming:
+        - M, C don't vary significantly near equilibrium
+        - Ignores ∂M/∂q and ∂C/∂q terms
+        """
+        M_inv = np.linalg.inv(M)
+        
+        # State matrix A (simplified)
+        A = np.zeros((self.num_positions + self.num_velocities, 
+                      self.num_positions + self.num_velocities))
+        A[0:self.num_positions, self.num_positions:] = np.eye(self.num_positions)
+        # Note: Missing ∂/∂q [M⁻¹(τ - C)] and ∂/∂v [M⁻¹(τ - C)] terms
+        
+        # Control matrix B
+        B = np.zeros((self.num_positions + self.num_velocities, self.num_actuated))
+        B[self.num_positions:self.num_positions+self.num_actuated, :] = M_inv[0:self.num_actuated, 0:self.num_actuated]
+        
+        return A, B
 
 
 # ============================================================================
@@ -1077,397 +1125,6 @@ class ComputedTorqueController(LeafSystem):
         output.SetFromVector(u)
         # - Add Coriolis compensation
         pass
-
-
-# ============================================================================
-# TVLQR CONTROLLER (Time-Varying LQR for Trajectory Tracking)
-# ============================================================================
-#
-# ⚠️  WARNING: CURRENT IMPLEMENTATION HAS KNOWN CORRECTNESS ISSUES ⚠️
-#
-# Issues identified:
-# 1. Reference trajectory dimensions inconsistent (only 2 actuated DOFs, not full 4 DOF)
-# 2. Feedforward u_ref not dynamically feasible (zeros passive accelerations)
-# 3. Riccati solve incorrect (not standard continuous/discrete-time form)
-# 4. Linearization incomplete (missing proper multibody effects)
-#
-# For proper TVLQR on underactuated systems, use:
-#   - Drake's TrajectoryOptimization for nominal trajectory generation
-#   - MakeFiniteHorizonLinearQuadraticRegulator for correct Riccati solve
-#   - See: drake.mit.edu examples/multibody/cart_pole/
-#
-# For THIS system, ComputedTorqueController (above) works excellently:
-#   - Achieves 3.7° and 1.5° RMS tracking errors
-#   - Properly handles underactuation
-#   - Uses inverse dynamics with PD feedback
-#
-# This TVLQR implementation is kept for educational purposes only.
-# ============================================================================
-
-class TVLQRController(LeafSystem):
-    """
-    EDUCATIONAL ONLY: Manual TVLQR with known issues (see header comment).
-    
-    ═══════════════════════════════════════════════════════════════════════
-    FOR PRODUCTION: Use ComputedTorqueController instead
-    ═══════════════════════════════════════════════════════════════════════
-    """
-    
-    def __init__(self, plant: MultibodyPlant, model: MultibodyPlant, model_instance,
-                 trajectory_generator: MinJerkTrajectoryGenerator,
-                 Q: np.ndarray, R: np.ndarray):
-        """
-        Initialize TVLQR controller.
-        
-        Args:
-            plant: Physical plant (for state observation)
-            model: Controller's model (for linearization)
-            model_instance: Model instance ID
-            trajectory_generator: Reference trajectory generator
-            Q: State cost matrix (n x n)
-            R: Control effort cost matrix (m x m)
-        """
-        LeafSystem.__init__(self)
-        
-        self.plant = plant
-        self.model = model
-        self.model_instance = model_instance
-        self.trajectory_generator = trajectory_generator
-        self.motion_duration = trajectory_generator.motion_duration
-        
-        # LQR cost matrices
-        self.Q = np.array(Q)
-        self.R = np.array(R)
-        
-        print(colored(f"\n--- TVLQR Controller Configuration ---", 'yellow', attrs=['bold']))
-        print(colored(f"  State cost (Q): diag({np.diag(Q)})", 'cyan'))
-        print(colored(f"  Control cost (R): diag({np.diag(R)})", 'cyan'))
-        print(colored(f"  Trajectory duration: {self.motion_duration} s", 'cyan'))
-        
-        # System dimensions
-        self.num_positions = plant.num_positions()
-        self.num_velocities = plant.num_velocities()
-        self.num_actuated = 2  # L1, L2
-        self.num_states = self.num_positions + self.num_velocities
-        
-        # Create controller model context
-        self.model_context = model.CreateDefaultContext()
-        
-        # Pre-compute TVLQR gains along trajectory
-        print(colored(f"  Computing TVLQR gains along trajectory...", 'yellow'))
-        self._precompute_tvlqr_gains()
-        print(colored(f"  ✓ TVLQR gains computed for {len(self.time_samples)} time steps", 'green'))
-        
-        # Input port: full state [q, v]
-        self.DeclareVectorInputPort(
-            "estimated_state",
-            BasicVector(self.num_states)
-        )
-        
-        # Output port: actuator torques
-        self.DeclareVectorOutputPort(
-            "control_torque",
-            BasicVector(self.num_actuated),
-            self.CalcControlTorque
-        )
-    
-    def _precompute_tvlqr_gains(self):
-        """
-        Pre-compute time-varying LQR gains along the reference trajectory.
-        
-        Uses numerical differentiation to compute A(t) and B(t) at each
-        point along the trajectory, then solves discrete-time Riccati equation.
-        """
-        # Time discretization - finer for better accuracy
-        dt = 0.005  # 200 Hz sampling (was 100 Hz)
-        self.time_samples = np.arange(0, self.motion_duration + dt, dt)
-        num_samples = len(self.time_samples)
-        
-        # Storage for trajectory and gains
-        self.x_ref_samples = np.zeros((num_samples, self.num_states))
-        self.u_ref_samples = np.zeros((num_samples, self.num_actuated))
-        self.K_samples = np.zeros((num_samples, self.num_actuated, self.num_states))
-        
-        # Compute reference trajectory and feedforward control at each time step
-        for i, t in enumerate(self.time_samples):
-            q_d, qd_d, qdd_d = self.trajectory_generator.compute_trajectory(t)
-            
-            # ⚠️  ISSUE #1: Dimension mismatch
-            # trajectory_generator returns 4D arrays (full system)
-            # but the reference should include passive DOF motion
-            # Currently passive DOFs implicitly set to their start/goal values
-            # which is NOT the actual motion they will have!
-            self.x_ref_samples[i, :] = np.concatenate([q_d, qd_d])
-            
-            # Compute feedforward control using inverse dynamics
-            self.model.SetPositions(self.model_context, q_d)
-            self.model.SetVelocities(self.model_context, qd_d)
-            
-            # ⚠️  ISSUE #2: Not dynamically feasible
-            # Zeroing passive accelerations doesn't match actual system evolution
-            # This (x_ref, u_ref) pair is NOT a valid trajectory of the dynamics!
-            # Proper approach: simulate forward or use trajectory optimization
-            qdd_commanded = np.zeros(self.num_velocities)
-            qdd_commanded[:self.num_actuated] = qdd_d[:self.num_actuated]
-            
-            # External forces
-            from pydrake.multibody.tree import MultibodyForces
-            external_forces = MultibodyForces(self.model)
-            
-            # Inverse dynamics: τ = M·q̈ + C·v + g
-            tau_full = self.model.CalcInverseDynamics(
-                self.model_context,
-                qdd_commanded,
-                external_forces
-            )
-            
-            # Extract actuated torques
-            self.u_ref_samples[i, :] = tau_full[:self.num_actuated]
-        
-        # Compute A(t) and B(t) via numerical differentiation
-        A_samples = []
-        B_samples = []
-        
-        for i, t in enumerate(self.time_samples):
-            x_ref = self.x_ref_samples[i, :]
-            u_ref = self.u_ref_samples[i, :]
-            
-            A, B = self._linearize_at_point(x_ref, u_ref)
-            A_samples.append(A)
-            B_samples.append(B)
-        
-        # Solve discrete-time Riccati equation BACKWARD from t_f to t_0
-        # Using continuous-time approximation with better numerics
-        S = self.Q.copy()  # Terminal cost
-        
-        print(colored(f"  Solving Riccati equation backward in time...", 'yellow'))
-        
-        for i in range(num_samples - 1, -1, -1):
-            A = A_samples[i]
-            B = B_samples[i]
-            
-            # Check for NaN or Inf in linearization
-            if np.any(np.isnan(A)) or np.any(np.isinf(A)):
-                print(colored(f"  Warning: NaN/Inf in A at t={self.time_samples[i]:.3f}s", 'red'))
-                if i < num_samples - 1:
-                    self.K_samples[i, :, :] = self.K_samples[i + 1, :, :]
-                continue
-                
-            if np.any(np.isnan(B)) or np.any(np.isinf(B)):
-                print(colored(f"  Warning: NaN/Inf in B at t={self.time_samples[i]:.3f}s", 'red'))
-                if i < num_samples - 1:
-                    self.K_samples[i, :, :] = self.K_samples[i + 1, :, :]
-                continue
-            
-            # Compute optimal gain using robust method
-            try:
-                # K = R⁻¹BᵀS - use solve for better numerics
-                BtS = B.T @ S
-                K = np.linalg.solve(self.R, BtS)
-                
-                # Check for numerical issues
-                if np.any(np.isnan(K)) or np.any(np.isinf(K)):
-                    raise ValueError("NaN/Inf in gain")
-                
-                # Limit gain magnitude to prevent instability
-                K_max = 500.0  # Reduced from 1000
-                K = np.clip(K, -K_max, K_max)
-                
-                self.K_samples[i, :, :] = K
-                
-                # Update S using continuous-time Riccati equation
-                # ⚠️  ISSUE #3: INCORRECT Riccati integration
-                # The correct continuous-time Riccati equation is:
-                #   -Ṡ = AᵀS + SA - SBR⁻¹BᵀS + Q
-                # 
-                # This implementation incorrectly uses A_closed = A - BK:
-                #   CARE_rhs = A_closed^T S + S A_closed + Q
-                # which drops the -SBR⁻¹BᵀS term (implicitly baked into A_closed 
-                # but that's not equivalent for integration).
-                #
-                # Correct approach: Use scipy.integrate.solve_ivp with proper RHS
-                # or Drake's MakeFiniteHorizonLinearQuadraticRegulator
-                A_closed = A - B @ K
-                CARE_rhs = A_closed.T @ S + S @ A_closed + self.Q
-                
-                if i > 0:
-                    S = S + dt * CARE_rhs  # Forward integration (S increases going backward)
-                    
-                    # Symmetrize to maintain numerical stability
-                    S = 0.5 * (S + S.T)
-                    
-                    # Ensure positive definiteness
-                    eigvals = np.linalg.eigvalsh(S)
-                    if np.min(eigvals) < 1e-6:
-                        S = S + 1e-2 * np.eye(self.num_states)
-                        
-            except (np.linalg.LinAlgError, ValueError) as e:
-                # Fallback: use previous gain or simple proportional gain
-                if i < num_samples - 1:
-                    self.K_samples[i, :, :] = self.K_samples[i + 1, :, :]
-                else:
-                    # Use simple proportional gain as last resort
-                    K_simple = np.zeros((self.num_actuated, self.num_states))
-                    K_simple[0, 0] = 50.0  # P gain for L1
-                    K_simple[1, 1] = 50.0  # P gain for L2
-                    K_simple[0, 4] = 5.0   # D gain for L1
-                    K_simple[1, 5] = 5.0   # D gain for L2
-                    self.K_samples[i, :, :] = K_simple
-        
-        print(colored(f"  ✓ Riccati solution complete", 'green'))
-        
-        # Verify no NaN in final gains
-        if np.any(np.isnan(self.K_samples)):
-            print(colored(f"  ⚠ Warning: Some gains contain NaN - using fallback PD gains", 'yellow'))
-            # Replace NaN with simple PD gains
-            for i in range(num_samples):
-                if np.any(np.isnan(self.K_samples[i, :, :])):
-                    K_simple = np.zeros((self.num_actuated, self.num_states))
-                    K_simple[0, 0] = 50.0
-                    K_simple[1, 1] = 50.0
-                    K_simple[0, 4] = 5.0
-                    K_simple[1, 5] = 5.0
-                    self.K_samples[i, :, :] = K_simple
-    
-    def _linearize_at_point(self, x_ref: np.ndarray, u_ref: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Linearize system dynamics at a given point using numerical differentiation.
-        
-        ⚠️  ISSUE #4: Incomplete dynamics model
-        
-        This manually computes ẋ = [v, M⁻¹(Bu - Cv)] which assumes:
-        - No constraints (holonomic or nonholonomic)
-        - Simple actuation matrix B (may not match actual joint structure)
-        - CalcBiasTerm gives correct C(q,v)v + g(q)
-        
-        Better approach: Use Drake's CalcTimeDerivatives() or 
-        get linearization directly from Drake's symbolic framework.
-        
-        Computes:
-            A = ∂f/∂x |_(x_ref, u_ref)
-            B = ∂f/∂u |_(x_ref, u_ref)
-        
-        Returns:
-            tuple: (A, B) matrices
-        """
-        q_ref = x_ref[:self.num_positions]
-        v_ref = x_ref[self.num_positions:]
-        
-        # Helper function to compute xdot for given state and input
-        def compute_xdot(q, v, u):
-            self.model.SetPositions(self.model_context, q)
-            self.model.SetVelocities(self.model_context, v)
-            # Set actuation input
-            if self.model.num_actuators() > 0:
-                input_port = self.model.get_actuation_input_port()
-                input_port.FixValue(self.model_context, u)
-            
-            # Allocate storage for derivatives
-            xdot = np.zeros(self.num_states)
-            
-            # Calculate time derivatives manually
-            # ẋ = [q̇, v̇] where q̇ = v and v̇ = M^{-1}(τ - C - g)
-            xdot[:self.num_positions] = v  # q̇ = v
-            
-            # Compute accelerations: v̇ = M^{-1}(B·u + τ_ext - C·v - g)
-            M = self.model.CalcMassMatrix(self.model_context)
-            Cv = self.model.CalcBiasTerm(self.model_context)  # Coriolis + gravity
-            
-            # Applied forces from actuators
-            B = self.model.MakeActuationMatrix()
-            tau_applied = B @ u
-            
-            # v̇ = M^{-1}(tau_applied - Cv)
-            v_dot = np.linalg.solve(M, tau_applied - Cv)
-            xdot[self.num_positions:] = v_dot
-            
-            return xdot
-        
-        # Get nominal time derivatives
-        xdot_nominal = compute_xdot(q_ref, v_ref, u_ref)
-        
-        # Compute A = ∂f/∂x via finite differences
-        delta = 1e-6
-        A = np.zeros((self.num_states, self.num_states))
-        
-        for i in range(self.num_states):
-            if i < self.num_positions:
-                # Perturb position
-                q_plus = q_ref.copy()
-                q_plus[i] += delta
-                xdot_plus = compute_xdot(q_plus, v_ref, u_ref)
-            else:
-                # Perturb velocity
-                v_plus = v_ref.copy()
-                v_plus[i - self.num_positions] += delta
-                xdot_plus = compute_xdot(q_ref, v_plus, u_ref)
-            
-            A[:, i] = (xdot_plus - xdot_nominal) / delta
-        
-        # Compute B = ∂f/∂u via finite differences
-        B = np.zeros((self.num_states, self.num_actuated))
-        
-        for i in range(self.num_actuated):
-            u_plus = u_ref.copy()
-            u_plus[i] += delta
-            xdot_plus = compute_xdot(q_ref, v_ref, u_plus)
-            B[:, i] = (xdot_plus - xdot_nominal) / delta
-        
-        return A, B
-    
-    def CalcControlTorque(self, context, output):
-        """
-        Compute TVLQR control torque with inverse dynamics feedforward.
-        
-        Hybrid control law: u(t) = u_ff(t) - K(t)·[x(t) - x_ref(t)]
-        where u_ff is computed from inverse dynamics (feedforward compensation)
-        """
-        # Get current simulation time
-        t = context.get_time()
-        
-        # Get current state from input port
-        state = self.get_input_port(0).Eval(context)
-        x_current = np.asarray(state)
-        
-        # Find closest time sample with interpolation for smoother control
-        if t >= self.time_samples[-1]:
-            idx = len(self.time_samples) - 1
-            weight = 0.0
-        elif t <= self.time_samples[0]:
-            idx = 0
-            weight = 0.0
-        else:
-            # Linear interpolation between samples
-            idx = np.searchsorted(self.time_samples, t) - 1
-            idx = np.clip(idx, 0, len(self.time_samples) - 2)
-            
-            t_low = self.time_samples[idx]
-            t_high = self.time_samples[idx + 1]
-            weight = (t - t_low) / (t_high - t_low) if t_high > t_low else 0.0
-        
-        # Interpolate reference state, feedforward control, and feedback gain
-        if weight > 0 and idx < len(self.time_samples) - 1:
-            x_ref = (1 - weight) * self.x_ref_samples[idx, :] + weight * self.x_ref_samples[idx + 1, :]
-            u_ff = (1 - weight) * self.u_ref_samples[idx, :] + weight * self.u_ref_samples[idx + 1, :]
-            K = (1 - weight) * self.K_samples[idx, :, :] + weight * self.K_samples[idx + 1, :, :]
-        else:
-            x_ref = self.x_ref_samples[idx, :]
-            u_ff = self.u_ref_samples[idx, :]
-            K = self.K_samples[idx, :, :]
-        
-        # Compute state error
-        x_error = x_current - x_ref
-        
-        # Hybrid control law: u = u_feedforward - K·error
-        # This combines model-based feedforward with optimal feedback
-        u_feedback = K @ x_error
-        u = u_ff - u_feedback
-        
-        # Apply actuator limits
-        u_max = 100.0  # N·m
-        u = np.clip(u, -u_max, u_max)
-        
-        output.SetFromVector(u)
 
 
 # ============================================================================
@@ -1920,36 +1577,6 @@ class DrakeSceneManager:
         """
         print(colored("\n[2/5] Adding controller to diagram (SYSTEM 2: Control Model)...", 'blue', attrs=['bold']))
         
-        # Scene visualization mode - no controller needed
-        if self.simulation_config.mode == "scene-viz":
-            print(colored("Scene visualization mode - no controller needed", 'cyan'))
-            return
-        
-        # Coupling test mode - special controller to move L1 and L2 independently
-        if self.simulation_config.mode == "coupling-test":
-            print(colored("Creating Coupling Test Controller", 'yellow'))
-            self.controller = self.builder.AddSystem(
-                CouplingTestController(
-                    plant=self.plant,
-                    model_instance=self.cup_manipulator.model_instance,
-                    amplitude=np.pi/3,  # 60 degrees
-                    frequency=0.33  # One cycle every 3 seconds
-                )
-            )
-            
-            # Wire controller ports
-            self.builder.Connect(
-                self.plant.get_state_output_port(),
-                self.controller.get_input_port(0)
-            )
-            self.builder.Connect(
-                self.controller.get_output_port(0),
-                self.plant.get_actuation_input_port()
-            )
-            
-            print(colored("✓ Coupling Test Controller connected", 'green'))
-            return
-        
         # ═══════════════════════════════════════════════════════════════════
         # SYSTEM 2: Controller - Control Law Computation
         # ═══════════════════════════════════════════════════════════════════
@@ -1967,16 +1594,16 @@ class DrakeSceneManager:
         elif CONTROLLER_MODE == 'min-jerk-joint':
             Kp = np.array([100.0, 100.0])
             Kd = np.array([10.0, 10.0])
+        elif CONTROLLER_MODE == 'lqr':
+            # LQR uses its own Q and R matrices
+            Kp = None
+            Kd = None
         elif CONTROLLER_MODE == 'task-space-ofc':
             # Task-space OFC uses internal LQR gains
             Kp = None
             Kd = None
         elif CONTROLLER_MODE in ['ofc-effort', 'ofc-smoothness']:
             # Joint-space OFC uses internal LQR gains
-            Kp = None
-            Kd = None
-        elif CONTROLLER_MODE == 'tvlqr':
-            # TVLQR uses internal time-varying gains
             Kp = None
             Kd = None
         elif CONTROLLER_MODE == 'computed-torque' or CONTROLLER_MODE == 'inverse-dynamics':
@@ -1999,6 +1626,35 @@ class DrakeSceneManager:
             print(colored(f"  Role: Computes control torques τ = Kp*(q_d - q) + Kd*(q_dot_d - q_dot)", 'cyan'))
             if CONTROLLER_MODE == 'min-jerk-joint':
                 print(colored(f"  Trajectory: Minimum-jerk 5th-order polynomial", 'cyan'))
+        
+        elif CONTROLLER_MODE == 'lqr':
+            # LQR equilibrium regulation controller
+            # Create separate model for controller (same as computed torque)
+            self.create_model_for_controller()
+            model_plant = self.model
+            
+            # Goal equilibrium configuration
+            goal_position = LQR_Q_GOAL
+            
+            # State cost matrix Q (8x8 for [q(4), v(4)])
+            Q = np.diag(np.concatenate([LQR_Q_WEIGHTS, LQR_QDOT_WEIGHTS]))
+            
+            # Control cost matrix R (2x2)
+            R = np.diag(LQR_R_WEIGHTS)
+            
+            self.controller = self.builder.AddSystem(
+                LQRController(
+                    plant=self.plant,
+                    model=model_plant,
+                    model_instance=self.cup_manipulator.model_instance,
+                    goal_position=goal_position,
+                    Q=Q,
+                    R=R
+                )
+            )
+            print(colored(f"✓ LQR Equilibrium Regulation Controller (SYSTEM 2) added to diagram", 'green'))
+            print(colored(f"  Goal: {np.rad2deg(goal_position)}°", 'cyan'))
+            print(colored(f"  Controller type: Regulation (not trajectory tracking)", 'cyan'))
         
         elif CONTROLLER_MODE == 'task-space-ofc':
             # Task-space OFC controller
@@ -2040,60 +1696,6 @@ class DrakeSceneManager:
             print(colored(f"✓ JointSpaceOFC ({mode} mode, SYSTEM 2) added to diagram", 'green'))
             print(colored(f"  Role: Optimal feedback control in joint space", 'cyan'))
             print(colored(f"  Joints: {JOINT_SPACE_Q_START}° → {JOINT_SPACE_Q_GOAL}°", 'cyan'))
-        
-        elif CONTROLLER_MODE == 'tvlqr':
-            # ═══════════════════════════════════════════════════════════════════
-            # ⚠️  TVLQR: EDUCATIONAL IMPLEMENTATION WITH KNOWN ISSUES
-            # ═══════════════════════════════════════════════════════════════════
-            # This TVLQR has correctness issues (see class header documentation).
-            # 
-            # For actual trajectory tracking, use 'computed-torque' mode which achieves:
-            #   - Position RMS Error: 3.7° and 1.5° (excellent!)
-            #   - Proper inverse dynamics
-            #   - Correct handling of underactuation
-            #
-            # Run with: --mode computed-torque
-            # ═══════════════════════════════════════════════════════════════════
-            
-            print(colored("\n" + "="*70, 'yellow'))
-            print(colored("⚠️  WARNING: TVLQR mode has known implementation issues", 'yellow', attrs=['bold']))
-            print(colored("   See TVLQRController class docstring for details", 'yellow'))
-            print(colored("   For production use: --mode computed-torque (achieves 3.7° error)", 'yellow'))
-            print(colored("="*70 + "\n", 'yellow'))
-            
-            # TVLQR controller - time-varying LQR for trajectory tracking
-            # Use moderate costs for stability
-            Q = np.diag([500.0, 500.0, 50.0, 50.0,    # Position costs [L1, L2, pitch, roll]
-                         50.0, 50.0, 5.0, 5.0])       # Velocity costs
-            # Control cost matrix R
-            R = np.diag([1.0, 1.0])  # Moderate control cost
-            
-            # Create minimum-jerk trajectory generator if not already created
-            if not hasattr(self, 'min_jerk_generator'):
-                self.min_jerk_generator = MinJerkTrajectoryGenerator(
-                    MIN_JERK_Q_START,
-                    MIN_JERK_Q_GOAL,
-                    MIN_JERK_DURATION
-                )
-            
-            # Create controller model for linearization
-            self.create_model_for_controller()
-            
-            self.controller = self.builder.AddSystem(
-                TVLQRController(
-                    plant=self.plant,
-                    model=self.model,
-                    model_instance=self.cup_manipulator.model_instance,
-                    trajectory_generator=self.min_jerk_generator,
-                    Q=Q,
-                    R=R
-                )
-            )
-            print(colored(f"✓ TVLQRController (SYSTEM 2) added to diagram", 'green'))
-            print(colored(f"  Role: Hybrid TVLQR = Inverse Dynamics + Optimal Feedback", 'cyan'))
-            print(colored(f"  Trajectory: Minimum-jerk from {np.rad2deg(MIN_JERK_Q_START[:2])}° to {np.rad2deg(MIN_JERK_Q_GOAL[:2])}°", 'cyan'))
-            print(colored(f"  Feedforward: Full inverse dynamics compensation", 'cyan'))
-            print(colored(f"  Feedback: Time-varying optimal gains from Riccati equation", 'cyan'))
         
         elif CONTROLLER_MODE == 'computed-torque' or CONTROLLER_MODE == 'inverse-dynamics':
             # ═══════════════════════════════════════════════════════════════════
@@ -2338,6 +1940,11 @@ class DrakeSceneManager:
             link1_joint.set_angle(plant_context, MIN_JERK_Q_START[0])
             link2_joint.set_angle(plant_context, MIN_JERK_Q_START[1])
             print(colored(f"  ✓ Manipulator joints (min-jerk start): link1={np.rad2deg(MIN_JERK_Q_START[0]):.1f}°, link2={np.rad2deg(MIN_JERK_Q_START[1]):.1f}°", 'cyan'))
+        elif CONTROLLER_MODE == 'lqr':
+            # For LQR mode, use LQR_Q_START configuration
+            link1_joint.set_angle(plant_context, LQR_Q_START[0])
+            link2_joint.set_angle(plant_context, LQR_Q_START[1])
+            print(colored(f"  ✓ Manipulator joints (LQR start): link1={np.rad2deg(LQR_Q_START[0]):.1f}°, link2={np.rad2deg(LQR_Q_START[1]):.1f}°", 'cyan'))
         elif CONTROLLER_MODE == 'task-space-ofc':
             # For task-space OFC, compute initial joint angles from pivot position
             # Use IK to find configuration that reaches TASK_SPACE_PIVOT_START
@@ -2365,6 +1972,11 @@ class DrakeSceneManager:
                 pitch_joint.set_angle(plant_context, MIN_JERK_Q_START[2])
                 roll_joint.set_angle(plant_context, MIN_JERK_Q_START[3])
                 print(colored(f"  ✓ Pendulum (min-jerk start): pitch={np.rad2deg(MIN_JERK_Q_START[2]):.1f}°, roll={np.rad2deg(MIN_JERK_Q_START[3]):.1f}°", 'cyan'))
+            elif CONTROLLER_MODE == 'lqr':
+                # For LQR mode, use LQR_Q_START configuration (0°, 180° hanging)
+                pitch_joint.set_angle(plant_context, LQR_Q_START[2])
+                roll_joint.set_angle(plant_context, LQR_Q_START[3])
+                print(colored(f"  ✓ Pendulum (LQR start): pitch={np.rad2deg(LQR_Q_START[2]):.1f}°, roll={np.rad2deg(LQR_Q_START[3]):.1f}°", 'cyan'))
             elif CONTROLLER_MODE == 'task-space-ofc':
                 # For task-space OFC, pendulum starts hanging down
                 pitch_joint.set_angle(plant_context, 0.0)
@@ -2393,18 +2005,8 @@ class DrakeSceneManager:
         print(f"  Timestep: {self.simulation_config.timestep} s")
         print(f"  Realtime Rate: {self.simulation_config.visualization.realtime_rate}x")
         print(f"  Controller: {CONTROLLER_MODE.upper()}")
-        
-        # Special header for coupling test
-        if self.simulation_config.mode == "coupling-test":
-            print(colored("\n" + "─"*70, 'yellow'))
-            print(colored("COUPLING TEST - Experimental Verification", 'yellow', attrs=['bold']))
-            print(colored("Phase 1 (0-3s):  L1 moves, L2 fixed  → Track pitch & roll", 'cyan'))
-            print(colored("Phase 2 (3-6s):  L1 fixed, L2 moves  → Track pitch & roll", 'cyan'))
-            print(colored("Expected: L1 affects both (roll>pitch), L2 affects only roll", 'green'))
-            print(colored("─"*70 + "\n", 'yellow'))
-        else:
-            print(f"  Motion Duration: {MANIPULATOR_MOTION_DURATION} s (then settling)")
-            print()
+        print(f"  Motion Duration: {MANIPULATOR_MOTION_DURATION} s (then settling)")
+        print()
         
         # Initialize and configure simulator
         self.simulator.Initialize()
@@ -2513,59 +2115,22 @@ class DrakeSceneManager:
                 # Print progress at lower frequency (only at print_interval)
                 if next_time >= next_print_time:
                     progress_pct = (next_time / sim_time) * 100
+                    print(colored(f"[{next_time:5.2f}s/{sim_time:.0f}s {progress_pct:3.0f}%]", 'yellow'), end=' ')
+                    print(f"L1={np.rad2deg(link1_pos):6.1f}° L2={np.rad2deg(link2_pos):6.1f}°", end='')
                     
-                    # Special output format for coupling test
-                    if self.simulation_config.mode == "coupling-test":
-                        if next_time < 3.0:
-                            phase = "L1 MOVING"
-                            phase_color = 'cyan'
-                        elif next_time < 5.0:
-                            phase = "SETTLING "
-                            phase_color = 'magenta'
-                        elif next_time < 8.0:
-                            phase = "L2 MOVING"
-                            phase_color = 'cyan'
+                    if PENDULUM_ENABLED:
+                        # Get latest spherical coordinates and RPY angles
+                        if len(self.pendulum_spherical_log) > 0 and len(self.pendulum_rpy_pivot_log) > 0:
+                            theta, phi = self.pendulum_spherical_log[-1]
+                            rpy_roll, rpy_pitch, rpy_yaw = self.pendulum_rpy_pivot_log[-1]
+                            print(f" | P={np.rad2deg(pitch):6.1f}° R={np.rad2deg(roll):6.1f}° | θ={np.rad2deg(theta):5.1f}° φ={np.rad2deg(phi):6.1f}° | RPY=[{np.rad2deg(rpy_roll):5.1f}°,{np.rad2deg(rpy_pitch):5.1f}°,{np.rad2deg(rpy_yaw):5.1f}°]", end='')
+                        elif len(self.pendulum_spherical_log) > 0:
+                            theta, phi = self.pendulum_spherical_log[-1]
+                            print(f" | P={np.rad2deg(pitch):6.1f}° R={np.rad2deg(roll):6.1f}° | θ={np.rad2deg(theta):5.1f}° φ={np.rad2deg(phi):6.1f}°", end='')
                         else:
-                            phase = "HOLDING  "
-                            phase_color = 'yellow'
-                        
-                        print(colored(f"[{next_time:5.2f}s {phase:10s}]", phase_color, attrs=['bold']), end=' ')
-                        print(f"L1={np.rad2deg(link1_pos):+7.2f}° L2={np.rad2deg(link2_pos):+7.2f}°", end='')
-                        
-                        if PENDULUM_ENABLED:
-                            # Highlight which angles are changing
-                            if next_time < 3.0:
-                                # Phase 1: L1 moving, both angles should change (roll more than pitch)
-                                print(colored(f" | Pitch={np.rad2deg(pitch):+7.2f}° Roll={np.rad2deg(roll):+7.2f}° ← BOTH from L1", 'green', attrs=['bold']))
-                            elif next_time < 5.0:
-                                # Settling: pendulum returning to equilibrium
-                                print(colored(f" | Pitch={np.rad2deg(pitch):+7.2f}° Roll={np.rad2deg(roll):+7.2f}° ← Settling to 0°/180°", 'magenta', attrs=['bold']))
-                            elif next_time < 8.0:
-                                # Phase 2: L2 moving, only roll should change
-                                print(colored(f" | Pitch={np.rad2deg(pitch):+7.2f}° (fixed) Roll={np.rad2deg(roll):+7.2f}° ← from L2", 'green', attrs=['bold']))
-                            else:
-                                print(f" | Pitch={np.rad2deg(pitch):+7.2f}° Roll={np.rad2deg(roll):+7.2f}°")
-                        else:
-                            print()
-                    else:
-                        # Normal output
-                        print(colored(f"[{next_time:5.2f}s/{sim_time:.0f}s {progress_pct:3.0f}%]", 'yellow'), end=' ')
-                        print(f"L1={np.rad2deg(link1_pos):6.1f}° L2={np.rad2deg(link2_pos):6.1f}°", end='')
-                        
-                        if PENDULUM_ENABLED:
-                            # Get latest spherical coordinates and RPY angles
-                            if len(self.pendulum_spherical_log) > 0 and len(self.pendulum_rpy_pivot_log) > 0:
-                                theta, phi = self.pendulum_spherical_log[-1]
-                                rpy_roll, rpy_pitch, rpy_yaw = self.pendulum_rpy_pivot_log[-1]
-                                print(f" | P={np.rad2deg(pitch):6.1f}° R={np.rad2deg(roll):6.1f}° | θ={np.rad2deg(theta):5.1f}° φ={np.rad2deg(phi):6.1f}° | RPY=[{np.rad2deg(rpy_roll):5.1f}°,{np.rad2deg(rpy_pitch):5.1f}°,{np.rad2deg(rpy_yaw):5.1f}°]", end='')
-                            elif len(self.pendulum_spherical_log) > 0:
-                                theta, phi = self.pendulum_spherical_log[-1]
-                                print(f" | P={np.rad2deg(pitch):6.1f}° R={np.rad2deg(roll):6.1f}° | θ={np.rad2deg(theta):5.1f}° φ={np.rad2deg(phi):6.1f}°", end='')
-                            else:
-                                print(f" | P={np.rad2deg(pitch):6.1f}° R={np.rad2deg(roll):6.1f}°", end='')
-                        
-                        print()  # New line
+                            print(f" | P={np.rad2deg(pitch):6.1f}° R={np.rad2deg(roll):6.1f}°", end='')
                     
+                    print()  # New line
                     next_print_time += print_interval
                 
                 current_time = next_time
@@ -2937,122 +2502,6 @@ class DrakeSceneManager:
             ax.set_title('Pendulum Motion (Angles & Rates)', fontsize=12, fontweight='bold')
             ax.legend(loc='best', fontsize=9, ncol=2)
             ax.grid(True, alpha=0.3)
-            
-            # Special plot for coupling-test mode: separate pitch and roll plots
-            if self.simulation_config.mode == "coupling-test":
-                # Create new figure for coupling test analysis
-                fig_coupling = plt.figure(figsize=(16, 10))
-                gs_coupling = GridSpec(3, 2, figure=fig_coupling, hspace=0.35, wspace=0.3)
-                
-                # Get coupling test phase times
-                phase1_end = 3.0
-                settling_end = 5.0
-                phase2_end = 8.0
-                
-                # Top row: Pitch and Roll angles
-                ax_pitch = fig_coupling.add_subplot(gs_coupling[0, 0])
-                ax_pitch.plot(time, np.rad2deg(pendulum_pos[:, 0]), 
-                             color='#E63946', linewidth=2, label='Pitch')
-                ax_pitch.axvline(phase1_end, color='orange', linestyle='--', 
-                               linewidth=1.5, alpha=0.7, label='Phase 1 End')
-                ax_pitch.axvline(settling_end, color='green', linestyle='--', 
-                               linewidth=1.5, alpha=0.7, label='Phase 2 Start')
-                ax_pitch.axvline(phase2_end, color='red', linestyle='--', 
-                               linewidth=1.5, alpha=0.7, label='Test End')
-                ax_pitch.axhline(0, color='black', linestyle='-', linewidth=0.5)
-                ax_pitch.set_xlabel('Time (s)', fontsize=11)
-                ax_pitch.set_ylabel('Pitch Angle (deg)', fontsize=11)
-                ax_pitch.set_title('Coupling Test: Pitch Response', fontsize=12, fontweight='bold')
-                ax_pitch.legend(loc='best', fontsize=9)
-                ax_pitch.grid(True, alpha=0.3)
-                
-                ax_roll = fig_coupling.add_subplot(gs_coupling[0, 1])
-                ax_roll.plot(time, np.rad2deg(pendulum_pos[:, 1]), 
-                            color='#457B9D', linewidth=2, label='Roll')
-                ax_roll.axvline(phase1_end, color='orange', linestyle='--', 
-                              linewidth=1.5, alpha=0.7, label='Phase 1 End')
-                ax_roll.axvline(settling_end, color='green', linestyle='--', 
-                              linewidth=1.5, alpha=0.7, label='Phase 2 Start')
-                ax_roll.axvline(phase2_end, color='red', linestyle='--', 
-                              linewidth=1.5, alpha=0.7, label='Test End')
-                ax_roll.axhline(0, color='black', linestyle='-', linewidth=0.5)
-                ax_roll.set_xlabel('Time (s)', fontsize=11)
-                ax_roll.set_ylabel('Roll Angle (deg)', fontsize=11)
-                ax_roll.set_title('Coupling Test: Roll Response', fontsize=12, fontweight='bold')
-                ax_roll.legend(loc='best', fontsize=9)
-                ax_roll.grid(True, alpha=0.3)
-                
-                # Middle row: Pitch and Roll rates
-                ax_pitch_rate = fig_coupling.add_subplot(gs_coupling[1, 0])
-                ax_pitch_rate.plot(time, np.rad2deg(pendulum_vel[:, 0]), 
-                                  color='#E63946', linewidth=2, label='Pitch Rate')
-                ax_pitch_rate.axvline(phase1_end, color='orange', linestyle='--', linewidth=1.5, alpha=0.7)
-                ax_pitch_rate.axvline(settling_end, color='green', linestyle='--', linewidth=1.5, alpha=0.7)
-                ax_pitch_rate.axvline(phase2_end, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
-                ax_pitch_rate.axhline(0, color='black', linestyle='-', linewidth=0.5)
-                ax_pitch_rate.set_xlabel('Time (s)', fontsize=11)
-                ax_pitch_rate.set_ylabel('Pitch Rate (deg/s)', fontsize=11)
-                ax_pitch_rate.set_title('Coupling Test: Pitch Rate', fontsize=12, fontweight='bold')
-                ax_pitch_rate.grid(True, alpha=0.3)
-                
-                ax_roll_rate = fig_coupling.add_subplot(gs_coupling[1, 1])
-                ax_roll_rate.plot(time, np.rad2deg(pendulum_vel[:, 1]), 
-                                 color='#457B9D', linewidth=2, label='Roll Rate')
-                ax_roll_rate.axvline(phase1_end, color='orange', linestyle='--', linewidth=1.5, alpha=0.7)
-                ax_roll_rate.axvline(settling_end, color='green', linestyle='--', linewidth=1.5, alpha=0.7)
-                ax_roll_rate.axvline(phase2_end, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
-                ax_roll_rate.axhline(0, color='black', linestyle='-', linewidth=0.5)
-                ax_roll_rate.set_xlabel('Time (s)', fontsize=11)
-                ax_roll_rate.set_ylabel('Roll Rate (deg/s)', fontsize=11)
-                ax_roll_rate.set_title('Coupling Test: Roll Rate', fontsize=12, fontweight='bold')
-                ax_roll_rate.grid(True, alpha=0.3)
-                
-                # Bottom row: Combined plot with manipulator joints
-                ax_combined = fig_coupling.add_subplot(gs_coupling[2, :])
-                ax_combined.plot(time, np.rad2deg(q_actual[:, 0]), 
-                               label='L1 (Base Joint)', color='#2E86AB', linewidth=2, linestyle='--', alpha=0.7)
-                ax_combined.plot(time, np.rad2deg(q_actual[:, 1]), 
-                               label='L2 (Elbow Joint)', color='#A23B72', linewidth=2, linestyle='--', alpha=0.7)
-                ax_combined.plot(time, np.rad2deg(pendulum_pos[:, 0]), 
-                               label='Pitch Response', color='#E63946', linewidth=2)
-                ax_combined.plot(time, np.rad2deg(pendulum_pos[:, 1]), 
-                               label='Roll Response', color='#457B9D', linewidth=2)
-                ax_combined.axvline(phase1_end, color='orange', linestyle='--', 
-                                  linewidth=1.5, alpha=0.7, label='Phase 1 End')
-                ax_combined.axvline(settling_end, color='green', linestyle='--', 
-                                  linewidth=1.5, alpha=0.7, label='Phase 2 Start')
-                ax_combined.axvline(phase2_end, color='red', linestyle='--', 
-                                  linewidth=1.5, alpha=0.7, label='Test End')
-                ax_combined.axhline(0, color='black', linestyle='-', linewidth=0.5)
-                ax_combined.set_xlabel('Time (s)', fontsize=11)
-                ax_combined.set_ylabel('Angle (deg)', fontsize=11)
-                ax_combined.set_title('Coupling Test: Manipulator Inputs vs Pendulum Response', fontsize=12, fontweight='bold')
-                ax_combined.legend(loc='best', fontsize=9, ncol=3)
-                ax_combined.grid(True, alpha=0.3)
-                
-                # Add text annotations for test phases
-                ax_combined.text(1.5, ax_combined.get_ylim()[1]*0.9, 
-                               'Phase 1: L1 Only', ha='center', fontsize=10, 
-                               bbox=dict(boxstyle='round', facecolor='orange', alpha=0.3))
-                ax_combined.text(4.0, ax_combined.get_ylim()[1]*0.9, 
-                               'Settling', ha='center', fontsize=10,
-                               bbox=dict(boxstyle='round', facecolor='green', alpha=0.3))
-                ax_combined.text(6.5, ax_combined.get_ylim()[1]*0.9, 
-                               'Phase 2: L2 Only', ha='center', fontsize=10,
-                               bbox=dict(boxstyle='round', facecolor='blue', alpha=0.3))
-                
-                # Overall title for coupling test figure
-                fig_coupling.suptitle('Coupling Test Analysis - L1/L2 to Pitch/Roll Coupling', 
-                                     fontsize=14, fontweight='bold', y=0.995)
-                
-                # Save coupling test plot
-                from datetime import datetime
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                coupling_plot_filename = f'plots/coupling_test_{timestamp}.png'
-                os.makedirs('plots', exist_ok=True)
-                plt.figure(fig_coupling.number)
-                plt.savefig(coupling_plot_filename, dpi=150, bbox_inches='tight')
-                print(colored(f"\n✓ Coupling test plot saved: {coupling_plot_filename}", 'green', attrs=['bold']))
             
             # Row 4: Ball center position (X, Y, Z) vs time - PIVOT FRAME coordinates
             ax = fig.add_subplot(gs[3, :])
