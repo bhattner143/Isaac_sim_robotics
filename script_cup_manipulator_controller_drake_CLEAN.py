@@ -187,7 +187,9 @@ from robot_types import (
 
 parser = argparse.ArgumentParser(description='Drake Diagram-based controller architecture')
 parser.add_argument('--mode', type=str, choices=['pd', 'inverse-dynamics', 'computed-torque', 'scene-viz'],
-                    default='computed-torque', help='Controller type (scene-viz = static visualization only)')
+                    # default='computed-torque', 
+                    default='scene-viz',
+                    help='Controller type (scene-viz = static visualization only)')
 parser.add_argument('--visualize', type=bool, default=True, help='Enable visualization')
 parser.add_argument('--plot_frames', type=bool, default=True, help='Plot coordinate frames')
 args, _ = parser.parse_known_args()

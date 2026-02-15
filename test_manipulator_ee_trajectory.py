@@ -79,7 +79,7 @@ def smooth_trajectory(t, t_start, t_end, val_start, val_end):
 
 
 class PrescribedTrajectorySource(LeafSystem):
-    """Outputs prescribed EE trajectory: [x, y, ẋ, ẏ, ẍ, ÿ]."""
+    """Outputs prescribed EE trajectory: [x, y, ẋ, ẏ]."""
     
     def __init__(self, x_start=-2.0, x_end=1.0, x_duration=4.0,
                  y_start=0.0, y_end=3.0, y_duration=3.0):
@@ -91,8 +91,8 @@ class PrescribedTrajectorySource(LeafSystem):
         self.y_end = y_end
         self.y_duration = y_duration
         
-        # Output: [x, y, ẋ, ẏ, ẍ, ÿ]
-        self.DeclareVectorOutputPort("trajectory", 6, self.calc_trajectory)
+        # Output: [x, y, ẋ, ẏ]
+        self.DeclareVectorOutputPort("trajectory", 4, self.calc_trajectory)
     
     def calc_trajectory(self, context, output):
         t = context.get_time()
@@ -105,7 +105,7 @@ class PrescribedTrajectorySource(LeafSystem):
         y, y_dot, y_ddot = smooth_trajectory(t, 0.0, self.y_duration,
                                              self.y_start, self.y_end)
         
-        output.SetFromVector([x, y, x_dot, y_dot, x_ddot, y_ddot])
+        output.SetFromVector([x, y, x_dot, y_dot])
 
 
 class CSVTrajectorySource(LeafSystem):
@@ -158,8 +158,8 @@ class CSVTrajectorySource(LeafSystem):
         print(colored(f"  X range: [{np.min(x_data):.3f}, {np.max(x_data):.3f}] m", "cyan"))
         print(colored(f"  Y range: [{np.min(y_data):.3f}, {np.max(y_data):.3f}] m", "cyan"))
         
-        # Output: [x, y, ẋ, ẏ, ẍ, ÿ]
-        self.DeclareVectorOutputPort("trajectory", 6, self.calc_trajectory)
+        # Output: [x, y, ẋ, ẏ]
+        self.DeclareVectorOutputPort("trajectory", 4, self.calc_trajectory)
     
     def calc_trajectory(self, context, output):
         t = context.get_time()
@@ -171,10 +171,9 @@ class CSVTrajectorySource(LeafSystem):
         y = float(self.y_interp(t_clamped))
         x_dot = float(self.vx_interp(t_clamped))
         y_dot = float(self.vy_interp(t_clamped))
-        x_ddot = float(self.ax_interp(t_clamped))
-        y_ddot = float(self.ay_interp(t_clamped))
+        # Note: Accelerations are computed but not used (controller sets them to 0)
         
-        output.SetFromVector([x, y, x_dot, y_dot, x_ddot, y_ddot])
+        output.SetFromVector([x, y, x_dot, y_dot])
 
 
 class ComputedTorqueEEController(LeafSystem):
@@ -182,10 +181,10 @@ class ComputedTorqueEEController(LeafSystem):
     Computed torque controller for end-effector trajectory tracking.
     
     Inputs:
-      0: desired_trajectory (6) = [x_d, y_d, ẋ_d, ẏ_d, ẍ_d, ÿ_d]
-      1: manipulator_state (4) = [q1, q2, q̇1, q̇2]
+      0: desired_trajectory (4) = [x_d, y_d, ẋ_d, ẏ_d]
+      1: manipulator_state (4) = [q2, q1, q̇2, q̇1]  (Drake GetJointIndices order!)
     Output:
-      0: joint_torques (2) = [τ1, τ2]
+      0: joint_torques (2) = [τ2, τ1]  (Drake GetJointIndices order!)
     """
     
     def __init__(self, manipulator, plant, Kp=200.0, Kd=30.0, tau_max=100.0):
@@ -198,7 +197,7 @@ class ComputedTorqueEEController(LeafSystem):
         self.call_count = 0
         
         # Inputs
-        self.DeclareVectorInputPort("desired_trajectory", 6)
+        self.DeclareVectorInputPort("desired_trajectory", 4)
         self.DeclareVectorInputPort("manipulator_state", 4)
         
         # Output
@@ -209,7 +208,8 @@ class ComputedTorqueEEController(LeafSystem):
         traj = self.get_input_port(0).Eval(context)
         manip_state = self.get_input_port(1).Eval(context)
         
-        x_d, y_d, x_dot_d, y_dot_d, x_ddot_d, y_ddot_d = traj
+        x_d, y_d, x_dot_d, y_dot_d = traj
+        x_ddot_d, y_ddot_d = 0.0, 0.0  # Zero acceleration
         # CRITICAL: manip_state comes from plant.get_state_output_port(model_instance)
         # which outputs in GetJointIndices() order: [link2_link1, link1_base] = [q2, q1, q̇2, q̇1]
         q2, q1, q2_dot, q1_dot = manip_state
@@ -375,14 +375,13 @@ def run_test(duration=10.0, dt=0.001, traj_type='generated', csv_path=None):
             raise ValueError("csv_path must be provided when traj_type='csv'")
         print(f"\nTrajectory: CSV file ({csv_path})")
     else:
-        print(f"\nTrajectory: Generated")
-        print(f"  X: -2.0m → 0.0m over 4s, then hold")
-        print(f"  Y:  0.0m → 1.0m over 3s, then hold")
+        print(f"\nTrajectory: Generated (AGGRESSIVE - mimicking LQR cart motion)")
+        print(colored(f"  X: -1.13m → -0.85m over 0.5s (560 mm/s avg)", "yellow"))
+        print(colored(f"  Y:  1.74m →  1.25m over 0.5s (980 mm/s avg)", "yellow"))
+        print(colored(f"  ⚠️  This is ~10x faster than the previous feasible trajectory!", "red", attrs=["bold"]))
     
     print(f"  Duration: {duration}s")
-    print(f"  Control: Computed Torque (Kp=200, Kd=30, τ_max=100 Nm)\n")
-    if traj_type == 'generated':
-        print(colored("  Note: Reduced trajectory range for workspace feasibility", "yellow"))
+    print(f"  Control: Computed Torque (Kp=200, Kd=60, τ_max=100 Nm)\n")
     
     # Create meshcat
     meshcat = StartMeshcat()
@@ -398,12 +397,13 @@ def run_test(duration=10.0, dt=0.001, traj_type='generated', csv_path=None):
     urdf_path = Path(__file__).parent / "model_using_onshape_to_robot/cup_manipulator/cup_manipulator_obj.urdf"
     manip_config = create_cup_manipulator_config(
         urdf_path=str(urdf_path),
-        joint_angles=(np.deg2rad(-10), np.deg2rad(20)),
+        joint_angles=(np.deg2rad(33.7), np.deg2rad(40.5)),  # IK solution for (-1.13, 1.74)
         damping = (0.5, 0.5),  # NOTE: Has NO effect with computed torque control!
         stiffness= (10.0, 10.0),  # NOTE: Has NO effect with computed torque control!
     )
     print(colored("  ⚠️ Note: Damping/stiffness have NO effect when using computed torque control!", "yellow"))
     print(colored("     These only affect passive dynamics (e.g., free fall, no torque commanded)", "yellow"))
+    print(colored(f"  🎯 Starting configuration matches LQR script: q1=33.7°, q2=40.5° → EE≈(-1.13, 1.74)", "cyan"))
     manipulator = CupManipulator(manip_config)
     manipulator.build_in_plant(plant, parser, weld_base=True)
     
@@ -428,10 +428,11 @@ def run_test(duration=10.0, dt=0.001, traj_type='generated', csv_path=None):
     if traj_type == 'csv':
         traj_source = builder.AddSystem(CSVTrajectorySource(csv_path))
     else:
-        # Use a feasible trajectory that stays within workspace
+        # AGGRESSIVE trajectory mimicking LQR cart motion from main script
+        # Starts near manipulator home position and moves fast like LQR does
         traj_source = builder.AddSystem(PrescribedTrajectorySource(
-            x_start=-1.5, x_end=-0.8, x_duration=4.0,
-            y_start=1.0, y_end=1.0, y_duration=4.0
+            x_start=-1.13, x_end=-0.85, x_duration=0.5,  # Fast x motion: 0.28m in 0.5s
+            y_start=1.74, y_end=1.25, y_duration=0.5     # Fast y motion: 0.49m in 0.5s
         ))
     
     # Add controller
@@ -447,18 +448,18 @@ def run_test(duration=10.0, dt=0.001, traj_type='generated', csv_path=None):
     
     # Connect: plant state → controller
     builder.Connect(
-        plant.get_state_output_port(manipulator.model_instance),
-        controller.get_input_port(1)
+        plant.get_state_output_port(manipulator.model_instance), # [q2, q1, q̇2, q̇1]
+        controller.get_input_port(1)# → controller manipulator state (note the ordering)
     )
     
     # Connect: controller → plant
     builder.Connect(
-        controller.get_output_port(),
-        plant.get_actuation_input_port(manipulator.model_instance)
+        controller.get_output_port(),# [τ1, τ2]
+        plant.get_actuation_input_port(manipulator.model_instance) #→ plant joint torques (note the ordering)
     )
     
     # Add loggers
-    traj_logger = builder.AddSystem(VectorLogSink(6))
+    traj_logger = builder.AddSystem(VectorLogSink(4))
     builder.Connect(traj_source.get_output_port(), traj_logger.get_input_port())
     
     state_logger = builder.AddSystem(VectorLogSink(4))

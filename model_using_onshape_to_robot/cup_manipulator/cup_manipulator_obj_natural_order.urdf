@@ -1,0 +1,125 @@
+<?xml version="1.0" ?>
+<!-- Generated using onshape-to-robot -->
+<!-- Onshape https://cad.onshape.com/documents/02830e503a1c2626d58e0780/w/62db7934caa01effe231f1a9/e/403997dc9b8865e58fc05acd -->
+<robot name="cup_manipulator">
+  <!-- Link base_mount_manipulator -->
+  <link name="base_mount_manipulator">
+    <inertial>
+      <origin xyz="-4.36314e-19 -3.04031e-18 0.553261" rpy="0 0 0"/>
+      <mass value="542.696"/>
+      <inertia ixx="58.2669" ixy="-1.00642e-16" ixz="4.10907e-16" iyy="58.2669" iyz="2.02826e-15" izz="5.62415"/>
+    </inertial>
+    <!-- Part base_mount_manipulator -->
+    <visual>
+      <origin xyz="0 -2.77556e-17 0" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/base_mount_manipulator.obj"/>
+      </geometry>
+      <material name="base_mount_manipulator_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -2.77556e-17 0" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/base_mount_manipulator.obj"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link link1 -->
+  <link name="link1">
+    <inertial>
+      <origin xyz="-0.549225 5.09487e-18 0.0251674" rpy="0 0 0"/>
+      <mass value="2.10"/>
+      <inertia ixx="0.0170" ixy="0" ixz="0" iyy="0.0170" iyz="0" izz="0.0026"/>
+    </inertial>
+    <!-- Part link1 -->
+    <visual>
+      <origin xyz="0 2.44929e-18 1.21437" rpy="3.14159 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/link1.obj"/>
+      </geometry>
+      <material name="link1_material">
+        <color rgba="0.647059 0.647059 0.647059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 2.44929e-18 1.21437" rpy="3.14159 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/link1.obj"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link link2 -->
+  <link name="link2">
+    <inertial>
+      <origin xyz="-0.499172 -1.13183e-17 -0.0190625" rpy="0 0 0"/>
+      <mass value="1.70"/>
+      <inertia ixx="0.0105" ixy="0" ixz="0" iyy="0.0105" iyz="0" izz="0.0017"/>
+    </inertial>
+    <!-- Part cup -->
+    <visual>
+      <origin xyz="-1.2545 -2.44929e-18 -0.188125" rpy="3.14159 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/cup.obj"/>
+      </geometry>
+      <material name="cup_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <!-- <collision>
+      <origin xyz="-1.2545 -2.44929e-18 -0.188125" rpy="3.14159 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/cup.obj"/>
+      </geometry>
+    </collision> -->
+    <!-- Part link2 -->
+    <visual>
+      <origin xyz="0.953 -2.44929e-18 1.05812" rpy="3.14159 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/link2.obj"/>
+      </geometry>
+      <material name="link2_material">
+        <color rgba="0.231373 0.380392 0.705882 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.953 -2.44929e-18 1.05812" rpy="3.14159 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/link2.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part simple_ball -->
+    <!-- <visual>
+      <origin xyz="-1.2545 -3.02049e-17 -0.188125" rpy="3.14159 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/simple_ball.obj"/>
+      </geometry>
+      <material name="simple_ball_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual> -->
+    <collision>
+      <origin xyz="-1.2545 -3.02049e-17 -0.188125" rpy="3.14159 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/simple_ball.obj"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Joint from base_mount_manipulator to link1 (q1 - base to link1) -->
+  <joint name="joint_1_base_to_link1" type="revolute">
+    <origin xyz="0 -2.53063e-17 1.17625" rpy="3.14159 0 0"/>
+    <parent link="base_mount_manipulator"/>
+    <child link="link1"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+  <!-- Joint from link1 to link2 (q2 - link1 to link2) -->
+  <joint name="joint_2_link1_to_link2" type="revolute">
+    <origin xyz="-0.953 4.89859e-18 0.118125" rpy="0 -0 0"/>
+    <parent link="link1"/>
+    <child link="link2"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+</robot>

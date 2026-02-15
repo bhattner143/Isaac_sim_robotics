@@ -54,8 +54,8 @@ def main():
         "model_name",
         type=str,
         nargs='?',
-        default="cup_manipulator",
-        help="Name of the model (e.g., 'ball', 'cup_manipulator')"
+        default="cup_manipulator2",
+        help="Name of the model (e.g., 'ball', 'cup', 'cup_manipulator', 'cup_manipulator2')"
     )
     
     args = parser.parse_args()

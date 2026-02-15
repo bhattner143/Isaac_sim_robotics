@@ -50,14 +50,14 @@ def main():
         type=str,
         nargs='?',
         default="cup_manipulator",
-        help="Name of the model (e.g., 'ball', 'cup_manipulator')"
+        help="Name of the model (e.g., 'ball', 'cup', 'cup_manipulator', 'cup_manipulator2')"
     )
     
     args = parser.parse_args()
     
     # Define paths based on model name
     script_dir = Path(__file__).parent
-    model_dir = script_dir / "model_using_onshape_to_robot" / args.model_name
+    model_dir = script_dir / "model_using_onshape_to_robot" / "cup_manipulator2"
     
     input_urdf = model_dir / f"{args.model_name}.urdf"
     output_urdf = model_dir / f"{args.model_name}_obj.urdf"

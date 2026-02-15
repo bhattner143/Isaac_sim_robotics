@@ -4,7 +4,7 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
 # Define project paths
-PLANT_DIR="$SCRIPT_DIR/model_using_onshape_to_robot/cup_manipulator"
+PLANT_DIR="$SCRIPT_DIR/model_using_onshape_to_robot/cup_manipulator2"
 ONSHAPE_DIR="$SCRIPT_DIR/model_using_onshape_to_robot"
 
 # Change to the cup_manipulator directory

@@ -1,12 +1,12 @@
 {
     "configuration": "default",
     "documentId": "02830e503a1c2626d58e0780",
-    "documentMicroversion": "78e32bdcf202e397355025fb",
-    "elementId": "2d86a96d7a9664bd0cef27a9",
+    "documentMicroversion": "ac0844234214b862e43f6c68",
+    "elementId": "877f14be6da239694d1278bc",
     "fullConfiguration": "default",
-    "id": "M/raSwsdlSEcSS9ci",
+    "id": "MIc2ERRgiZ8fVQwjA",
     "isStandardContent": false,
-    "name": "mount_rail_1 <1>",
+    "name": "cup <1>",
     "partId": "JHD",
     "suppressed": false,
     "type": "Part"
