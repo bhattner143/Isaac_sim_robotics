@@ -5,7 +5,7 @@ Supports multi-manipulator setups with type-safe configuration.
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Union
 from pathlib import Path
 
 Vec3 = Tuple[float, float, float]
@@ -157,7 +157,7 @@ def create_simulation_config() -> SimulationConfig:
 
 def create_cup_manipulator_config(
     urdf_path: str,
-    joint_angles: Tuple[float, float] = (0.0, 0.0),
+    joint_angles: Union[Dict[str, float], Tuple[float, float], None] = None,
     damping: Tuple[float, float] = (0.1, 0.1),
     stiffness: Tuple[float, float] = (0.0, 0.0),
     friction: Tuple[float, float] = (0.0, 0.0),
@@ -167,10 +167,25 @@ def create_cup_manipulator_config(
     
     Args:
         urdf_path: Path to URDF file
-        joint_angles: Initial angles [link1_base, link2_link1] in radians
+        joint_angles: Joint angles in radians. Can be:
+                     - Dict: {'link1_base': angle1, 'link2_link1': angle2} (recommended)
+                     - Tuple: (angle1, angle2) in Drake order [link2_link1, link1_base] (legacy)
+                     - None: defaults to all zeros
         damping: Damping coefficients [link1_base, link2_link1]
         stiffness: Stiffness coefficients [link1_base, link2_link1]
         friction: Friction coefficients [link1_base, link2_link1]
+    
+    Example (recommended):
+        config = create_cup_manipulator_config(
+            urdf_path="path/to/urdf",
+            joint_angles={'link1_base': np.deg2rad(20), 'link2_link1': np.deg2rad(10)}
+        )
+    
+    Example (legacy tuple format):
+        config = create_cup_manipulator_config(
+            urdf_path="path/to/urdf",
+            joint_angles=(np.deg2rad(10), np.deg2rad(20))  # (link2_link1, link1_base)
+        )
     
     Note:
         This is a 2-DOF manipulator. Pendulum will be added programmatically.
@@ -182,10 +197,30 @@ def create_cup_manipulator_config(
     # Joint names in order - MUST match the actual URDF joint names!
     joint_names = ["link1_base", "link2_link1"]
     
+    # Convert tuple to dict if legacy format provided
+    if isinstance(joint_angles, tuple):
+        # Legacy format: (link2_link1, link1_base) - Drake order
+        joint_angles_dict = {
+            'link2_link1': joint_angles[0],
+            'link1_base': joint_angles[1]
+        }
+    elif isinstance(joint_angles, dict):
+        joint_angles_dict = joint_angles
+    elif joint_angles is None:
+        joint_angles_dict = {name: 0.0 for name in joint_names}
+    else:
+        raise TypeError(f"joint_angles must be Dict, Tuple, or None, got {type(joint_angles)}")
+    
+    # Validate joint names
+    for name in joint_angles_dict.keys():
+        if name not in joint_names:
+            raise ValueError(f"Unknown joint name: {name}. Valid names: {joint_names}")
+    
     joint_configs = {}
     for i, joint_name in enumerate(joint_names):
+        angle = joint_angles_dict.get(joint_name, 0.0)
         joint_configs[joint_name] = JointConfig(
-            position=joint_angles[i],
+            position=angle,
             damping=damping[i],
             stiffness=stiffness[i],
             friction=friction[i]

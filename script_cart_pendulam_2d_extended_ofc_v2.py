@@ -100,8 +100,8 @@ parser.add_argument('--mode', type=str,
                     # default='scene-viz',
                     help='Simulation mode')
 parser.add_argument('--duration', type=float, default=10.0, help='Simulation duration [s]')
-parser.add_argument('--target-x', type=float, default=1, help='Target X position [m]')
-parser.add_argument('--target-y', type=float, default=-1.0, help='Target Y position [m]')
+parser.add_argument('--target-x', type=float, default=-1, help='Target X position [m]')
+parser.add_argument('--target-y', type=float, default=0.5, help='Target Y position [m]')
 parser.add_argument('--cart-x-init', type=float, default=2, help='Initial cart X position [m] (default: use manipulator EE position)')
 parser.add_argument('--cart-y-init', type=float, default=0.0, help='Initial cart Y position [m] (default: use manipulator EE position)')
 parser.add_argument('--horizon', type=float, default=10.0, help='LQR horizon [s]')
@@ -122,12 +122,16 @@ from script_cup_manipulator_controller_ofc import CupManipulator
 sys.argv = _saved_argv
 args = _parsed_args
 
+# Override EE_OFFSET with exact ball position from URDF (simple_ball origin at line 93)
+# This ball is rigidly attached to link2 and moves with the manipulator
+# URDF: <origin xyz="1.2515 8.5716e-17 0.15" rpy="0 -0 0"/>
+CupManipulator.EE_OFFSET = np.array([1.2515, 0.0, 0.15])
+
 # ============================================================================
 # CONSTANTS
 # ============================================================================
-# DEPRECATED: End-effector offset from link2 frame to cup center (from old URDF)
-# Use manipulator.EE_XYZ_BASE and cup_center frame instead
-MANIPULATOR_EE_OFFSET = np.array([-1.2545, 0.0, -0.188125])
+# Note: EE_OFFSET is now set from URDF simple_ball position (see above after import)
+# The ball at [1.2515, 0, 0.15] relative to link2 is the actual end-effector point
 
 # ============================================================================
 # CONFIGURATION CLASSES
@@ -427,13 +431,17 @@ class CupManipulator(RobotBase):
     # ------------------------------------------------------------------
     def add_end_effector_frame(self, plant: MultibodyPlant):
         """
-        Defines a named end-effector frame attached to link2 at the cup middle.
+        Creates a Drake frame at the simple_ball's location (cup center).
+        
+        The URDF's simple_ball visual element is at offset [1.2515, 0, 0.15] from link2,
+        but Drake doesn't auto-create frames for visual elements. This method explicitly
+        creates a named frame at that exact ball location for IK and kinematics queries.
 
         Must be called AFTER the model is added (self.model_instance is valid)
         and BEFORE plant.Finalize().
 
         Returns:
-            The created Frame (FixedOffsetFrame)
+            The created Frame (FixedOffsetFrame) at the ball's location
         """
         if plant.is_finalized():
             raise RuntimeError("Cannot add EE frame after plant is finalized")
@@ -522,23 +530,44 @@ class CupManipulator(RobotBase):
         drake_positions = self.get_jt([self.JT1_NAME, self.JT2_NAME], plant, context)
         return np.array([drake_positions[1], drake_positions[0]])  # [q1, q2]
 
-    def set_positions_user_order(self, plant: MultibodyPlant, context, user_positions: np.ndarray):
-        """Set positions in user order [q1, q2]."""
-        q1, q2 = user_positions
-        # Set in Drake order [q2, q1]
-        self.set_jt([self.JT1_NAME, self.JT2_NAME], plant, context, [q2, q1])
+    def set_positions_user_order(self, plant: MultibodyPlant, context, user_positions):
+        """Set positions by joint name using a dictionary.
+        
+        Args:
+            user_positions: Dict[str, float] mapping joint names to angles, e.g.
+                           {'link1_base': 0.0, 'link2_link1': 0.349}
+                           OR np.ndarray [q1, q2] for backward compatibility
+        """
+        if isinstance(user_positions, dict):
+            # Use dict directly - explicit and unambiguous
+            for joint_name, angle in user_positions.items():
+                self.set_jt([joint_name], plant, context, [angle])
+        else:
+            # Backward compatibility: array [q1, q2]
+            q1, q2 = user_positions
+            self.set_jt([self.JT1_NAME, self.JT2_NAME], plant, context, [q1, q2])
 
     def get_velocities_user_order(self, plant: MultibodyPlant, context) -> np.ndarray:
         """Get velocities in user order [q1_dot, q2_dot]."""
-        # Get in Drake order [q2_dot, q1_dot], then reverse to user order
-        drake_velocities = self.get_jt_velocity([self.JT1_NAME, self.JT2_NAME], plant, context)
-        return np.array([drake_velocities[1], drake_velocities[0]])  # [q1_dot, q2_dot]
+        # JT1_NAME="link1_base", JT2_NAME="link2_link1" - returns [q1_dot, q2_dot]
+        return self.get_jt_velocity([self.JT1_NAME, self.JT2_NAME], plant, context)
 
-    def set_velocities_user_order(self, plant: MultibodyPlant, context, user_velocities: np.ndarray):
-        """Set velocities in user order [q1_dot, q2_dot]."""
-        q1_dot, q2_dot = user_velocities
-        # Set in Drake order [q2_dot, q1_dot]
-        self.set_jt_velocity([self.JT1_NAME, self.JT2_NAME], plant, context, [q2_dot, q1_dot])
+    def set_velocities_user_order(self, plant: MultibodyPlant, context, user_velocities):
+        """Set velocities by joint name using a dictionary.
+        
+        Args:
+            user_velocities: Dict[str, float] mapping joint names to velocities, e.g.
+                            {'link1_base': 0.0, 'link2_link1': 0.1}
+                            OR np.ndarray [q1_dot, q2_dot] for backward compatibility
+        """
+        if isinstance(user_velocities, dict):
+            # Use dict directly - explicit and unambiguous
+            for joint_name, velocity in user_velocities.items():
+                self.set_jt_velocity([joint_name], plant, context, [velocity])
+        else:
+            # Backward compatibility: array [q1_dot, q2_dot]
+            q1_dot, q2_dot = user_velocities
+            self.set_jt_velocity([self.JT1_NAME, self.JT2_NAME], plant, context, [q1_dot, q2_dot])
 
     def get_joint_positions(self, plant: MultibodyPlant, context):
         positions = {}
@@ -1452,8 +1481,11 @@ def check_trajectory_feasibility(manipulator, plant, trajectory_points, q_init=N
     def forward_kinematics(q):
         """Compute EE position given joint angles [q1, q2]."""
         context = plant.CreateDefaultContext()
-        # Use manipulator's set_positions_user_order which handles Drake ordering internally
-        manipulator.set_positions_user_order(plant, context, q)
+        # Use manipulator's set_positions_user_order with explicit joint names
+        manipulator.set_positions_user_order(plant, context, {
+            "link1_base": q[0],
+            "link2_link1": q[1],
+        })
         
         ee_pos = plant.CalcPointsPositions(
             context, ee_frame, EE_OFFSET.reshape(3, 1), world_frame
@@ -1617,6 +1649,7 @@ class ComputedTorqueEEController(LeafSystem):
         manip_state = self.get_input_port(1).Eval(context)
         
         x_d, y_d, x_dot_d, y_dot_d = traj
+        
         x_ddot_d, y_ddot_d = 0.0, 0.0  # Zero acceleration
         # manip_state is in natural [q1, q2, q̇1, q̇2] order (from manipulator.get_state_from_plant)
         q1, q2, q1_dot, q2_dot = manip_state
@@ -1783,131 +1816,232 @@ class ComputedTorqueJointSpaceController(LeafSystem):
 
 
 class ManipulatorIKDesiredAngles(LeafSystem):
-
     """
-    Real-time IK solver that computes desired joint angles from cart position.
+    Velocity-based manipulator controller with position feedback.
     
     Inputs:
-      0: cart_state (4) = [x, y, ẋ, ẏ]
-    Output:
-      0: desired_angles (2) = [q1_desired, q2_desired]
+      0: cart_state (4) = [x, y, ẋ, ẏ]  - desired cart trajectory
+      1: plant_state (n) = full plant state vector
+    Output: desired_joint_state (4) = [q1_d, q2_d, q̇1_d, q̇2_d]
     """
     
-    def __init__(self, manipulator, plant):
+    def __init__(self, manipulator, plant, dt=0.001, Kp=10.0):
         LeafSystem.__init__(self)
         self.manipulator = manipulator
         self.plant = plant
-        self.q_prev = np.array([np.deg2rad(-10.0), np.deg2rad(20.0)])  # [q1, q2] seed
+        self.dt = dt
+        self.Kp = Kp  # Position feedback gain
         
-        # Input: cart state
+        # Extract link lengths from URDF
+        self.L1, self.L2 = self._extract_link_lengths()
+        
         self.DeclareVectorInputPort("cart_state", 4)
-        
-        # Output: desired joint state [q1, q2, q̇1, q̇2]
+        self.DeclareVectorInputPort("plant_state", plant.num_multibody_states())
         self.DeclareVectorOutputPort("desired_joint_state", 4, self.calc_desired_angles)
     
-    def calc_desired_angles(self, context, output):
-        cart_state = self.get_input_port(0).Eval(context)
-        cart_x, cart_y = cart_state[0], cart_state[1]
-        x_dot, y_dot = cart_state[2], cart_state[3]
+    def _extract_link_lengths(self):
+        """
+        Extract link lengths L1 and L2 from URDF geometry.
         
-        t = context.get_time()
+        L1: Distance from base (joint1) to joint2
+        L2: Distance from joint2 to end-effector (EE_OFFSET magnitude)
         
-        # CRITICAL COORDINATE MAPPING for right_frame URDF (orientation=[0,0,0]):
-        # - Manipulator operates in X-Y plane (planar manipulator)
-        #   At q1=q2=0, all joint frames and EE frame are coplanar in X-Y plane
-        
-        # Solve IK using previous solution as warm start  
-        q_desired, success = solve_initial_pose_via_ik(
-            self.plant, self.manipulator, 
-            np.array([cart_x, cart_y]),  # Direct mapping: cart [x,y] → manipulator [X,Y]
-            self.q_prev, 
-            pos_tol=0.05,  # Looser tolerance for real-time
-            target_z=None,  # Let IK use seed Z (manipulator stays in its X-Y plane)
-            verbose=(int(t * 2) % 10 == 0)  # Print every 5s
-        )
-        
-        if success:
-            # q_desired is already in natural [q1, q2] order from solve_initial_pose_via_ik
-            self.q_prev = q_desired  # Update warm start
-        else:
-            q_desired = self.q_prev
-        
-        # Compute desired joint velocities using Jacobian
-        # Set up plant context with desired configuration
+        Returns:
+            L1, L2: Link lengths in meters
+        """
+        # Create a temporary context to query geometry
         temp_context = self.plant.CreateDefaultContext()
-        # Set desired configuration using natural [q1, q2] ordering
-        self.manipulator.set_positions_user_order(self.plant, temp_context, q_desired)
         
-        # Get Jacobian using cup_center frame (EE frame)
+        # Get joint frames
+        j1 = self.manipulator.get_joint_by_name(self.plant, self.manipulator.JT1_NAME)
+        j2 = self.manipulator.get_joint_by_name(self.plant, self.manipulator.JT2_NAME)
+        
+        # Get the frames for both joints
+        j1_frame = j1.frame_on_child()  # Link1 frame
+        j2_frame = j2.frame_on_parent()  # Link1 frame (parent of joint2)
+        j2_child_frame = j2.frame_on_child()  # Link2 frame
+        
+        # Set joints to zero configuration (positions + velocities)
+        self.manipulator.set_state_in_plant(self.plant, temp_context, np.array([0.0, 0.0, 0.0, 0.0]))
+        
+        # Get transform from joint1 frame to joint2 frame at zero configuration
+        X_j1_j2 = self.plant.CalcRelativeTransform(temp_context, j1_frame, j2_child_frame)
+        
+        # L1 is the distance between the two joints (XY plane distance)
+        L1 = np.linalg.norm(X_j1_j2.translation()[:2])
+        
+        # L2 is the EE offset from link2 (already computed in manipulator)
+        L2 = np.linalg.norm(self.manipulator.EE_OFFSET[:2])
+        
+        return L1, L2
+    
+    def compute_jacobian_manual(self, q1, q2):
+        """
+        Manually compute 2×2 Jacobian for 2-link planar manipulator.
+        
+        Forward kinematics (2D):
+            x = L1*cos(q1) + L2*cos(q1+q2)
+            y = L1*sin(q1) + L2*sin(q1+q2)
+        
+        Jacobian J = [∂x/∂q1  ∂x/∂q2]
+                     [∂y/∂q1  ∂y/∂q2]
+        
+        Args:
+            q1: Joint 1 angle (radians)
+            q2: Joint 2 angle (radians)
+            
+        Returns:
+            J_xy: 2×2 Jacobian matrix mapping [q̇1, q̇2] → [ẋ, ẏ]
+        """
+        # Use link lengths extracted from URDF
+        L1 = self.L1
+        L2 = self.L2
+        
+        # Compute Jacobian elements
+        s1 = np.sin(q1)
+        c1 = np.cos(q1)
+        s12 = np.sin(q1 + q2)
+        c12 = np.cos(q1 + q2)
+        
+        # J = [[-L1*sin(q1) - L2*sin(q1+q2),  -L2*sin(q1+q2)],
+        #      [ L1*cos(q1) + L2*cos(q1+q2),   L2*cos(q1+q2)]]
+        
+        J_xy = np.array([
+            [-L1*s1 - L2*s12,  -L2*s12],
+            [ L1*c1 + L2*c12,   L2*c12]
+        ])
+        
+        return J_xy
+    
+    def calc_desired_angles(self, context, output):
+        from pydrake.all import JacobianWrtVariable
+        
+        # Get inputs
+        cart_state = self.get_input_port(0).Eval(context)
+        cart_pos_xy = cart_state[0:2]  # Desired EE position
+        cart_vel_xy = cart_state[2:4]  # Desired EE velocity
+        plant_state = self.get_input_port(1).Eval(context)
+        
+        # Setup plant context with current state
+        plant_context = self.plant.CreateDefaultContext()
+        self.plant.SetPositionsAndVelocities(plant_context, plant_state)
+        q_current = self.plant.GetPositions(plant_context)
+        
+        # Get manipulator joint indices
+        j1 = self.manipulator.get_joint_by_name(self.plant, self.manipulator.JT1_NAME)
+        j2 = self.manipulator.get_joint_by_name(self.plant, self.manipulator.JT2_NAME)
+        vel_idx_j1 = j1.velocity_start()
+        vel_idx_j2 = j2.velocity_start()
+        pos_idxs = [j1.position_start(), j2.position_start()]
+        q_current_manip = np.array([q_current[pos_idxs[0]], q_current[pos_idxs[1]]])
+        
+        # Get EE frame (cup_center already includes EE_OFFSET)
         ee_frame = self.manipulator.get_end_effector_frame(self.plant)
+        p_BQ = np.zeros(3)  # Zero offset since cup_center frame already includes EE_OFFSET
+        
+        # Compute current EE position
+        X_WB = self.plant.CalcRelativeTransform(plant_context, self.plant.world_frame(), ee_frame)
+        ee_current_3d = X_WB.translation()
+        ee_current_xy = ee_current_3d[0:2]
+        
+        # Position error: how far is EE from desired cart position?
+        pos_error_xy = cart_pos_xy - ee_current_xy
+        
+        # Compute Jacobian: maps joint velocities to EE velocity
+        Jv_full = self.plant.CalcJacobianTranslationalVelocity(
+            plant_context, JacobianWrtVariable.kV, ee_frame, p_BQ,
+            self.plant.world_frame(), self.plant.world_frame()
+        )
+        J_xy_drake = Jv_full[0:2, [vel_idx_j1, vel_idx_j2]]  # Extract 2×2 manipulator Jacobian
+        
+        # Compute Jacobian manually for comparison
+        J_xy_manual = self.compute_jacobian_manual(q_current_manip[0], q_current_manip[1])
+        
+        # Use manual Jacobian (Drake is for verification only)
+        J_xy = J_xy_manual
+        
+        # Desired EE velocity: feedforward + position feedback
+        ee_vel_desired = cart_vel_xy + self.Kp * pos_error_xy
+        
+        # Map to joint velocities
+        qdot_des = np.linalg.pinv(J_xy) @ ee_vel_desired
+        
+        # Integrate to get desired positions: q_des = q_current + qdot_des * dt
+        q_des = q_current_manip + qdot_des * self.dt
+        
+        output.SetFromVector(np.concatenate([q_des, qdot_des]))
+
+# Add system to compute end-effector position and velocity
+class ManipulatorEEStateComputer(LeafSystem):
+    """Computes manipulator end-effector position and velocity from joint state."""
+    def __init__(self, plant, manipulator):
+        LeafSystem.__init__(self)
+        self.plant = plant
+        self.manipulator = manipulator
+        
+        # Input: manipulator state in Drake order from plant.get_state_output_port(model_instance)
+        # For cup_manipulator with joints [link2_link1, link1_base], Drake order is [q2, q1, q̇2, q̇1]
+        self.DeclareVectorInputPort("manip_state", 4)
+        
+        # Output: EE state [x, y, ẋ, ẏ]
+        self.DeclareVectorOutputPort(
+            "ee_state",
+            4,
+            self.CalcEEState
+        )
+    
+    def CalcEEState(self, context, output):
+        """Calculate EE position and velocity from joint state."""
+        # Get manipulator state in DRAKE order [q2, q1, q̇2, q̇1] from plant output
+        manip_state_drake = self.get_input_port(0).Eval(context)
+        
+        # Convert from Drake order to user order [q1, q2, q̇1, q̇2] for set_state_in_plant
+        # Drake order for cup_manipulator: [q2, q1, q̇2, q̇1] (link2_link1, link1_base)
+        # User order: [q1, q2, q̇1, q̇2] (link1_base, link2_link1)
+        manip_state_user = np.array([manip_state_drake[1], manip_state_drake[0], 
+                                      manip_state_drake[3], manip_state_drake[2]])
+        
+        # Create fresh context for this computation
+        temp_context = self.plant.CreateDefaultContext()
+        
+        # Set state in temp context (expects user order)
+        self.manipulator.set_state_in_plant(self.plant, temp_context, manip_state_user)
+        
+        # Calculate EE position using custom EE frame with offset
+        ee_pos = self.manipulator.get_end_effector_position(self.plant, temp_context)
+        
+        # Calculate EE velocity using Jacobian
+        ee_frame = self.plant.GetFrameByName(self.manipulator.LINK2_NAME, self.manipulator.model_instance)
         J_full = self.plant.CalcJacobianTranslationalVelocity(
             temp_context,
             JacobianWrtVariable.kQDot,
             ee_frame,
-            np.zeros(3),  # Point at cup_center frame origin
+            self.manipulator.EE_OFFSET,
             self.plant.world_frame(),
             self.plant.world_frame()
         )
         
-        # Extract manipulator velocity indices using joint names (Drake order: [JT1=q2, JT2=q1])
+        # Extract manipulator velocity indices
         jt1 = self.manipulator.get_joint_by_name(self.plant, self.manipulator.JT1_NAME)
         jt2 = self.manipulator.get_joint_by_name(self.plant, self.manipulator.JT2_NAME)
         manip_velocity_indices = [jt1.velocity_start(), jt2.velocity_start()]
         
-        # Extract X-Y rows (rows 0 and 1) - both systems now in X-Y plane
-        J_xy = J_full[[0, 1], :][:, manip_velocity_indices]  # 2x2: rows [X, Y], manip columns in Drake order [q̇2, q̇1]
+        # Compute EE velocity: v_ee = J * q̇
+        J_xy = J_full[0:2, manip_velocity_indices]
+        ee_vel = J_xy @ manip_state_user[2:4]
         
-        # Compute desired joint velocities: q̇_d = J^+ * ẋ_cart
-        # Direct mapping: cart velocity [ẋ, ẏ] = manipulator [ẋ, ẏ]
-        J_pinv = np.linalg.pinv(J_xy)
-        q_dot_drake = J_pinv @ np.array([x_dot, y_dot])  # Drake order [q̇2, q̇1]
-        # Convert to user order [q̇1, q̇2]
-        q_dot_desired = np.array([q_dot_drake[1], q_dot_drake[0]])
-        
-        # Output [q1, q2, q̇1, q̇2] in natural order
-        output.SetFromVector(np.concatenate([q_desired, q_dot_desired]))
-
-
+        # Output [x, y, ẋ, ẏ]
+        output.SetFromVector(np.array([ee_pos[0], ee_pos[1], ee_vel[0], ee_vel[1]]))
 # ============================================================================
 # IK WRAPPER (for backward compatibility)
 # ============================================================================
 
-def solve_initial_pose_via_ik(
-    plant,
-    manipulator,
-    target_xy,
-    q_seed,
-    pos_tol=1e-3,
-    verbose=False,
-    ee_frame_name=None,
-    target_z=None,
-):
-    """
-    Wrapper function for backward compatibility.
-    Calls manipulator.solve_initial_pose_via_ik() method.
-    
-    Args:
-        plant: MultibodyPlant containing the manipulator
-        manipulator: CupManipulator instance
-        target_xy: Target [x, y] position
-        q_seed: Initial guess [q1, q2]
-        pos_tol: Position tolerance
-        verbose: Print solver info
-        ee_frame_name: EE frame name (optional)
-        target_z: Target Z coordinate (optional, if None uses seed Z)
-    
-    Returns:
-        q_solution: Joint angles [q1, q2] in user order
-        success: Boolean indicating success
-    """
-    return manipulator.solve_initial_pose_via_ik(
-        plant, target_xy, q_seed, pos_tol, verbose, ee_frame_name, target_z
-    )
+
 
 
 # ============================================================================
 # FINITE-HORIZON LQR CART-PENDULUM CONTROL
-# ============================================================================
+# =====================ß=======================================================
 
 def run_finite_horizon_lqr_cart_pend_only(
     builder, plant, scene_graph, meshcat, cart_model, manipulator,
@@ -2098,8 +2232,14 @@ def run_finite_horizon_lqr_cart_pend_only(
         if initial_q is None:
             initial_q = np.array([np.deg2rad(-10.0), np.deg2rad(20.0)])  # [q1, q2]
         
-        manipulator.set_positions_user_order(plant, plant_context, initial_q)
-        plant.SetVelocities(plant_context, manipulator.model_instance, np.zeros(2))
+        manipulator.set_positions_user_order(plant, plant_context, {
+            "link1_base": initial_q[0],
+            "link2_link1": initial_q[1],
+        })
+        manipulator.set_velocities_user_order(plant, plant_context, {
+            "link1_base": 0.0,
+            "link2_link1": 0.0,
+        })
     
     # Set cart-pendulum state
     # If manipulator exists and no cart position override: use EE position
@@ -2938,7 +3078,13 @@ def run_lqr_manip_ee_traj_track(
     # Connect cart state to IK solver
     builder.Connect(
         cart_state_mux.get_output_port(),  # [x, y, ẋ, ẏ] cart state
-        manip_ik_solver.get_input_port(0)  # → IK solver input
+        manip_ik_solver.get_input_port(0)  # → IK solver input (desired trajectory)
+    )
+    
+    # Connect plant state to IK solver
+    builder.Connect(
+        plant.get_state_output_port(),  # full plant state
+        manip_ik_solver.get_input_port(1)  # → IK solver input (current state)
     )
     
     # Connect cart state directly to controller desired trajectory
@@ -2959,8 +3105,6 @@ def run_lqr_manip_ee_traj_track(
         manip_js_controller.get_output_port(),                       # [τ1, τ2] joint torques (natural order)
         plant.get_actuation_input_port(manipulator.model_instance)  # → manipulator actuators
     )
-
-
     
     # Add loggers
     state_logger = builder.AddSystem(VectorLogSink(8))
@@ -3020,60 +3164,7 @@ def run_lqr_manip_ee_traj_track(
     manip_state_logger_natural.set_name("manip_state_logger")
     builder.Connect(plant.get_state_output_port(manipulator.model_instance), manip_state_logger_natural.get_input_port())
     
-    # Add system to compute end-effector position and velocity
-    class ManipulatorEEStateComputer(LeafSystem):
-        """Computes manipulator end-effector position and velocity from joint state."""
-        def __init__(self, plant, manipulator):
-            LeafSystem.__init__(self)
-            self.plant = plant
-            self.manipulator = manipulator
-            
-            # Input: manipulator state [q1, q2, q̇1, q̇2]
-            self.DeclareVectorInputPort("manip_state", 4)
-            
-            # Output: EE state [x, y, ẋ, ẏ]
-            self.DeclareVectorOutputPort(
-                "ee_state",
-                4,
-                self.CalcEEState
-            )
-        
-        def CalcEEState(self, context, output):
-            """Calculate EE position and velocity from joint state."""
-            # Get manipulator state
-            manip_state = self.get_input_port(0).Eval(context)
-            
-            # Create fresh context for this computation
-            temp_context = self.plant.CreateDefaultContext()
-            
-            # Set state in temp context
-            self.manipulator.set_state_in_plant(self.plant, temp_context, manip_state)
-            
-            # Calculate EE position
-            ee_pos = self.manipulator.CalcPosition(self.plant, temp_context)
-            
-            # Calculate EE velocity using Jacobian
-            ee_frame = self.plant.GetFrameByName(self.manipulator.LINK2_NAME, self.manipulator.model_instance)
-            J_full = self.plant.CalcJacobianTranslationalVelocity(
-                temp_context,
-                JacobianWrtVariable.kQDot,
-                ee_frame,
-                self.manipulator.EE_OFFSET,
-                self.plant.world_frame(),
-                self.plant.world_frame()
-            )
-            
-            # Extract manipulator velocity indices
-            jt1 = self.manipulator.get_joint_by_name(self.plant, self.manipulator.JT1_NAME)
-            jt2 = self.manipulator.get_joint_by_name(self.plant, self.manipulator.JT2_NAME)
-            manip_velocity_indices = [jt1.velocity_start(), jt2.velocity_start()]
-            
-            # Compute EE velocity: v_ee = J * q̇
-            J_xy = J_full[0:2, manip_velocity_indices]
-            ee_vel = J_xy @ manip_state[2:4]
-            
-            # Output [x, y, ẋ, ẏ]
-            output.SetFromVector(np.array([ee_pos[0], ee_pos[1], ee_vel[0], ee_vel[1]]))
+    
     
     # Add EE state computer and logger
     ee_state_computer = builder.AddSystem(ManipulatorEEStateComputer(plant, manipulator))
@@ -3082,7 +3173,7 @@ def run_lqr_manip_ee_traj_track(
     builder.Connect(
         plant.get_state_output_port(manipulator.model_instance),
         ee_state_computer.get_input_port(0)
-    )
+    )# Connect full plant state to EE state computer for accurate EE position calculation
     
     ee_state_logger = builder.AddSystem(VectorLogSink(4))
     ee_state_logger.set_name("ee_state_logger")
@@ -3132,53 +3223,30 @@ def run_lqr_manip_ee_traj_track(
     # Set initial state
     plant_context = plant.GetMyMutableContextFromRoot(context)
     
+    
+    # q_init is already in natural [q1, q2] order - use explicit joint names
+    q_init= {
+        'link1_base': np.deg2rad(0.0),   # q1
+        'link2_link1': np.deg2rad(20.0),   # q2
+    }
+    manipulator.set_positions_user_order(plant, plant_context, {
+        "link1_base": q_init['link1_base'],
+        "link2_link1": q_init['link2_link1'],
+    })
+    manipulator.set_velocities_user_order(plant, plant_context, {
+        "link1_base": 0.0,
+        "link2_link1": 0.0,
+    })
+    
+    # Calculate actual EE position after IK (using custom EE frame with offset)
+    ee_pos_actual = manipulator.get_end_effector_position(plant, plant_context)
+    
+    # Both manipulator and cart work in X-Y plane after rotation
     # Set cart-pendulum state FIRST
     # Use provided cart initial positions if given, otherwise use EE position
     cart_x = cart_x_init if cart_x_init is not None else ee_pos_init[0]
     cart_y = cart_y_init if cart_y_init is not None else ee_pos_init[1]
     
-    # Check if cart position is within manipulator workspace
-    # Manipulator workspace: roughly x ∈ [-2.5, 0.5], y ∈ [-0.5, 2.5] based on link lengths
-    link1_length = 1.51  # meters (from URDF)
-    link2_length = 1.509  # meters
-    max_reach = link1_length + link2_length  # ~3.0m
-    min_reach = abs(link1_length - link2_length)  # ~0m
-    
-    cart_distance = np.sqrt(cart_x**2 + cart_y**2)
-    if cart_distance > max_reach * 0.9:  # 90% of max reach for safety
-        print(colored(f"\n⚠ WARNING: Cart position ({cart_x:.3f}, {cart_y:.3f}) is near/outside manipulator workspace!", "yellow"))
-        print(colored(f"  Distance from base: {cart_distance:.3f}m, Max safe reach: {max_reach*0.9:.3f}m", "yellow"))
-        print(colored(f"  Manipulator tracking may be poor or fail!", "yellow"))
-    
-    cart_pendulum_positions = np.array([
-        cart_x, cart_y,  # Cart at specified or EE x,y
-        0.0, 0.0,        # Pendulum hanging down
-    ])
-    plant.SetPositions(plant_context, cart_model, cart_pendulum_positions)
-    plant.SetVelocities(plant_context, cart_model, np.zeros(4))
-    
-    # Set manipulator joint angles using IK to match cart position
-    # Solve IK to place manipulator EE at cart position
-    print(colored(f"\n🔧 Solving IK for manipulator to match cart initial position ({cart_x:.3f}, {cart_y:.3f})...", "yellow"))
-    q_seed = np.array([np.deg2rad(-10.0), np.deg2rad(20.0)])  # [q1, q2]
-    q_init, ik_success = solve_initial_pose_via_ik(
-        plant, manipulator, np.array([cart_x, cart_y]), q_seed, pos_tol=0.01
-    )
-    
-    if ik_success:
-        print(colored(f"✓ IK succeeded: q1={np.rad2deg(q_init[0]):.1f}°, q2={np.rad2deg(q_init[1]):.1f}°", "green"))
-    else:
-        print(colored(f"⚠ IK failed, using seed: q1={np.rad2deg(q_seed[0]):.1f}°, q2={np.rad2deg(q_seed[1]):.1f}°", "yellow"))
-        q_init = q_seed
-    
-    # q_init is already in natural [q1, q2] order
-    manipulator.set_positions_user_order(plant, plant_context, q_init)
-    plant.SetVelocities(plant_context, manipulator.model_instance, np.zeros(2))
-    
-    # Calculate actual EE position after IK (may differ slightly from target due to IK tolerance)
-    ee_pos_actual = manipulator.CalcPosition(plant, plant_context)
-    
-    # Both manipulator and cart work in X-Y plane after rotation
     # Direct 1:1 mapping: manipulator [X,Y] → cart [X,Y]
     cart_x, cart_y = ee_pos_actual[0], ee_pos_actual[1]  # Direct X-Y mapping
     cart_pendulum_positions = np.array([
@@ -3188,11 +3256,20 @@ def run_lqr_manip_ee_traj_track(
     plant.SetPositions(plant_context, cart_model, cart_pendulum_positions)
     plant.SetVelocities(plant_context, cart_model, np.zeros(4))
     
+    # Get and print cart-pendulum position (after setting to actual EE position)
+    cart_pend_pos = plant.GetPositions(plant_context, cart_model)
+    cart_pend_vel = plant.GetVelocities(plant_context, cart_model)
+    print(colored(f"\n📍 Cart-Pendulum Final State (matching actual EE):", "cyan"))
+    print(colored(f"  Position: x={cart_pend_pos[0]:.3f}m, y={cart_pend_pos[1]:.3f}m, α={np.rad2deg(cart_pend_pos[2]):.1f}°, β={np.rad2deg(cart_pend_pos[3]):.1f}°", "cyan"))
+    print(colored(f"  Velocity: ẋ={cart_pend_vel[0]:.3f}m/s, ẏ={cart_pend_vel[1]:.3f}m/s, α̇={np.rad2deg(cart_pend_vel[2]):.1f}°/s, β̇={np.rad2deg(cart_pend_vel[3]):.1f}°/s", "cyan"))
+    print(colored(f"  EE actual: x={ee_pos_actual[0]:.3f}m, y={ee_pos_actual[1]:.3f}m", "cyan"))
+    
     # ========================================================================
     # VISUALIZATION: Show configured initial state
     # ========================================================================
     print(colored("\n📸 Visualizing configured initial state...", "cyan"))
-    print(colored(f"  - Manipulator: q1={np.rad2deg(q_init[0]):.1f}°, q2={np.rad2deg(q_init[1]):.1f}° (will track cart)", "cyan"))
+    print(colored(f"  - Manipulator: q1={np.rad2deg(q_init['link1_base']):.1f}°, q2={np.rad2deg(q_init['link2_link1']):.1f}° (will track cart)", "cyan"))
+    print(colored(f"  - End Effector: ({ee_pos_actual[0]:.3f}, {ee_pos_actual[1]:.3f}) m", "cyan"))
     print(colored(f"  - Cart: ({cart_x:.3f}, {cart_y:.3f}) m", "cyan"))
     print(colored(f"  - Pendulum: α=0°, β=0° (hanging)", "cyan"))
     diagram.ForcedPublish(context)
@@ -3222,7 +3299,9 @@ def run_lqr_manip_ee_traj_track(
         # Advance simulation by small timestep
         simulator.AdvanceTo(current_time + dt_sim)
         current_time += dt_sim
-        
+
+       
+
         # Optional: Print debug info periodically
         if current_time >= next_debug_time:
             # Get current state for debugging
@@ -3230,8 +3309,8 @@ def run_lqr_manip_ee_traj_track(
             cart_state = plant.GetPositionsAndVelocities(plant_context, cart_model)
             manip_state = plant.GetPositionsAndVelocities(plant_context, manipulator.model_instance)
             
-            ee_pos_list.append(manipulator.CalcPosition(plant, plant_context))
-            ee_pos = manipulator.CalcPosition(plant, plant_context)
+            ee_pos_list.append(manipulator.get_end_effector_position(plant, plant_context))
+            ee_pos = manipulator.get_end_effector_position(plant, plant_context)
             
             print(colored(f"\n[DEBUG t={current_time:.2f}s]", "cyan"))
             print(f"  Cart: x={cart_state[0]:.3f}, y={cart_state[1]:.3f}")
@@ -3240,22 +3319,47 @@ def run_lqr_manip_ee_traj_track(
             print(f"  Manipulator: q1={np.rad2deg(manip_state[0]):.1f}°, q2={np.rad2deg(manip_state[1]):.1f}°")
             print(f"  End-Effector: x={ee_pos[0]:.3f}, y={ee_pos[1]:.3f}, z={ee_pos[2]:.3f}")
             print(f"  EE→Cart error: {np.sqrt((ee_pos[0]-cart_state[0])**2 + (ee_pos[1]-cart_state[1])**2)*1000:.1f} mm")
+
+            # Test IK solver: get desired angles from ManipulatorIKDesiredAngles
+            # Extract cart position/velocity [x, y, ẋ, ẏ] from full state [x, y, α, β, ẋ, ẏ, α̇, β̇]
+            cart_xy_state = np.array([cart_state[0], cart_state[1], cart_state[4], cart_state[5]])
+            
+            # Get full plant state for IK solver
+            full_plant_state = plant.GetPositionsAndVelocities(plant_context)
+            
+            ik_context = manip_ik_solver.CreateDefaultContext()
+            manip_ik_solver.get_input_port(0).FixValue(ik_context, cart_xy_state)
+            manip_ik_solver.get_input_port(1).FixValue(ik_context, full_plant_state)
+            ik_output = manip_ik_solver.AllocateOutput()
+            manip_ik_solver.CalcOutput(ik_context, ik_output)
+            desired_state = ik_output.get_vector_data(0).CopyToVector()
+            print(colored(f"  → IK Desired: q1={np.rad2deg(desired_state[0]):.1f}°, q2={np.rad2deg(desired_state[1]):.1f}° | " +
+                         f"q̇1={np.rad2deg(desired_state[2]):.1f}°/s, q̇2={np.rad2deg(desired_state[3]):.1f}°/s", "magenta"))
             
             next_debug_time += debug_interval
         else:
-            # Calculate end-effector position
-            ee_pos_list.append(manipulator.CalcPosition(plant, plant_context))
-        
-        # You can add conditional breakpoint here for specific time:
-        # Example: Stop at t≈3.0s for inspection
-        # if abs(current_time - 3.0) < dt_sim/2:
-        #     # Set VSCode breakpoint on this line
-        #     pass  # <-- Debugger will pause here when current_time ≈ 3.0s
+            # Calculate end-effector position using custom EE frame
+            cart_state = plant.GetPositionsAndVelocities(plant_context, cart_model)
+            manip_state = plant.GetPositionsAndVelocities(plant_context, manipulator.model_instance)
+            ee_pos = manipulator.get_end_effector_position(plant, plant_context)
+            ee_pos_list.append(ee_pos)
+
+            # cart_xy_state = np.array([cart_state[0], cart_state[1], cart_state[4], cart_state[5]])
+            # ik_context = manip_ik_solver.CreateDefaultContext()
+            # manip_ik_solver.get_input_port(0).FixValue(ik_context, cart_xy_state)
+            # ik_output = manip_ik_solver.AllocateOutput()
+            # manip_ik_solver.CalcOutput(ik_context, ik_output)
+            # desired_state = ik_output.get_vector_data(0).CopyToVector()
+            
+            # Print state information every step
+            print(f"t={current_time:.3f}s | Cart: ({cart_state[0]:.3f}, {cart_state[1]:.3f})m | " +
+                  f"Manip: q1={np.rad2deg(manip_state[0]):.1f}°, q2={np.rad2deg(manip_state[1]):.1f}° | " +
+                  f"EE: ({ee_pos[0]:.3f}, {ee_pos[1]:.3f})m")
+   
     
     print(colored(f"\n✓ Simulation complete at t={current_time:.2f}s", "green"))
     
     visualizer.PublishRecording()
-    print(colored(f"🎬 Animation: {meshcat.web_url()}\n", "green", attrs=["bold"]))
     
     # Extract data
     state_log = state_logger.FindLog(context)
@@ -3284,7 +3388,8 @@ def run_lqr_manip_ee_traj_track(
     # Debug: Print cart trajectory being sent to manipulator
     print(colored("\n🔍 DEBUG: Cart trajectory sent to manipulator controller:", "yellow"))
     print(f"  t=0.0s: x={cart_traj_data[0, 0]:.3f}, y={cart_traj_data[1, 0]:.3f}, ẋ={cart_traj_data[2, 0]:.3f}, ẏ={cart_traj_data[3, 0]:.3f}")
-    print(f"  t=1.0s: x={cart_traj_data[0, int(len(t)/args.duration)]:.3f}, y={cart_traj_data[1, int(len(t)/args.duration)]:.3f}")
+    mid_idx = min(int(len(t)/args.duration), cart_traj_data.shape[1] - 1)
+    print(f"  t=1.0s: x={cart_traj_data[0, mid_idx]:.3f}, y={cart_traj_data[1, mid_idx]:.3f}")
     print(f"  t=end:  x={cart_traj_data[0, -1]:.3f}, y={cart_traj_data[1, -1]:.3f}")
     print(f"  Cart actual at t=0: x={state_data[0, 0]:.3f}, y={state_data[1, 0]:.3f}")
     print(f"  Cart actual at end: x={state_data[0, -1]:.3f}, y={state_data[1, -1]:.3f}")
@@ -3670,16 +3775,47 @@ def main():
         
         manipulator_config = create_cup_manipulator_config(
             urdf_path="model_using_onshape_to_robot/cup_manipulator2/cup_manipulator_obj_right_frame.urdf", 
-            joint_angles=(np.deg2rad(-10.0), np.deg2rad(20.0)),  # Initial config: q1=-10°, q2=20°
+            joint_angles={
+                'link1_base': np.deg2rad(-10.0),   # q1: Base to link1
+                'link2_link1': np.deg2rad(20.0),   # q2: Link1 to link2
+            },
             damping=(0.1, 0.1),
         )
         #Initialize manipulator and load URDF into plant
         manipulator = CupManipulator(manipulator_config, enable_visualization=True)
         parser = Parser(plant)
         manipulator.load_urdf_to_plant(plant, parser)  # Loads URDF, creates model instance
+        
+        # Calculate where to position the base so EE is at desired location
+        # First, get EE position with base at origin
+        initial_q = np.array([np.deg2rad(-0.0), np.deg2rad(4.0)])  # [q1, q2] - initial joint angles
+        temp_plant = MultibodyPlant(0.0)
+        temp_parser = Parser(temp_plant)
+        temp_manip = CupManipulator(manipulator_config, enable_visualization=False)
+        temp_manip.load_urdf_to_plant(temp_plant, temp_parser)
+        temp_manip.weld_base_to_world(temp_plant, position=np.array([0.0, 0.0, 0.0]), orientation=np.array([0.0, 0, 0.0]))
+        temp_manip.add_end_effector_frame(temp_plant)
+        temp_plant.Finalize()
+        temp_context = temp_plant.CreateDefaultContext()
+        temp_manip.set_positions_user_order(temp_plant, temp_context, {
+            "link1_base": initial_q[0],
+            "link2_link1": initial_q[1],
+        })
+        ee_at_origin = temp_manip.get_end_effector_position(temp_plant, temp_context)
+        
+        # Calculate base offset: to center EE at [0, 0], base needs to be at [-ee_x, -ee_y, 0]
+        base_offset = -ee_at_origin  # Negate to bring EE to origin
+        base_offset[2] = 0.0  # Keep Z at zero (or desired height)
+        
+        print(colored(f"\n📍 Manipulator Base Positioning:", "yellow"))
+        print(colored(f"  - EE position with base at origin: ({ee_at_origin[0]:.3f}, {ee_at_origin[1]:.3f}, {ee_at_origin[2]:.3f}) m", "yellow"))
+        print(colored(f"  - Offsetting base to: ({base_offset[0]:.3f}, {base_offset[1]:.3f}, {base_offset[2]:.3f}) m", "yellow"))
+        print(colored(f"  - This will center EE at approximately [0, 0]", "green"))
+        
         # Rotate base -90° around Y to align manipulator with X-Y plane (same as cart)
         # This makes manipulator X-axis → world X-axis, manipulator Z-axis → world Y-axis
-        manipulator.weld_base_to_world(plant, orientation=np.array([0.0, 0, 0.0]))
+        # AND position it so the EE is at the origin
+        manipulator.weld_base_to_world(plant, position=base_offset, orientation=np.array([0.0, 0, 0.0]))
         # Add actuators and end-effector frame BEFORE finalization
         manipulator.add_joint_actuators(plant)
         manipulator.add_end_effector_frame(plant)
@@ -3730,7 +3866,10 @@ def main():
         
         # Calculate EE position at configured joint angles
         temp_context = plant.CreateDefaultContext()
-        manipulator.set_positions_user_order(plant, temp_context, initial_q)
+        manipulator.set_positions_user_order(plant, temp_context, {
+            "link1_base": initial_q[0],
+            "link2_link1": initial_q[1],
+        })
         
         # Get EE world frame position using the cup_center frame
         ee_world_pos = manipulator.get_end_effector_position(plant, temp_context)
@@ -3760,6 +3899,17 @@ def main():
         print(colored(f"  - EE in world frame: ({ee_world_pos[0]:.3f}, {ee_world_pos[1]:.3f}, {ee_world_pos[2]:.3f}) m", "yellow"))
         print(colored(f"  - Cart in world frame: ({cart_world_pos[0]:.3f}, {cart_world_pos[1]:.3f}, {cart_world_pos[2]:.3f}) m", "yellow"))
         
+        # Calculate and display alignment error
+        offset_x = abs(ee_world_pos[0] - cart_world_pos[0])
+        offset_y = abs(ee_world_pos[1] - cart_world_pos[1])
+        print(colored(f"\n✓ EE-Cart Alignment Check:", "green", attrs=["bold"]))
+        print(colored(f"  - X offset: {offset_x*1000:.2f} mm", "green" if offset_x < 0.01 else "red"))
+        print(colored(f"  - Y offset: {offset_y*1000:.2f} mm", "green" if offset_y < 0.01 else "red"))
+        if offset_x < 0.01 and offset_y < 0.01:
+            print(colored(f"  ✓ EE and Cart are aligned (< 1cm error)", "green"))
+        else:
+            print(colored(f"  ⚠ EE and Cart have significant offset", "yellow"))
+        
         # Plot coordinate frames to verify orientation
         plot_frames_top_view(plant, temp_context, manipulator, cart_model, 
                            title="Initial Frame Orientations - Scene Viz Mode")
@@ -3788,7 +3938,10 @@ def main():
         plant_context = plant.GetMyMutableContextFromRoot(context)
         
         # Set manipulator to desired configuration (not zeros!)
-        manipulator.set_positions_user_order(plant, plant_context, initial_q)
+        manipulator.set_positions_user_order(plant, plant_context, {
+            "link1_base": initial_q[0],
+            "link2_link1": initial_q[1],
+        })
         
         # Set cart to initial position
         plant.SetPositions(plant_context, cart_model, cart_init_pos)
@@ -3865,7 +4018,10 @@ def main():
                                     current_manip_q = q_solution
                                     
                                     # Update manipulator joint positions
-                                    manipulator.set_positions_user_order(plant, plant_context, current_manip_q)
+                                    manipulator.set_positions_user_order(plant, plant_context, {
+                                        "link1_base": current_manip_q[0],
+                                        "link2_link1": current_manip_q[1],
+                                    })
                                     
                                     # Force visualization update
                                     diagram.ForcedPublish(context)
@@ -3938,7 +4094,10 @@ def main():
         
         manipulator_config = create_cup_manipulator_config(
             urdf_path="model_using_onshape_to_robot/cup_manipulator/cup_manipulator_obj_natural_order.urdf", 
-            joint_angles=(np.deg2rad(-10.0), np.deg2rad(20.0)),  # Initial config: q1=-10°, q2=20°
+            joint_angles={
+                'link1_base': np.deg2rad(-10.0),   # q1: Base to link1
+                'link2_link1': np.deg2rad(20.0),   # q2: Link1 to link2
+            },
             damping=(0.1, 0.1),
         )
         #Initialize manipulator and load URDF into plant
@@ -3986,8 +4145,11 @@ def main():
         
         # Calculate EE position at configured joint angles
         temp_context = plant.CreateDefaultContext()
-        manipulator.set_positions_user_order(plant, temp_context, initial_q)
-        ee_pos_3d = manipulator.CalcPosition(plant, temp_context)
+        manipulator.set_positions_user_order(plant, temp_context, {
+            "link1_base": initial_q[0],
+            "link2_link1": initial_q[1],
+        })
+        ee_pos_3d = manipulator.get_end_effector_position(plant, temp_context)
         
         # Use actual 3D position from manipulator EE
         # Cart state: [x, y, α, β] where x,y are from EE's X,Z coordinates in world frame
@@ -4091,7 +4253,10 @@ def main():
         
         manipulator_config = create_cup_manipulator_config(
             urdf_path="model_using_onshape_to_robot/cup_manipulator2/cup_manipulator_obj_right_frame.urdf", 
-            joint_angles=(np.deg2rad(-10.0), np.deg2rad(20.0)),  # Initial config: q1=-10°, q2=20°
+            joint_angles={
+                'link1_base': np.deg2rad(0.0),     # q1: Base to link1
+                'link2_link1': np.deg2rad(20.0),   # q2: Link1 to link2
+            },
             damping=(0.1, 0.1),
         )
         #Initialize manipulator and load URDF into plant
@@ -4106,6 +4271,7 @@ def main():
         manipulator.add_joint_actuators(plant)
         manipulator.add_end_effector_frame(plant)
         print(colored(f"✓ End-effector frame '{manipulator.EE_FRAME_NAME}' added to manipulator", "green"))
+        print(colored(f"  - EE_OFFSET (relative to link2): {manipulator.EE_OFFSET}", "cyan"))
         
         print(colored(f"✓ Manipulator loaded (ModelInstance: {manipulator.model_instance})", "green"))
         print(colored(f"  - State dimension: 4 (2 positions + 2 velocities)", "cyan"))
@@ -4113,7 +4279,7 @@ def main():
         
         
         # Determine z-offset for cart-pendulum based on URDF joint origin
-        z_offset_from_urdf = 1.17625  # meters, from link1_base joint origin
+        z_offset_from_urdf = 1.248125  # meters, from link1_base joint origin
         print(colored(f"📍 Using z-offset from URDF: {z_offset_from_urdf:.5f} m", "cyan"))
         
 
@@ -4129,51 +4295,55 @@ def main():
         
         
         plant.Finalize()  # Must be called before adding to diagram
+
         print(colored(f"\n✓ Plant finalized with {plant.num_positions()} total positions, "
                     f"{plant.num_velocities()} total velocities", "green"))
         
-        # Add plant to builder BEFORE passing to run function
-        builder.AddSystem(plant)
+        # Extract config angles for display
+        config_q1 = manipulator_config.joint_configs["link1_base"].position
+        config_q2 = manipulator_config.joint_configs["link2_link1"].position
         
-        # Connect plant to scene graph
-        builder.Connect(
-            plant.get_geometry_pose_output_port(),
-            scene_graph.get_source_pose_port(plant.get_source_id())
-        )
-        builder.Connect(
-            scene_graph.get_query_output_port(),
-            plant.get_geometry_query_input_port()
-        )
+        # Calculate EE position at config angles for display
+        temp_context = plant.CreateDefaultContext()
+        manipulator.set_positions_user_order(plant, temp_context, {
+            "link1_base": config_q1,
+            "link2_link1": config_q2,
+        })
+        ee_world_pos_post_finalize = manipulator.get_end_effector_position(plant, temp_context)
+        
+        print(colored(f"  - EE position in world frame (at config q1={np.rad2deg(config_q1):.1f}°, q2={np.rad2deg(config_q2):.1f}°): {ee_world_pos_post_finalize}", "cyan"))
+        print(colored(f"  - Meshcat will be available at: {meshcat.web_url()}", "cyan"))
         
         
         # ========================================================================
         # CONFIGURE INITIAL STATE
         # ========================================================================
-        # Initial configuration in natural [q1, q2] order
-        initial_q = np.array([np.deg2rad(-10.0), np.deg2rad(20.0)])  # [q1, q2]
+        # Use manipulator config angles for initial cart position calculation
+        manipulator_initial_q = np.array([
+            manipulator_config.joint_configs["link1_base"].position,     # q1
+            manipulator_config.joint_configs["link2_link1"].position,    # q2
+        ])
         
         # Calculate EE position at configured joint angles
         temp_context = plant.CreateDefaultContext()
-        manipulator.set_positions_user_order(plant, temp_context, initial_q)
-        ee_pos_init = manipulator.CalcPosition(plant, temp_context)
-        # For cup_manipulator_obj_right_frame.urdf (orientation=[0,0,0]):
-        # Manipulator operates in X-Y plane (planar manipulator on X-Y)
-        # Cart also operates in X-Y plane (prismatic joints along X and Y axes)
-        # At q1=q2=0, all frames (joints, EE, cart) are coplanar in X-Y plane
-        ee_pos_3d = ee_pos_init  # Keep full 3D coordinates [X, Y, Z] in world frame
+        manipulator.set_positions_user_order(plant, temp_context, {
+            "link1_base": manipulator_initial_q[0],
+            "link2_link1": manipulator_initial_q[1],
+        })
+        # Get world frame positions for debugging
+        ee_world_pos = manipulator.get_end_effector_position(plant, temp_context)
         
         # Define cart initial position at manipulator EE
         # Cart state: [x, y, α, β] where:
         #   - x = world X (horizontal)
         #   - y = world Y (horizontal, perpendicular to X)
         # CRITICAL: Both manipulator and cart operate in X-Y plane, so direct mapping:
-        cart_init_pos = np.array([ee_pos_3d[0], ee_pos_3d[1], 0.0, 0.0])  # [x from EE_X, y from EE_Y, α, β]
+        cart_init_pos = np.array([ee_world_pos[0], ee_world_pos[1], 0.0, 0.0])  # [x from EE_X, y from EE_Y, α, β]
         
         # Set cart position in temp context for frame visualization
         plant.SetPositions(temp_context, cart_model, cart_init_pos)
         
-        # Get world frame positions for debugging
-        ee_world_pos = manipulator.get_end_effector_position(plant, temp_context)
+        
         
         cart_body = plant.GetBodyByName("cart", cart_model)
         cart_world_pos = plant.CalcPointsPositions(
@@ -4182,8 +4352,7 @@ def main():
         
         # Print configuration summary
         print(colored(f"\n📄 Initial Configuration:", "cyan"))
-        print(colored(f"  - Manipulator: q1={np.rad2deg(initial_q[0]):.1f}°, q2={np.rad2deg(initial_q[1]):.1f}°", "cyan"))
-        print(colored(f"  - Manipulator EE: ({ee_pos_3d[0]:.3f}, {ee_pos_3d[1]:.3f}, {ee_pos_3d[2]:.3f}) m", "cyan"))
+        print(colored(f"  - Manipulator: q1={np.rad2deg(manipulator_initial_q[0]):.1f}°, q2={np.rad2deg(manipulator_initial_q[1]):.1f}°", "cyan"))
         print(colored(f"  - Cart positioned at EE: ({cart_init_pos[0]:.3f}, {cart_init_pos[1]:.3f}) m", "cyan"))
         print(colored(f"  - Pendulum hanging: α=0°, β=0°", "cyan"))
         print(colored(f"\n🌍 World Frame Positions:", "yellow", attrs=["bold"]))
@@ -4198,11 +4367,24 @@ def main():
         
         print(colored("\n🚀 Running LQR with manipulator EE trajectory tracking (computed torque)...", "cyan"))
         
+        # Add plant to the main builder (scene_graph was already added at line ~4110)
+        builder.AddSystem(plant)
+        
+        # Connect plant to scene graph
+        builder.Connect(
+            plant.get_geometry_pose_output_port(),
+            scene_graph.get_source_pose_port(plant.get_source_id())
+        )
+        builder.Connect(
+            scene_graph.get_query_output_port(),
+            plant.get_geometry_query_input_port()
+        )
+        
         # Run the LQR controller with manipulator EE tracking
         # The function will build its own diagram with all control systems
         run_lqr_manip_ee_traj_track(
             builder, plant, scene_graph, meshcat, cart_model, manipulator,
-            ee_pos_3d, physics_config, impedance_config, zft_config, muscle_config, args,
+            ee_world_pos, physics_config, impedance_config, zft_config, muscle_config, args,
             cart_x_init=cart_init_pos[0], cart_y_init=cart_init_pos[1]
         )
 
