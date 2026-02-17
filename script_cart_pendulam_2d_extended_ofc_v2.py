@@ -32,6 +32,7 @@ from matplotlib.gridspec import GridSpec
 import argparse
 import sys
 import os
+import time
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict
@@ -45,6 +46,7 @@ from pydrake.all import (
     MultibodyPlant,
     Simulator,
     VectorLogSink,
+    LogVectorOutput,
     LeafSystem,
     BasicVector,
     MeshcatVisualizer,
@@ -78,7 +80,6 @@ import sys
 sys.path.append(str(Path(__file__).parent))
 from robot_types import (
     create_cart_pendulum_config, 
-    CartPendulumConfig, 
     create_cup_manipulator_config,
     ManipulatorConfig
 )
@@ -91,12 +92,11 @@ from scipy.linalg import solve_discrete_are
 
 parser = argparse.ArgumentParser(description='2D Cart-Pendulum with Muscle Dynamics & OFC')
 parser.add_argument('--mode', type=str, 
-                    choices=['finite-horizon-lqr-for-min-effort_cart_pend_only', 
-                             'lqr-manip-ee-traj-track', 
-                             'lqr-manip-ik-track',
-                             'manip-ik-follows-cart',
-                             'scene-viz'],
-                    default='lqr-manip-ee-traj-track',
+                    choices=['scene-viz',
+                             'lqr-applied-to-cart-manip-following-cart',
+                             'lqr-applied-to-both-cart-manip'], 
+                    # default='lqr-applied-to-cart-manip-following-cart',
+                    default='lqr-applied-to-both-cart-manip',
                     # default='scene-viz',
                     help='Simulation mode')
 parser.add_argument('--duration', type=float, default=10.0, help='Simulation duration [s]')
@@ -116,22 +116,11 @@ _saved_argv = sys.argv.copy()
 sys.argv = [sys.argv[0]]  # Keep only script name
 
 # Now import CupManipulator safely
-from script_cup_manipulator_controller_ofc import CupManipulator
+# from script_cup_manipulator_controller_ofc import CupManipulator
 
 # Restore sys.argv and our parsed args
 sys.argv = _saved_argv
 args = _parsed_args
-
-# Override EE_OFFSET with exact ball position from URDF (simple_ball origin at line 93)
-# This ball is rigidly attached to link2 and moves with the manipulator
-# URDF: <origin xyz="1.2515 8.5716e-17 0.15" rpy="0 -0 0"/>
-CupManipulator.EE_OFFSET = np.array([1.2515, 0.0, 0.15])
-
-# ============================================================================
-# CONSTANTS
-# ============================================================================
-# Note: EE_OFFSET is now set from URDF simple_ball position (see above after import)
-# The ball at [1.2515, 0, 0.15] relative to link2 is the actual end-effector point
 
 # ============================================================================
 # CONFIGURATION CLASSES
@@ -146,6 +135,10 @@ class CartPendulumPhysicsConfig:
     damping_cart: float = 0.5  # Add cart damping
     damping_pendulum: float = 0.1  # Add pendulum damping to reduce oscillations
     gravity: float = 9.81
+    
+    # Initial state [x, y, α, β] - if None, will be computed from manipulator EE
+    cart_initial_position: Optional[np.ndarray] = None  # [x, y] in meters
+    pendulum_initial_angles: Optional[np.ndarray] = None  # [α, β] in radians
 
 @dataclass
 class MuscleDynamicsConfig:
@@ -204,6 +197,72 @@ class FiniteHorizonLQRConfig:
     timestep: float = 0.01  # Discretization timestep [s]
     u_limits: Optional[tuple] = None  # (u_min, u_max) for saturation
 
+@dataclass
+class SimulationConfig:
+    """
+    Configuration for simulation execution.
+    
+    Consolidates all parameters needed to set up and run a simulation,
+    including physics, control, and visualization settings.
+    """
+    # System configs
+    physics_config: CartPendulumPhysicsConfig
+    muscle_config: MuscleDynamicsConfig
+    impedance_config: ImpedanceForceConfig
+    zft_config: ZFTReferenceMassConfig
+    
+    # Manipulator setup
+    manipulator_urdf_path: str
+    manipulator_joint_angles: Dict[str, float]
+    manipulator_damping: tuple = (0.1, 0.1)
+    
+    # Simulation parameters
+    target_x: float = 0.0
+    target_y: float = 0.5
+    duration: float = 10.0
+    horizon: float = 10.0
+    
+    # Visualization
+    meshcat: Optional[object] = None
+    
+    @classmethod
+    def from_args(cls, args, physics_config, muscle_config, impedance_config, zft_config, meshcat):
+        """
+        Create SimulationConfig from command-line arguments and existing configs.
+        
+        Args:
+            args: argparse.Namespace with target_x, target_y, duration, horizon
+            physics_config: CartPendulumPhysicsConfig instance
+            muscle_config: MuscleDynamicsConfig instance
+            impedance_config: ImpedanceForceConfig instance
+            zft_config: ZFTReferenceMassConfig instance
+            meshcat: Meshcat instance
+            
+        Returns:
+            SimulationConfig instance
+        """
+        # Extract joint angles and damping from ManipulatorConfig
+        joint_angles_dict = MANIPULATOR_CONFIG.get_joint_positions_dict()
+        damping_tuple = tuple(
+            MANIPULATOR_CONFIG.joint_configs[jt].damping 
+            for jt in ['link1_base', 'link2_link1']
+        )
+        
+        return cls(
+            physics_config=physics_config,
+            muscle_config=muscle_config,
+            impedance_config=impedance_config,
+            zft_config=zft_config,
+            manipulator_urdf_path=MANIPULATOR_CONFIG.urdf_path,
+            manipulator_joint_angles=joint_angles_dict,
+            manipulator_damping=damping_tuple,
+            target_x=args.target_x,
+            target_y=args.target_y,
+            duration=args.duration,
+            horizon=args.horizon,
+            meshcat=meshcat,
+        )
+
 # Factory functions
 def create_physics_config(**kwargs):
     return CartPendulumPhysicsConfig(**kwargs)
@@ -229,6 +288,18 @@ LQR_CONFIG = create_lqr_config(
     x_goal=np.array([args.target_x, args.target_y, 0, 0, 0, 0, 0, 0, 0, 0, args.target_x, args.target_y, 0, 0]),
     horizon=args.horizon
 )
+MANIPULATOR_CONFIG = create_cup_manipulator_config(
+    urdf_path="model_using_onshape_to_robot/cup_manipulator2/cup_manipulator_obj_right_frame.urdf",
+    joint_angles={
+        'link1_base': np.deg2rad(0.0),   # q1: Base to link1
+        'link2_link1': np.deg2rad(20.0), # q2: Link1 to link2
+    },
+    damping=(0.1, 0.1),
+)
+SIMULATION_CONFIG = SimulationConfig.from_args(args, PHYSICS_CONFIG, MUSCLE_CONFIG, IMPEDANCE_CONFIG, ZFT_CONFIG, None)
+
+# Set welding mode based on selected mode
+WELD_CART_TO_MANIP_EE = True if args.mode == 'lqr-applied-to-both-cart-manip' else False      
 
 # ============================================================================
 # ROBOT BASE CLASS (ABSTRACT)
@@ -412,9 +483,7 @@ class CupManipulator(RobotBase):
     EE_RPY_LINK2 = np.array([0.0, 0.0, 0.0])       # radians (no rotation)when q1 = q2 = 0 
     EE_RPY_LINK1 = np.array([0.0, 0.0, 0.0])       # radians (no rotation)when q1 = 0 
     EE_RPY_BASE = np.array([0.0, 0.0, 0.0])       # radians (no rotation)when q1 = q2 = 0 
-
-
-    EE_FRAME_NAME = "cup_center"  # the canonical EE frame name inside Drake
+    EE_FRAME_NAME = "cup_center"  # the canonical EE frame name inside Drake 
     
     # Alias for end-effector offset (offset from link2 frame to cup center)
     # Used by IK and controllers - points to the same location as the cup_center frame
@@ -1062,6 +1131,127 @@ class CartPendulum2DExtended:
                 "pendulum_ball",
                 np.array([0.8, 0.2, 0.2, 1.0])
             )
+    
+    def build_plant_welded(self, plant: MultibodyPlant, model_instance, register_visuals: bool = True):
+        """
+        Build cart-pendulum for welded mode (no world connection).
+        
+        Creates cart body as a free body (to be welded by caller) with 2-DOF gimbal pendulum attached.
+        This avoids kinematic loops when cart is welded to manipulator EE.
+        
+        Args:
+            plant: MultibodyPlant to add bodies to
+            model_instance: Model instance index
+            register_visuals: Whether to register visual geometry
+            
+        Returns:
+            cart_body: The cart RigidBody (for welding by caller)
+        """
+        # ====================================================================
+        # CREATE CART BODY (FREE BODY - NO WORLD CONNECTION)
+        # ====================================================================
+        cart_size = 0.1
+        m_c = self.config.mass_cart
+        
+        # Cart inertia (box approximation)
+        I_c = (1/12) * m_c * cart_size**2
+        cart_inertia = SpatialInertia(
+            mass=m_c,
+            p_PScm_E=np.zeros(3),
+            G_SP_E=UnitInertia(I_c, I_c, I_c)
+        )
+        
+        self.cart_body = plant.AddRigidBody(
+            "cart",
+            model_instance,
+            cart_inertia
+        )
+        
+        # Cart visual geometry
+        if register_visuals:
+            plant.RegisterVisualGeometry(
+                self.cart_body,
+                RigidTransform(),
+                Sphere(cart_size / 2),
+                "cart_visual",
+                np.array([0.3, 0.3, 0.8, 1.0])
+            )
+        
+        # ====================================================================
+        # CREATE PENDULUM (2-DOF GIMBAL MOUNT)
+        # ====================================================================
+        m_p = self.config.mass_pendulum
+        L = self.config.length_pendulum
+        r = 0.05
+        
+        # Pitch body (intermediate gimbal)
+        pitch_inertia = SpatialInertia(
+            mass=0.001,
+            p_PScm_E=np.zeros(3),
+            G_SP_E=UnitInertia(1e-6, 1e-6, 1e-6)
+        )
+        self.pitch_body = plant.AddRigidBody(
+            "pitch_gimbal",
+            model_instance,
+            pitch_inertia
+        )
+        
+        # Pendulum body (ball at end)
+        I_p = (2/5) * m_p * r**2 + m_p * L**2
+        pendulum_inertia = SpatialInertia(
+            mass=m_p,
+            p_PScm_E=[0, 0, -L],
+            G_SP_E=UnitInertia(I_p / m_p, I_p / m_p, (2/5) * r**2)
+        )
+        self.pendulum_body = plant.AddRigidBody(
+            "pendulum",
+            model_instance,
+            pendulum_inertia
+        )
+        
+        # Pitch joint (rotation about Y-axis)
+        self.pitch_joint = plant.AddJoint(
+            RevoluteJoint(
+                name="pendulum_pitch",
+                frame_on_parent=self.cart_body.body_frame(),
+                frame_on_child=self.pitch_body.body_frame(),
+                axis=[0, 1, 0],
+                damping=self.config.damping_pendulum
+            )
+        )
+        
+        # Roll joint (rotation about X-axis)
+        self.roll_joint = plant.AddJoint(
+            RevoluteJoint(
+                name="pendulum_roll",
+                frame_on_parent=self.pitch_body.body_frame(),
+                frame_on_child=self.pendulum_body.body_frame(),
+                axis=[1, 0, 0],
+                damping=self.config.damping_pendulum
+            )
+        )
+        
+        # Pendulum visual geometry
+        if register_visuals:
+            # Rod
+            plant.RegisterVisualGeometry(
+                self.pendulum_body,
+                RigidTransform([0, 0, -L/2]),
+                Cylinder(radius=0.01, length=L),
+                "pendulum_rod",
+                np.array([0.6, 0.4, 0.2, 1.0])
+            )
+            
+            # Ball
+            plant.RegisterVisualGeometry(
+                self.pendulum_body,
+                RigidTransform([0, 0, -L]),
+                Sphere(r),
+                "pendulum_ball",
+                np.array([0.8, 0.2, 0.2, 1.0])
+            )
+        
+        return self.cart_body
 
 
 # ============================================================================
@@ -1350,6 +1540,7 @@ def build_linearized_system_2d(
     muscle_tau = muscle_config.muscle_tau
     M_cart = physics_config.mass_cart
     
+    # Need to create a temporary plant since the one we are initializing in SystemBuilder is discrete time and we want a continuous-time linearization
     # Create temporary plant for linearization
     temp_cart_config = create_cart_pendulum_config(
         cart_mass=physics_config.mass_cart,
@@ -1441,6 +1632,111 @@ def build_linearized_system_2d(
     # Assemble 14×2 B matrix
     B = np.zeros((14, 2))
     B[8:10, 0:2] = B_muscle
+    
+    return A, B
+
+
+def build_linearized_for_complete_system_2d(
+    plant: MultibodyPlant,
+    manipulator,
+    cart_model,
+    physics_config: CartPendulumPhysicsConfig,
+):
+    """
+    Build linearized system matrices for welded cart-pendulum-manipulator.
+    
+    For the welded configuration where cart is attached to manipulator EE:
+    - State: [q1, q2, α, β, q̇1, q̇2, α̇, β̇] (8D)
+      - q1, q2: Manipulator joint angles
+      - α, β: Pendulum gimbal angles (pitch, roll)
+    - Control: [τ1, τ2] (2D) - manipulator joint torques
+    
+    Uses Drake's Linearize() around equilibrium (pendulum hanging).
+    
+    Args:
+        plant: Finalized MultibodyPlant with welded system
+        manipulator: CupManipulator instance
+        cart_model: ModelInstanceIndex for cart-pendulum
+        physics_config: Physical parameters
+    
+    Returns:
+        A (8×8): State transition matrix
+        B (8×2): Control input matrix
+    """
+    from pydrake.systems.primitives import Linearize
+    
+    # Need to create a temporary plant since the one we are initializing in SystemBuilder is discrete time and we want a continuous-time linearization
+    # Create temporary plant for linearization (continuous-time, NO SceneGraph)
+    # Following same pattern as build_linearized_system_2d
+    temp_builder = DiagramBuilder()
+    temp_plant = MultibodyPlant(time_step=0.0)  # Continuous time
+    
+    # Rebuild the welded system in the temporary plant
+    # Add manipulator
+    temp_parser = Parser(temp_plant)
+    temp_manip = CupManipulator(manipulator.config, enable_visualization=False)
+    temp_manip.load_urdf_to_plant(temp_plant, temp_parser)
+    temp_manip.weld_base_to_world(temp_plant, orientation=np.array([0.0, 0.0, 0.0]))
+    temp_manip.add_joint_actuators(temp_plant)
+    temp_manip.add_end_effector_frame(temp_plant)
+    
+    # Add welded cart-pendulum
+    temp_cart_model = temp_plant.AddModelInstance("cart_pendulum")
+    temp_cart_pend = CartPendulum2DExtended(physics_config, z_offset=0.0)
+    cart_body = temp_cart_pend.build_plant_welded(temp_plant, temp_cart_model, register_visuals=False)
+    
+    # Weld cart to EE
+    ee_frame = temp_manip.get_end_effector_frame(temp_plant)
+    temp_plant.WeldFrames(
+        frame_on_parent_F=ee_frame,
+        frame_on_child_M=cart_body.body_frame(),
+        X_FM=RigidTransform()
+    )
+    
+    temp_plant.Finalize()
+    temp_builder.AddSystem(temp_plant)
+    temp_diagram = temp_builder.Build()
+    
+    # Linearize around equilibrium
+    temp_context = temp_diagram.CreateDefaultContext()
+    temp_plant_context = temp_plant.GetMyContextFromRoot(temp_context)
+    
+    # Set equilibrium: manipulator at [0°, 20°], pendulum hanging (α=0, β=0)
+    initial_q = np.array([np.deg2rad(0.0), np.deg2rad(20.0)])
+    temp_manip.set_positions_user_order(temp_plant, temp_plant_context, {
+        "link1_base": initial_q[0],
+        "link2_link1": initial_q[1],
+    })
+    
+    # Set pendulum positions (pitch = 0, roll = 0, hanging down)
+    temp_plant.SetPositions(temp_plant_context, temp_cart_model, np.array([0.0, 0.0]))
+    
+    # Set all velocities to zero
+    temp_plant.SetVelocities(temp_plant_context, np.zeros(temp_plant.num_velocities()))
+    
+    # Get input/output ports
+    # For welded mode, we only control manipulator (2 torques)
+    manip_input_port = temp_plant.get_actuation_input_port(temp_manip.model_instance)
+    state_output_port = temp_plant.get_state_output_port()
+    
+    # Set actuator inputs to zero for linearization
+    manip_input_port.FixValue(temp_plant_context, np.zeros(2))
+    
+    # Linearize using Drake
+    linear_sys = Linearize(
+        temp_plant, 
+        temp_plant_context,
+        input_port_index=manip_input_port.get_index(),
+        output_port_index=state_output_port.get_index()
+    )
+    
+    A = linear_sys.A()
+    B = linear_sys.B()
+    
+    print(colored(f"  - Linearized around: q1={np.rad2deg(initial_q[0]):.1f}°, "
+                  f"q2={np.rad2deg(initial_q[1]):.1f}°, α=0°, β=0°", "cyan"))
+    print(colored(f"  - State dimension: {A.shape[0]} (q1, q2, α, β, q̇1, q̇2, α̇, β̇)", "cyan"))
+    print(colored(f"  - Control dimension: {B.shape[1]} (τ1, τ2)", "cyan"))
     
     return A, B
 
@@ -2032,400 +2328,6 @@ class ManipulatorEEStateComputer(LeafSystem):
         
         # Output [x, y, ẋ, ẏ]
         output.SetFromVector(np.array([ee_pos[0], ee_pos[1], ee_vel[0], ee_vel[1]]))
-# ============================================================================
-# IK WRAPPER (for backward compatibility)
-# ============================================================================
-
-
-
-
-# ============================================================================
-# FINITE-HORIZON LQR CART-PENDULUM CONTROL
-# =====================ß=======================================================
-
-def run_finite_horizon_lqr_cart_pend_only(
-    builder, plant, scene_graph, meshcat, cart_model, manipulator,
-    ee_pos_init, physics_config, impedance_config, zft_config, muscle_config, args,
-    cart_x_init=None, cart_y_init=None, initial_q=None
-):
-    """
-    Build and run finite-horizon LQR control for cart-pendulum system.
-    
-    This method creates the complete control architecture:
-    - Linearizes the 14D system
-    - Creates muscle dynamics, ZFT reference, impedance force, and LQR controller
-    - Connects all systems in feedback loop
-    - Runs simulation and generates plots
-    
-    Args:
-        builder: DiagramBuilder instance
-        plant: MultibodyPlant with cart-pendulum (and optionally manipulator)
-        scene_graph: SceneGraph for visualization
-        meshcat: Meshcat visualizer instance
-        cart_model: Model instance for cart-pendulum
-        manipulator: CupManipulator instance (optional, can be None)
-        ee_pos_init: Initial end-effector position [x, y, z]
-        physics_config: CartPendulumPhysicsConfig
-        impedance_config: ImpedanceForceConfig
-        zft_config: ZFTReferenceMassConfig
-        muscle_config: MuscleDynamicsConfig
-        args: Command-line arguments
-        initial_q: Initial manipulator joint angles [q1, q2] (natural order)
-    """
-    # Linearize system
-    print(colored("\n🔧 Building linearized 14D system...", "yellow"))
-    A, B = build_linearized_system_2d(physics_config, impedance_config, zft_config, muscle_config)
-    print(colored(f"✓ System matrices: A ({A.shape}), B ({B.shape})", "green"))
-    
-    # Create muscle dynamics
-    muscle = builder.AddSystem(MuscleDynamics2D(muscle_config))
-    muscle.set_name("muscle_dynamics")
-    
-    # Create ZFT reference mass
-    zft = builder.AddSystem(ZFTReferenceMass2D(zft_config))
-    zft.set_name("zft_reference")
-    
-    # Create impedance force
-    impedance = builder.AddSystem(ImpedanceForce2D(impedance_config))
-    impedance.set_name("impedance_force")
-    
-    # Create LQR controller
-    lqr = builder.AddSystem(FiniteHorizonLQRController2D(A, B, LQR_CONFIG))
-    lqr.set_name("lqr_controller")
-    
-    # Add ZeroOrderHold to break algebraic loop
-    state_hold = builder.AddSystem(ZeroOrderHold(0.01, 14))
-    state_hold.set_name("state_hold")
-    
-    # Demux/Mux for state extraction
-    cart_state_demux = builder.AddSystem(Demultiplexer([2, 2, 2, 2]))  # [pos, ang, vel, ang_vel]
-    full_state_mux = builder.AddSystem(Multiplexer([2, 2, 2, 2, 2, 4]))  # [x,y] [α,β] [ẋ,ẏ] [α̇,β̇] [F_x,F_y] [x_ref,y_ref,ẋ_ref,ẏ_ref]
-    cart_state_mux = builder.AddSystem(Multiplexer([2, 2]))  # [x, y] + [ẋ, ẏ]
-    
-    # Connect cart-pendulum state → demux (only cart-pendulum, not manipulator)
-    builder.Connect(
-        plant.get_state_output_port(cart_model),
-        cart_state_demux.get_input_port()
-    )
-    
-    # Extract cart position and velocity
-    builder.Connect(
-        cart_state_demux.get_output_port(0),  # [x, y]
-        cart_state_mux.get_input_port(0)
-    )
-    builder.Connect(
-        cart_state_demux.get_output_port(2),  # [ẋ, ẏ]
-        cart_state_mux.get_input_port(1)
-    )
-    
-    # Connect cart state → ZFT
-    builder.Connect(
-        cart_state_mux.get_output_port(),
-        zft.get_input_port(0)
-    )
-    
-    # Connect muscle → ZFT
-    builder.Connect(
-        muscle.get_output_port(),
-        zft.get_input_port(1)
-    )
-    
-    # Connect cart state → impedance
-    builder.Connect(
-        cart_state_mux.get_output_port(),
-        impedance.get_input_port(0)
-    )
-    
-    # Connect ZFT → impedance
-    builder.Connect(
-        zft.get_output_port(),
-        impedance.get_input_port(1)
-    )
-    
-    # Connect impedance → cart-pendulum only (manipulator remains fixed)
-    builder.Connect(
-        impedance.get_output_port(),
-        plant.get_actuation_input_port(cart_model)
-    )
-    
-    # Assemble full state for LQR: [x, y, α, β, ẋ, ẏ, α̇, β̇, F_x, F_y, x_ref, y_ref, ẋ_ref, ẏ_ref]
-    builder.Connect(
-        cart_state_demux.get_output_port(0),  # [x, y]
-        full_state_mux.get_input_port(0)
-    )
-    builder.Connect(
-        cart_state_demux.get_output_port(1),  # [α, β]
-        full_state_mux.get_input_port(1)
-    )
-    builder.Connect(
-        cart_state_demux.get_output_port(2),  # [ẋ, ẏ]
-        full_state_mux.get_input_port(2)
-    )
-    builder.Connect(
-        cart_state_demux.get_output_port(3),  # [α̇, β̇]
-        full_state_mux.get_input_port(3)
-    )
-    builder.Connect(
-        muscle.get_output_port(),  # [F_x, F_y]
-        full_state_mux.get_input_port(4)
-    )
-    builder.Connect(
-        zft.get_output_port(),  # [x_ref, y_ref, ẋ_ref, ẏ_ref]
-        full_state_mux.get_input_port(5)
-    )
-    
-    # Connect state → LQR → muscle (with hold to break algebraic loop)
-    builder.Connect(
-        full_state_mux.get_output_port(),
-        state_hold.get_input_port()
-    )
-    builder.Connect(
-        state_hold.get_output_port(),
-        lqr.get_input_port()
-    )
-    builder.Connect(
-        lqr.get_output_port(),
-        muscle.get_input_port()
-    )
-    
-    # Add loggers
-    state_logger = builder.AddSystem(VectorLogSink(8))
-    state_logger.set_name("state_logger")
-    builder.Connect(plant.get_state_output_port(cart_model), state_logger.get_input_port())
-    
-    ref_logger = builder.AddSystem(VectorLogSink(4))
-    ref_logger.set_name("ref_logger")
-    builder.Connect(zft.get_output_port(), ref_logger.get_input_port())
-    
-    force_logger = builder.AddSystem(VectorLogSink(2))
-    force_logger.set_name("force_logger")
-    builder.Connect(muscle.get_output_port(), force_logger.get_input_port())
-    
-    impedance_logger = builder.AddSystem(VectorLogSink(2))
-    impedance_logger.set_name("impedance_logger")
-    builder.Connect(impedance.get_output_port(), impedance_logger.get_input_port())
-    
-    # Add visualization
-    visualizer = MeshcatVisualizer.AddToBuilder(builder, scene_graph, meshcat)
-    
-    # Build diagram
-    diagram = builder.Build()
-    simulator = Simulator(diagram)
-    context = simulator.get_mutable_context()
-    
-    # Get plant context
-    plant_context = plant.GetMyMutableContextFromRoot(context)
-    
-    # ========================================================================
-    # VISUALIZATION STAGE 1: Default positions (all zeros)
-    # ========================================================================
-    print(colored("\n📸 Visualizing default configuration (zeros)...", "cyan"))
-    diagram.ForcedPublish(context)
-    print(colored(f"✓ View at: {meshcat.web_url()}", "green"))
-    
-    # ========================================================================
-    # SET INITIAL STATE
-    # ========================================================================
-    # Set manipulator joint angles (fixed position) if manipulator is provided
-    if manipulator is not None:
-        # initial_q is now in natural [q1, q2] order
-        if initial_q is None:
-            initial_q = np.array([np.deg2rad(-10.0), np.deg2rad(20.0)])  # [q1, q2]
-        
-        manipulator.set_positions_user_order(plant, plant_context, {
-            "link1_base": initial_q[0],
-            "link2_link1": initial_q[1],
-        })
-        manipulator.set_velocities_user_order(plant, plant_context, {
-            "link1_base": 0.0,
-            "link2_link1": 0.0,
-        })
-    
-    # Set cart-pendulum state
-    # If manipulator exists and no cart position override: use EE position
-    # Otherwise: use provided cart_x_init, cart_y_init (from command-line args)
-    if manipulator is not None and cart_x_init is None and cart_y_init is None:
-        # Use EE position when manipulator exists and no override
-        cart_x = ee_pos_init[0]
-        cart_y = ee_pos_init[1]
-    else:
-        # Use command-line arguments or defaults
-        cart_x = cart_x_init if cart_x_init is not None else 0.0
-        cart_y = cart_y_init if cart_y_init is not None else 0.0
-    cart_pendulum_positions = np.array([
-        cart_x, cart_y,  # Cart at specified or EE x,y
-        0.0, 0.0,        # Pendulum hanging down
-    ])
-    plant.SetPositions(plant_context, cart_model, cart_pendulum_positions)
-    plant.SetVelocities(plant_context, cart_model, np.zeros(4))
-    
-    # ========================================================================
-    # VISUALIZATION STAGE 2: Configured initial positions
-    # ========================================================================
-    print(colored("\n📸 Visualizing configured initial state...", "cyan"))
-    if manipulator is not None:
-        print(colored(f"  - Manipulator: q1={np.rad2deg(initial_q[1]):.1f}°, q2={np.rad2deg(initial_q[0]):.1f}°", "cyan"))
-    print(colored(f"  - Cart: ({cart_x:.3f}, {cart_y:.3f}) m", "cyan"))
-    print(colored(f"  - Pendulum: α=0°, β=0° (hanging)", "cyan"))
-    diagram.ForcedPublish(context)
-    print(colored(f"✓ Configured state visible in Meshcat", "green"))
-    
-    # Start recording for simulation
-    visualizer.StartRecording()
-    
-    print(colored("\n🚀 Starting simulation...", "cyan"))
-    simulator.set_target_realtime_rate(1.0)
-    simulator.AdvanceTo(args.duration)
-    
-    visualizer.PublishRecording()
-    print(colored(f"🎬 Animation: {meshcat.web_url()}\n", "green", attrs=["bold"]))
-    
-    # Extract data
-    state_log = state_logger.FindLog(context)
-    ref_log = ref_logger.FindLog(context)
-    force_log = force_logger.FindLog(context)
-    impedance_log = impedance_logger.FindLog(context)
-    
-    t = state_log.sample_times()
-    state_data = state_log.data()
-    ref_data = ref_log.data()
-    force_data = force_log.data()
-    impedance_data = impedance_log.data()
-    
-    # Plot results
-    print(colored("📈 Generating plots...", "yellow"))
-    
-    fig = plt.figure(figsize=(15, 10))
-    gs = GridSpec(3, 3, figure=fig)
-    
-    # Cart trajectory
-    ax1 = fig.add_subplot(gs[0, 0])
-    ax1.plot(t, state_data[0, :], 'b-', label='x (actual)')
-    ax1.plot(t, ref_data[0, :], 'r--', label='x_ref')
-    ax1.axhline(args.target_x, color='g', linestyle=':', label='target')
-    ax1.set_xlabel('Time [s]')
-    ax1.set_ylabel('X Position [m]')
-    ax1.legend()
-    ax1.grid(True)
-    
-    ax2 = fig.add_subplot(gs[0, 1])
-    ax2.plot(t, state_data[1, :], 'b-', label='y (actual)')
-    ax2.plot(t, ref_data[1, :], 'r--', label='y_ref')
-    ax2.axhline(args.target_y, color='g', linestyle=':', label='target')
-    ax2.set_xlabel('Time [s]')
-    ax2.set_ylabel('Y Position [m]')
-    ax2.legend()
-    ax2.grid(True)
-    
-    # 2D trajectory
-    ax3 = fig.add_subplot(gs[0, 2])
-    ax3.plot(state_data[0, :], state_data[1, :], 'b-', label='actual')
-    ax3.plot(ref_data[0, :], ref_data[1, :], 'r--', label='reference')
-    ax3.plot(args.target_x, args.target_y, 'g*', markersize=15, label='target')
-    ax3.plot(state_data[0, 0], state_data[1, 0], 'ko', markersize=8, label='start')
-    ax3.set_xlabel('X [m]')
-    ax3.set_ylabel('Y [m]')
-    ax3.legend()
-    ax3.grid(True)
-    ax3.axis('equal')
-    
-    # Pendulum angles
-    ax4 = fig.add_subplot(gs[1, 0])
-    ax4.plot(t, np.rad2deg(state_data[2, :]), 'b-', label='pitch (α)')
-    ax4.set_xlabel('Time [s]')
-    ax4.set_ylabel('Pitch Angle [deg]')
-    ax4.legend()
-    ax4.grid(True)
-    
-    ax5 = fig.add_subplot(gs[1, 1])
-    ax5.plot(t, np.rad2deg(state_data[3, :]), 'r-', label='roll (β)')
-    ax5.set_xlabel('Time [s]')
-    ax5.set_ylabel('Roll Angle [deg]')
-    ax5.legend()
-    ax5.grid(True)
-    
-    # Velocities
-    ax6 = fig.add_subplot(gs[1, 2])
-    ax6.plot(t, state_data[4, :], 'b-', label='ẋ')
-    ax6.plot(t, state_data[5, :], 'r-', label='ẏ')
-    ax6.plot(t, ref_data[2, :], 'b--', alpha=0.5, label='ẋ_ref')
-    ax6.plot(t, ref_data[3, :], 'r--', alpha=0.5, label='ẏ_ref')
-    ax6.set_xlabel('Time [s]')
-    ax6.set_ylabel('Velocity [m/s]')
-    ax6.legend()
-    ax6.grid(True)
-    
-    # Forces (Muscle and Impedance)
-    ax7 = fig.add_subplot(gs[2, 0])
-    ax7.plot(t, force_data[0, :], 'b-', label='F_x (muscle)', linewidth=2)
-    ax7.plot(t, impedance_data[0, :], 'c--', label='F_x (impedance)', linewidth=1.5, alpha=0.7)
-    ax7.set_xlabel('Time [s]')
-    ax7.set_ylabel('Force X [N]')
-    ax7.legend()
-    ax7.grid(True)
-    
-    ax8 = fig.add_subplot(gs[2, 1])
-    ax8.plot(t, force_data[1, :], 'r-', label='F_y (muscle)', linewidth=2)
-    ax8.plot(t, impedance_data[1, :], 'm--', label='F_y (impedance)', linewidth=1.5, alpha=0.7)
-    ax8.set_xlabel('Time [s]')
-    ax8.set_ylabel('Force Y [N]')
-    ax8.legend()
-    ax8.grid(True)
-    
-    # Angular velocities
-    ax9 = fig.add_subplot(gs[2, 2])
-    ax9.plot(t, np.rad2deg(state_data[6, :]), 'b-', label='α̇')
-    ax9.plot(t, np.rad2deg(state_data[7, :]), 'r-', label='β̇')
-    ax9.set_xlabel('Time [s]')
-    ax9.set_ylabel('Angular Velocity [deg/s]')
-    ax9.legend()
-    ax9.grid(True)
-    
-    plt.tight_layout()
-    
-    # Save plots
-    plot_path = 'plots/cart_pendulum_2d_extended_results.png'
-    plt.savefig(plot_path, dpi=150, bbox_inches='tight')
-    print(colored(f"✓ Plots saved to {plot_path}", "green"))
-    
-    # Display plots (blocking mode)
-    print(colored("📊 Displaying plots... (close window to continue)", "yellow"))
-    plt.show(block=True)
-    
-    # Save cart position and velocity to CSV
-    print(colored("\n💾 Saving cart data to CSV...", "yellow"))
-    import csv
-    from pathlib import Path
-    
-    csv_dir = Path('data')
-    csv_dir.mkdir(exist_ok=True)
-    
-    csv_filename = csv_dir / 'cart_position_velocity.csv'
-    
-    with open(csv_filename, 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        # Write header
-        writer.writerow(['time_s', 'x_m', 'y_m', 'vx_m_s', 'vy_m_s'])
-        
-        # Write data rows
-        for i in range(len(t)):
-            writer.writerow([
-                f'{t[i]:.6f}',           # time [s]
-                f'{state_data[0, i]:.6f}',  # x position [m]
-                f'{state_data[1, i]:.6f}',  # y position [m]
-                f'{state_data[4, i]:.6f}',  # x velocity [m/s]
-                f'{state_data[5, i]:.6f}',  # y velocity [m/s]
-            ])
-    
-    print(colored(f"✓ Cart data saved to {csv_filename}", "green"))
-    print(colored(f"  {len(t)} samples written", "cyan"))
-    
-    print(colored("\n" + "="*80, "green"))
-    print(colored("✓ Simulation Complete!", "green", attrs=["bold"]))
-    print(colored("="*80 + "\n", "green"))
-
-
-
 
 
 # ============================================================================
@@ -2828,580 +2730,31 @@ def plot_frames_top_view(plant, context, manipulator, cart_model, title="Frame O
 
 
 # ============================================================================
-# STUB FUNCTIONS FOR FUTURE IMPLEMENTATION
+# PLOTTING FUNCTION
 # ============================================================================
 
-def run_lqr_manip_ee_traj_track(
-        builder, plant, scene_graph, meshcat, cart_model, manipulator,
-    ee_pos_init, physics_config, impedance_config, zft_config, muscle_config, args,
-    cart_x_init=None, cart_y_init=None
-    ):
+def plot_lqr_manip_ee_traj_track_results(t, state_data, ref_data, cart_traj_data, 
+                                         ee_positions, ee_velocities, force_data, 
+                                         impedance_data, manip_state_data, 
+                                         manip_desired_state_data, manip_js_torque_data, config):
     """
-    LQR control for cart-pendulum with manipulator end-effector trajectory tracking.
+    Generate comprehensive plots for LQR manipulator end-effector trajectory tracking.
     
-    System Architecture:
-    - Cart-pendulum: Controlled by LQR with muscle dynamics and ZFT reference
-    - Manipulator: Tracks cart position using inverse kinematics
-    
-    Control Flow:
-    1. Cart-pendulum state → LQR → muscle dynamics → impedance force → cart
-    2. Cart position → IK → manipulator joint angles
+    Args:
+        t: Time vector
+        state_data: Cart-pendulum state [x, y, α, β, ẋ, ẏ, α̇, β̇]
+        ref_data: ZFT reference state [x_ref, y_ref, ẋ_ref, ẏ_ref]
+        cart_traj_data: Cart trajectory sent to manipulator [x, y, ẋ, ẏ]
+        ee_positions: End-effector positions [x_EE, y_EE]
+        ee_velocities: End-effector velocities [ẋ_EE, ẏ_EE]
+        force_data: Muscle forces [F_x, F_y]
+        impedance_data: Impedance forces [F_x_imp, F_y_imp]
+        manip_state_data: Manipulator state [q1, q2, q̇1, q̇2]
+        manip_desired_state_data: Desired manipulator state from IK [q1_d, q2_d, q̇1_d, q̇2_d]
+        manip_js_torque_data: Joint-space controller torques [τ1, τ2]
+        config: SimulationConfig with target_x, target_y attributes
+        args: Command-line arguments (target_x, target_y)
     """
-    
-    # Linearize system
-    print(colored("\n🔧 Building linearized 14D system...", "yellow"))
-    A, B = build_linearized_system_2d(physics_config, impedance_config, zft_config, muscle_config)
-    print(colored(f"✓ System matrices: A ({A.shape}), B ({B.shape})", "green"))
-    
-    # Create muscle dynamics
-    muscle = builder.AddSystem(MuscleDynamics2D(muscle_config))
-    muscle.set_name("muscle_dynamics")
-    
-    # Create ZFT reference mass
-    zft = builder.AddSystem(ZFTReferenceMass2D(zft_config))
-    zft.set_name("zft_reference")
-    
-    # Create impedance force
-    impedance = builder.AddSystem(ImpedanceForce2D(impedance_config))
-    impedance.set_name("impedance_force")
-    
-    # Create LQR controller
-    lqr = builder.AddSystem(FiniteHorizonLQRController2D(A, B, LQR_CONFIG))
-    lqr.set_name("lqr_controller")
-    
-    # Add ZeroOrderHold to break algebraic loop
-    state_hold = builder.AddSystem(ZeroOrderHold(0.01, 14))
-    state_hold.set_name("state_hold")
-    
-    # Demux/Mux for state extraction
-    cart_state_demux = builder.AddSystem(Demultiplexer([2, 2, 2, 2]))  # [pos, ang, vel, ang_vel]
-    full_state_mux = builder.AddSystem(Multiplexer([2, 2, 2, 2, 2, 4]))  # [x,y] [α,β] [ẋ,ẏ] [α̇,β̇] [F_x,F_y] [x_ref,y_ref,ẋ_ref,ẏ_ref]
-    cart_state_mux = builder.AddSystem(Multiplexer([2, 2]))  # [x, y] + [ẋ, ẏ]
-    
-    # ========================================================================
-    # STATE EXTRACTION FROM PLANT
-    # ========================================================================
-    # Cart-pendulum state → demultiplexer to extract individual components
-    # Plant output: [x, y, α, β, ẋ, ẏ, α̇, β̇] (8D)
-    # Demux splits into: [x,y], [α,β], [ẋ,ẏ], [α̇,β̇]
-    builder.Connect(
-        plant.get_state_output_port(cart_model),  # Cart-pendulum state (8D)
-        cart_state_demux.get_input_port()         # → demux into 4 ports
-    )
-    
-    # ========================================================================
-    # CART STATE MUX (POSITION + VELOCITY)
-    # ========================================================================
-    # Combine cart position and velocity for ZFT and impedance blocks
-    # This creates [x, y, ẋ, ẏ] (4D) from demuxed components
-    
-    # Extract cart position [x, y]
-    builder.Connect(
-        cart_state_demux.get_output_port(0),  # [x, y] from demux port 0
-        cart_state_mux.get_input_port(0)      # → cart_state mux port 0
-    )
-    
-    # Extract cart velocity [ẋ, ẏ]
-    builder.Connect(
-        cart_state_demux.get_output_port(2),  # [ẋ, ẏ] from demux port 2
-        cart_state_mux.get_input_port(1)      # → cart_state mux port 1
-    )
-    
-    # ========================================================================
-    # ZFT (ZERO FORCE TRAJECTORY) REFERENCE MASS
-    # ========================================================================
-    # The ZFT block simulates a virtual mass connected to the cart via impedance
-    # Dynamics: M * ẍ_ref = K*(x - x_ref) + D*(ẋ - ẋ_ref) + F_muscle
-    # This provides a smooth, filtered reference trajectory
-    
-    # Input 0: Cart state [x, y, ẋ, ẏ]
-    # The cart position and velocity drive the reference mass dynamics
-    builder.Connect(
-        cart_state_mux.get_output_port(),  # [x, y, ẋ, ẏ] cart state
-        zft.get_input_port(0)              # → ZFT cart state input
-    )
-    
-    # Input 1: Muscle forces [F_x, F_y]
-    # Muscle forces also affect the reference mass (feedforward coupling)
-    builder.Connect(
-        muscle.get_output_port(),  # [F_x, F_y] from muscle dynamics
-        zft.get_input_port(1)      # → ZFT force input
-    )
-    
-    # ========================================================================
-    # IMPEDANCE FORCE COMPUTATION
-    # ========================================================================
-    # Computes: F_imp = K_imp*(r_ref - r) + D_imp*(ṙ_ref - ṙ)
-    # This is the actual force applied to the cart-pendulum system
-    
-    # Input 0: Cart state [x, y, ẋ, ẏ]
-    builder.Connect(
-        cart_state_mux.get_output_port(),  # [x, y, ẋ, ẏ] cart state
-        impedance.get_input_port(0)        # → impedance cart state input
-    )
-    
-    # Input 1: ZFT reference state [x_ref, y_ref, ẋ_ref, ẏ_ref]
-    builder.Connect(
-        zft.get_output_port(),       # [x_ref, y_ref, ẋ_ref, ẏ_ref] from ZFT
-        impedance.get_input_port(1)  # → impedance reference input
-    )
-    
-    # ========================================================================
-    # ACTUATION CONNECTION
-    # ========================================================================
-    # Connect impedance force → cart-pendulum actuators
-    # The impedance force F_imp = K*(r_ref - r) + D*(ṙ_ref - ṙ) is computed
-    # from the ZFT reference mass and cart positions/velocities.
-    # This force is applied ONLY to the cart-pendulum system, NOT the manipulator.
-    # The manipulator remains at its fixed initial configuration.
-    builder.Connect(
-        impedance.get_output_port(),  # [F_x, F_y] impedance force
-        plant.get_actuation_input_port(cart_model)  # Cart-pendulum actuation port
-    )
-    
-    # ========================================================================
-    # FULL STATE ASSEMBLY FOR LQR CONTROLLER
-    # ========================================================================
-    # The LQR controller needs the complete 14D state vector:
-    # [x, y, α, β, ẋ, ẏ, α̇, β̇, F_x, F_y, x_ref, y_ref, ẋ_ref, ẏ_ref]
-    #
-    # This state combines:
-    # - Cart-pendulum mechanical state (8D): positions, angles, velocities
-    # - Muscle force state (2D): current muscle forces
-    # - ZFT reference state (4D): reference mass position and velocity
-    #
-    # The state is assembled using a Multiplexer with 6 input ports
-    
-    # Port 0: Cart position [x, y]
-    # Extract from demultiplexed cart-pendulum state (positions)
-    builder.Connect(
-        cart_state_demux.get_output_port(0),  # [x, y] cart position
-        full_state_mux.get_input_port(0)      # → LQR state[0:2]
-    )
-    
-    # Port 1: Pendulum angles [α, β]
-    # Extract from demultiplexed cart-pendulum state (angles)
-    # α = pitch angle, β = roll angle (gimbal representation)
-    builder.Connect(
-        cart_state_demux.get_output_port(1),  # [α, β] pendulum angles
-        full_state_mux.get_input_port(1)      # → LQR state[2:4]
-    )
-    
-    # Port 2: Cart velocity [ẋ, ẏ]
-    # Extract from demultiplexed cart-pendulum state (velocities)
-    builder.Connect(
-        cart_state_demux.get_output_port(2),  # [ẋ, ẏ] cart velocity
-        full_state_mux.get_input_port(2)      # → LQR state[4:6]
-    )
-    
-    # Port 3: Pendulum angular velocity [α̇, β̇]
-    # Extract from demultiplexed cart-pendulum state (angular velocities)
-    builder.Connect(
-        cart_state_demux.get_output_port(3),  # [α̇, β̇] pendulum angular velocity
-        full_state_mux.get_input_port(3)      # → LQR state[6:8]
-    )
-    
-    # Port 4: Muscle forces [F_x, F_y]
-    # These are the state variables of the muscle dynamics system
-    # Muscle dynamics: Ḟ = (-F + u) / τ where u is neural command from LQR
-    builder.Connect(
-        muscle.get_output_port(),       # [F_x, F_y] muscle force state
-        full_state_mux.get_input_port(4)  # → LQR state[8:10]
-    )
-    
-    # Port 5: ZFT reference state [x_ref, y_ref, ẋ_ref, ẏ_ref]
-    # The ZFT (Zero Force Trajectory) reference mass tracks the cart with
-    # impedance coupling. This provides a filtered reference trajectory.
-    builder.Connect(
-        zft.get_output_port(),          # [x_ref, y_ref, ẋ_ref, ẏ_ref] ZFT state
-        full_state_mux.get_input_port(5)  # → LQR state[10:14]
-    )
-    
-    # ========================================================================
-    # CONTROL LOOP: LQR → MUSCLE DYNAMICS
-    # ========================================================================
-    # This forms the main control feedback loop with algebraic loop prevention
-    #
-    # Flow: state → hold → LQR → muscle → (back to state via ZFT/impedance)
-    #
-    # ZeroOrderHold breaks the algebraic loop by introducing a one-sample delay
-    # This prevents circular dependencies in the diagram evaluation
-    
-    # Step 1: Full state → ZeroOrderHold (breaks algebraic loop)
-    # The hold samples state at 100Hz (dt=0.01s) and holds until next sample
-    builder.Connect(
-        full_state_mux.get_output_port(),  # [14D] complete system state
-        state_hold.get_input_port()        # → hold (breaks algebraic loop)
-    )
-    
-    # Step 2: Held state → LQR controller
-    # LQR computes optimal neural command: u = -K(t) * (x - x_goal)
-    # Uses time-varying gain K(t) from backward Riccati recursion
-    builder.Connect(
-        state_hold.get_output_port(),  # [14D] delayed state
-        lqr.get_input_port()           # → LQR controller
-    )
-    
-    # Step 3: LQR command → Muscle dynamics
-    # LQR outputs neural command u ∈ ℝ² which drives muscle dynamics
-    # Muscle acts as a low-pass filter: Ḟ = (-F + u) / τ
-    # This models the delay between neural activation and force production
-    builder.Connect(
-        lqr.get_output_port(),   # [u_x, u_y] neural command from LQR
-        muscle.get_input_port()  # → muscle dynamics input
-    )
-    
-    # ========================================================================
-    # MANIPULATOR COMPUTED TORQUE CONTROLLER
-    # ========================================================================
-    # Create a computed torque controller for the manipulator
-    # The manipulator end-effector will track the cart position
-    
-    # Controller with high gains for tight tracking
-    # manip_controller = builder.AddSystem(
-    #     ComputedTorqueEEController(manipulator, plant, Kp=200.0, Kd=60.0, tau_max=100.0)
-    # )
-    # manip_controller.set_name("manipulator_controller")
-
-    # Add joint-space computed torque controller
-    manip_js_controller = builder.AddSystem(
-        ComputedTorqueJointSpaceController(manipulator, plant, Kp=200.0, Kd=60.0, tau_max=100.0)
-    )
-    manip_js_controller.set_name("manipulator_js_controller")
-    
-    # IK solver for desired joint angles (for comparison/plotting)
-    manip_ik_solver = builder.AddSystem(
-        ManipulatorIKDesiredAngles(manipulator, plant)
-    )
-    manip_ik_solver.set_name("manipulator_ik_solver")
-    
-    # Connect cart state to IK solver
-    builder.Connect(
-        cart_state_mux.get_output_port(),  # [x, y, ẋ, ẏ] cart state
-        manip_ik_solver.get_input_port(0)  # → IK solver input (desired trajectory)
-    )
-    
-    # Connect plant state to IK solver
-    builder.Connect(
-        plant.get_state_output_port(),  # full plant state
-        manip_ik_solver.get_input_port(1)  # → IK solver input (current state)
-    )
-    
-    # Connect cart state directly to controller desired trajectory
-    # Cart state [x, y, ẋ, ẏ] is exactly what the controller needs
-    # builder.Connect(
-    #     cart_state_mux.get_output_port(),  # [x, y, ẋ, ẏ] cart state
-    #     manip_controller.get_input_port(0)  # → controller desired trajectory
-    # )
-    # 
-    # # Connect manipulator state to controller input 1
-    # builder.Connect(
-    #     plant.get_state_output_port(manipulator.model_instance),  # [q2, q1, q̇2, q̇1] manipulator state (Drake GetJointIndices order!)
-    #     manip_controller.get_input_port(1)                        # → controller manipulator state
-    # )
-    
-    # Connect controller output to manipulator actuation
-    builder.Connect(
-        manip_js_controller.get_output_port(),                       # [τ1, τ2] joint torques (natural order)
-        plant.get_actuation_input_port(manipulator.model_instance)  # → manipulator actuators
-    )
-    
-    # Add loggers
-    state_logger = builder.AddSystem(VectorLogSink(8))
-    state_logger.set_name("state_logger")
-    builder.Connect(plant.get_state_output_port(cart_model), state_logger.get_input_port())
-     
-    ref_logger = builder.AddSystem(VectorLogSink(4))
-    ref_logger.set_name("ref_logger")
-    builder.Connect(zft.get_output_port(), ref_logger.get_input_port())
-    
-    force_logger = builder.AddSystem(VectorLogSink(2))
-    force_logger.set_name("force_logger")
-    builder.Connect(muscle.get_output_port(), force_logger.get_input_port())
-    
-    impedance_logger = builder.AddSystem(VectorLogSink(2))
-    impedance_logger.set_name("impedance_logger")
-    builder.Connect(impedance.get_output_port(), impedance_logger.get_input_port())
-    
-    # Note: manipulator state logger is now connected after state converter (see below)
-    
-    # Add logger for cart trajectory being sent to manipulator controller (directly from cart_state_mux)
-    cart_traj_logger = builder.AddSystem(VectorLogSink(4))
-    cart_traj_logger.set_name("cart_traj_logger")
-    builder.Connect(cart_state_mux.get_output_port(), cart_traj_logger.get_input_port())
-    
-    # Add logger for manipulator torques
-    # manip_torque_logger = builder.AddSystem(VectorLogSink(2))
-    # manip_torque_logger.set_name("manip_torque_logger")
-    # builder.Connect(manip_controller.get_output_port(), manip_torque_logger.get_input_port())
-    
-    # Add logger for desired joint state from IK [q1, q2, q̇1, q̇2]
-    manip_desired_state_logger = builder.AddSystem(VectorLogSink(4))
-    manip_desired_state_logger.set_name("manip_desired_state_logger")
-    builder.Connect(manip_ik_solver.get_output_port(), manip_desired_state_logger.get_input_port())
-    
-   
-    
-    # Connect desired joint state from IK to joint-space controller
-    builder.Connect(
-        manip_ik_solver.get_output_port(),  # [q1_d, q2_d, q̇1_d, q̇2_d]
-        manip_js_controller.get_input_port(0)  # → JS controller desired state
-    )
-    
-    # Connect plant state directly to joint-space controller (natural URDF ordering)
-    builder.Connect(
-        plant.get_state_output_port(manipulator.model_instance),  # [q1, q2, q̇1, q̇2] natural order
-        manip_js_controller.get_input_port(1)  # → JS controller current state
-    )
-    
-    # Add logger for joint-space controller torques
-    manip_js_torque_logger = builder.AddSystem(VectorLogSink(2))
-    manip_js_torque_logger.set_name("manip_js_torque_logger")
-    builder.Connect(manip_js_controller.get_output_port(), manip_js_torque_logger.get_input_port())
-    
-    # Log manipulator state directly from plant (natural URDF ordering)
-    manip_state_logger_natural = builder.AddSystem(VectorLogSink(4))
-    manip_state_logger_natural.set_name("manip_state_logger")
-    builder.Connect(plant.get_state_output_port(manipulator.model_instance), manip_state_logger_natural.get_input_port())
-    
-    
-    
-    # Add EE state computer and logger
-    ee_state_computer = builder.AddSystem(ManipulatorEEStateComputer(plant, manipulator))
-    ee_state_computer.set_name("ee_state_computer")
-    
-    builder.Connect(
-        plant.get_state_output_port(manipulator.model_instance),
-        ee_state_computer.get_input_port(0)
-    )# Connect full plant state to EE state computer for accurate EE position calculation
-    
-    ee_state_logger = builder.AddSystem(VectorLogSink(4))
-    ee_state_logger.set_name("ee_state_logger")
-    builder.Connect(ee_state_computer.get_output_port(), ee_state_logger.get_input_port())
-    
-    # Add visualization
-    visualizer = MeshcatVisualizer.AddToBuilder(builder, scene_graph, meshcat)
-    
-    # Create frame list for updater (will be populated after plant is finalized)
-    # We'll create it with a temporary context, then add updater system
-    temp_context = plant.CreateDefaultContext()
-    frame_list = []
-    from pydrake.multibody.tree import FrameIndex
-    for i in range(plant.num_frames()):
-        frame = plant.get_frame(FrameIndex(i))
-        frame_name = frame.name()
-        if frame_name == "world":
-            continue
-        if "link" in frame_name.lower() or "cup_center" in frame_name.lower():
-            length = 0.15
-        elif "cart" in frame_name.lower():
-            length = 0.12
-        elif "pendulum" in frame_name.lower() or "gimbal" in frame_name.lower():
-            length = 0.10
-        else:
-            length = 0.08
-        frame_list.append((frame_name, frame, length))
-    
-    # Add frame updater system
-    frame_updater = builder.AddSystem(
-        MeshcatFrameUpdater(meshcat, plant, frame_list, update_period=0.033)  # 30 Hz
-    )
-    frame_updater.set_name("frame_updater")
-    
-    # Connect plant state to frame updater
-    # We need FULL plant state (all model instances)
-    builder.Connect(
-        plant.get_state_output_port(),  # Full plant state
-        frame_updater.get_input_port(0)
-    )
-    
-    # Build and simulate
-    diagram = builder.Build()
-    simulator = Simulator(diagram)
-    context = simulator.get_mutable_context()
-    
-    # Set initial state
-    plant_context = plant.GetMyMutableContextFromRoot(context)
-    
-    
-    # q_init is already in natural [q1, q2] order - use explicit joint names
-    q_init= {
-        'link1_base': np.deg2rad(0.0),   # q1
-        'link2_link1': np.deg2rad(20.0),   # q2
-    }
-    manipulator.set_positions_user_order(plant, plant_context, {
-        "link1_base": q_init['link1_base'],
-        "link2_link1": q_init['link2_link1'],
-    })
-    manipulator.set_velocities_user_order(plant, plant_context, {
-        "link1_base": 0.0,
-        "link2_link1": 0.0,
-    })
-    
-    # Calculate actual EE position after IK (using custom EE frame with offset)
-    ee_pos_actual = manipulator.get_end_effector_position(plant, plant_context)
-    
-    # Both manipulator and cart work in X-Y plane after rotation
-    # Set cart-pendulum state FIRST
-    # Use provided cart initial positions if given, otherwise use EE position
-    cart_x = cart_x_init if cart_x_init is not None else ee_pos_init[0]
-    cart_y = cart_y_init if cart_y_init is not None else ee_pos_init[1]
-    
-    # Direct 1:1 mapping: manipulator [X,Y] → cart [X,Y]
-    cart_x, cart_y = ee_pos_actual[0], ee_pos_actual[1]  # Direct X-Y mapping
-    cart_pendulum_positions = np.array([
-        cart_x, cart_y,  # Cart at actual EE (x from manip X, y from manip Z)
-        0.0, 0.0,        # Pendulum hanging down
-    ])
-    plant.SetPositions(plant_context, cart_model, cart_pendulum_positions)
-    plant.SetVelocities(plant_context, cart_model, np.zeros(4))
-    
-    # Get and print cart-pendulum position (after setting to actual EE position)
-    cart_pend_pos = plant.GetPositions(plant_context, cart_model)
-    cart_pend_vel = plant.GetVelocities(plant_context, cart_model)
-    print(colored(f"\n📍 Cart-Pendulum Final State (matching actual EE):", "cyan"))
-    print(colored(f"  Position: x={cart_pend_pos[0]:.3f}m, y={cart_pend_pos[1]:.3f}m, α={np.rad2deg(cart_pend_pos[2]):.1f}°, β={np.rad2deg(cart_pend_pos[3]):.1f}°", "cyan"))
-    print(colored(f"  Velocity: ẋ={cart_pend_vel[0]:.3f}m/s, ẏ={cart_pend_vel[1]:.3f}m/s, α̇={np.rad2deg(cart_pend_vel[2]):.1f}°/s, β̇={np.rad2deg(cart_pend_vel[3]):.1f}°/s", "cyan"))
-    print(colored(f"  EE actual: x={ee_pos_actual[0]:.3f}m, y={ee_pos_actual[1]:.3f}m", "cyan"))
-    
-    # ========================================================================
-    # VISUALIZATION: Show configured initial state
-    # ========================================================================
-    print(colored("\n📸 Visualizing configured initial state...", "cyan"))
-    print(colored(f"  - Manipulator: q1={np.rad2deg(q_init['link1_base']):.1f}°, q2={np.rad2deg(q_init['link2_link1']):.1f}° (will track cart)", "cyan"))
-    print(colored(f"  - End Effector: ({ee_pos_actual[0]:.3f}, {ee_pos_actual[1]:.3f}) m", "cyan"))
-    print(colored(f"  - Cart: ({cart_x:.3f}, {cart_y:.3f}) m", "cyan"))
-    print(colored(f"  - Pendulum: α=0°, β=0° (hanging)", "cyan"))
-    diagram.ForcedPublish(context)
-    
-    # Add coordinate frames to meshcat (initial setup)
-    frame_list_init = add_frames_to_meshcat(meshcat, plant, plant_context, manipulator, cart_model)
-    
-    print(colored(f"✓ Initial state visible at: {meshcat.web_url()}", "green"))
-    print(colored(f"✓ Frame updater active (30 Hz updates)", "cyan"))
-    
-    visualizer.StartRecording()
-    
-    print(colored("\n🚀 Starting simulation...", "cyan"))
-    simulator.set_target_realtime_rate(1.0)
-    
-    # Use while loop for debugging instead of AdvanceTo
-    dt_sim = 0.01  # 10ms simulation timestep
-    current_time = 0.0
-    debug_interval = 9.0  # Print debug info every second
-    next_debug_time = debug_interval
-    
-    print(colored("📊 Simulation loop started (use VSCode debugger to step through)", "yellow"))
-    print(colored("   Set breakpoints inside the loop for debugging", "cyan"))
-    print(colored(f"   Target duration: {args.duration:.1f}s, timestep: {dt_sim*1000:.0f}ms\n", "cyan"))
-    ee_pos_list = []
-    while current_time < args.duration:
-        # Advance simulation by small timestep
-        simulator.AdvanceTo(current_time + dt_sim)
-        current_time += dt_sim
-
-       
-
-        # Optional: Print debug info periodically
-        if current_time >= next_debug_time:
-            # Get current state for debugging
-            plant_context = plant.GetMyMutableContextFromRoot(context)
-            cart_state = plant.GetPositionsAndVelocities(plant_context, cart_model)
-            manip_state = plant.GetPositionsAndVelocities(plant_context, manipulator.model_instance)
-            
-            ee_pos_list.append(manipulator.get_end_effector_position(plant, plant_context))
-            ee_pos = manipulator.get_end_effector_position(plant, plant_context)
-            
-            print(colored(f"\n[DEBUG t={current_time:.2f}s]", "cyan"))
-            print(f"  Cart: x={cart_state[0]:.3f}, y={cart_state[1]:.3f}")
-            print(f"  Pendulum: α={np.rad2deg(cart_state[2]):.1f}°, β={np.rad2deg(cart_state[3]):.1f}°")
-            print(f"  Cart velocity: ẋ={cart_state[4]:.3f}, ẏ={cart_state[5]:.3f}")
-            print(f"  Manipulator: q1={np.rad2deg(manip_state[0]):.1f}°, q2={np.rad2deg(manip_state[1]):.1f}°")
-            print(f"  End-Effector: x={ee_pos[0]:.3f}, y={ee_pos[1]:.3f}, z={ee_pos[2]:.3f}")
-            print(f"  EE→Cart error: {np.sqrt((ee_pos[0]-cart_state[0])**2 + (ee_pos[1]-cart_state[1])**2)*1000:.1f} mm")
-
-            # Test IK solver: get desired angles from ManipulatorIKDesiredAngles
-            # Extract cart position/velocity [x, y, ẋ, ẏ] from full state [x, y, α, β, ẋ, ẏ, α̇, β̇]
-            cart_xy_state = np.array([cart_state[0], cart_state[1], cart_state[4], cart_state[5]])
-            
-            # Get full plant state for IK solver
-            full_plant_state = plant.GetPositionsAndVelocities(plant_context)
-            
-            ik_context = manip_ik_solver.CreateDefaultContext()
-            manip_ik_solver.get_input_port(0).FixValue(ik_context, cart_xy_state)
-            manip_ik_solver.get_input_port(1).FixValue(ik_context, full_plant_state)
-            ik_output = manip_ik_solver.AllocateOutput()
-            manip_ik_solver.CalcOutput(ik_context, ik_output)
-            desired_state = ik_output.get_vector_data(0).CopyToVector()
-            print(colored(f"  → IK Desired: q1={np.rad2deg(desired_state[0]):.1f}°, q2={np.rad2deg(desired_state[1]):.1f}° | " +
-                         f"q̇1={np.rad2deg(desired_state[2]):.1f}°/s, q̇2={np.rad2deg(desired_state[3]):.1f}°/s", "magenta"))
-            
-            next_debug_time += debug_interval
-        else:
-            # Calculate end-effector position using custom EE frame
-            cart_state = plant.GetPositionsAndVelocities(plant_context, cart_model)
-            manip_state = plant.GetPositionsAndVelocities(plant_context, manipulator.model_instance)
-            ee_pos = manipulator.get_end_effector_position(plant, plant_context)
-            ee_pos_list.append(ee_pos)
-
-            # cart_xy_state = np.array([cart_state[0], cart_state[1], cart_state[4], cart_state[5]])
-            # ik_context = manip_ik_solver.CreateDefaultContext()
-            # manip_ik_solver.get_input_port(0).FixValue(ik_context, cart_xy_state)
-            # ik_output = manip_ik_solver.AllocateOutput()
-            # manip_ik_solver.CalcOutput(ik_context, ik_output)
-            # desired_state = ik_output.get_vector_data(0).CopyToVector()
-            
-            # Print state information every step
-            print(f"t={current_time:.3f}s | Cart: ({cart_state[0]:.3f}, {cart_state[1]:.3f})m | " +
-                  f"Manip: q1={np.rad2deg(manip_state[0]):.1f}°, q2={np.rad2deg(manip_state[1]):.1f}° | " +
-                  f"EE: ({ee_pos[0]:.3f}, {ee_pos[1]:.3f})m")
-   
-    
-    print(colored(f"\n✓ Simulation complete at t={current_time:.2f}s", "green"))
-    
-    visualizer.PublishRecording()
-    
-    # Extract data
-    state_log = state_logger.FindLog(context)
-    ref_log = ref_logger.FindLog(context)
-    force_log = force_logger.FindLog(context)
-    impedance_log = impedance_logger.FindLog(context)
-    manip_state_log = manip_state_logger_natural.FindLog(context)  # Using converted natural state
-    cart_traj_log = cart_traj_logger.FindLog(context)
-    # manip_torque_log = manip_torque_logger.FindLog(context)
-    manip_desired_state_log = manip_desired_state_logger.FindLog(context)
-    manip_js_torque_log = manip_js_torque_logger.FindLog(context)
-    ee_state_log = ee_state_logger.FindLog(context)
-    
-    t = state_log.sample_times()
-    state_data = state_log.data()
-    ref_data = ref_log.data()
-    force_data = force_log.data()
-    impedance_data = impedance_log.data()
-    manip_state_data = manip_state_log.data()  # [q1, q2, q̇1, q̇2] natural order (from URDF)
-    cart_traj_data = cart_traj_log.data()  # [x, y, ẋ, ẏ] sent to controller
-    # manip_torque_data = manip_torque_log.data()  # [τ1, τ2] from EE controller
-    manip_desired_state_data = manip_desired_state_log.data()  # [q1_d, q2_d, q̇1_d, q̇2_d] from IK
-    manip_js_torque_data = manip_js_torque_log.data()  # [τ1, τ2] from joint-space controller
-    ee_state_data = ee_state_log.data()  # [x, y, ẋ, ẏ] end-effector state
-    
-    # Debug: Print cart trajectory being sent to manipulator
-    print(colored("\n🔍 DEBUG: Cart trajectory sent to manipulator controller:", "yellow"))
-    print(f"  t=0.0s: x={cart_traj_data[0, 0]:.3f}, y={cart_traj_data[1, 0]:.3f}, ẋ={cart_traj_data[2, 0]:.3f}, ẏ={cart_traj_data[3, 0]:.3f}")
-    mid_idx = min(int(len(t)/args.duration), cart_traj_data.shape[1] - 1)
-    print(f"  t=1.0s: x={cart_traj_data[0, mid_idx]:.3f}, y={cart_traj_data[1, mid_idx]:.3f}")
-    print(f"  t=end:  x={cart_traj_data[0, -1]:.3f}, y={cart_traj_data[1, -1]:.3f}")
-    print(f"  Cart actual at t=0: x={state_data[0, 0]:.3f}, y={state_data[1, 0]:.3f}")
-    print(f"  Cart actual at end: x={state_data[0, -1]:.3f}, y={state_data[1, -1]:.3f}")
-    # print(f"  Manipulator torques: τ1=[{manip_torque_data[0, 0]:.2f}, {manip_torque_data[0, -1]:.2f}], τ2=[{manip_torque_data[1, 0]:.2f}, {manip_torque_data[1, -1]:.2f}]")
-    
-    # Plot results
-    print(colored("📈 Generating plots...", "yellow"))
-    
-    # Extract EE position and velocity from logged data (no post-processing needed!)
-    ee_positions = ee_state_data[0:2, :]  # [x, y]
-    ee_velocities = ee_state_data[2:4, :]  # [ẋ, ẏ]
-    
     fig = plt.figure(figsize=(20, 15))
     gs = GridSpec(5, 4, figure=fig)
     
@@ -3411,7 +2764,7 @@ def run_lqr_manip_ee_traj_track(
     ax1.plot(t, ref_data[0, :], 'r--', label='x_ref', linewidth=1.5)
     ax1.plot(t, cart_traj_data[0, :], 'c-.', label='x (to manip)', linewidth=1.5, alpha=0.7)
     ax1.plot(t, ee_positions[0, :], 'g:', label='x_EE', linewidth=2)
-    ax1.axhline(args.target_x, color='m', linestyle=':', label='target')
+    ax1.axhline(config.target_x, color='m', linestyle=':', label='target')
     ax1.set_xlabel('Time [s]')
     ax1.set_ylabel('X Position [m]')
     ax1.legend()
@@ -3423,7 +2776,7 @@ def run_lqr_manip_ee_traj_track(
     ax2.plot(t, ref_data[1, :], 'r--', label='y_ref', linewidth=1.5)
     ax2.plot(t, cart_traj_data[1, :], 'c-.', label='y (to manip)', linewidth=1.5, alpha=0.7)
     ax2.plot(t, ee_positions[1, :], 'g:', label='y_EE', linewidth=2)
-    ax2.axhline(args.target_y, color='m', linestyle=':', label='target')
+    ax2.axhline(config.target_y, color='m', linestyle=':', label='target')
     ax2.set_xlabel('Time [s]')
     ax2.set_ylabel('Y Position [m]')
     ax2.legend()
@@ -3436,7 +2789,7 @@ def run_lqr_manip_ee_traj_track(
     ax3.plot(ref_data[0, :], ref_data[1, :], 'r--', label='reference', linewidth=1.5)
     ax3.plot(cart_traj_data[0, :], cart_traj_data[1, :], 'c-.', label='to manip', linewidth=1.5, alpha=0.7)
     ax3.plot(ee_positions[0, :], ee_positions[1, :], 'g:', label='EE', linewidth=2)
-    ax3.plot(args.target_x, args.target_y, 'm*', markersize=15, label='target')
+    ax3.plot(config.target_x, config.target_y, 'm*', markersize=15, label='target')
     ax3.plot(state_data[0, 0], state_data[1, 0], 'ko', markersize=8, label='start')
     ax3.set_xlabel('X [m]')
     ax3.set_ylabel('Y [m]')
@@ -3575,11 +2928,9 @@ def run_lqr_manip_ee_traj_track(
     
     # Row 5: Manipulator state (joint angles and velocities, EE position/velocity)
     ax17 = fig.add_subplot(gs[4, 0])
-    # Manipulator joint angles from logged data (natural [q1, q2] order)
-    q1_deg = np.rad2deg(manip_state_data[0, :])  # manip_state_data[0] is q1
-    q2_deg = np.rad2deg(manip_state_data[1, :])  # manip_state_data[1] is q2
-    # Desired angles from IK
-    q1_des_deg = np.rad2deg(manip_desired_state_data[0, :])  # [q1_d, q2_d, q̇1_d, q̇2_d]
+    q1_deg = np.rad2deg(manip_state_data[0, :])
+    q2_deg = np.rad2deg(manip_state_data[1, :])
+    q1_des_deg = np.rad2deg(manip_desired_state_data[0, :])
     q2_des_deg = np.rad2deg(manip_desired_state_data[1, :])
     ax17.plot(t, q1_deg, 'b-', linewidth=2.5, label='q1 actual', alpha=0.8)
     ax17.plot(t, q2_deg, 'r-', linewidth=2.5, label='q2 actual', alpha=0.8)
@@ -3592,12 +2943,10 @@ def run_lqr_manip_ee_traj_track(
     ax17.set_title('Manipulator Joint Angles: Actual vs Desired (IK from cart)')
     
     ax18 = fig.add_subplot(gs[4, 1])
-    # Joint velocities from logged data (natural [q1, q2, q̇1, q̇2] order)
-    q1_dot_deg = np.rad2deg(manip_state_data[2, :])  # manip_state_data[2] is q̇1
-    q2_dot_deg = np.rad2deg(manip_state_data[3, :])  # manip_state_data[3] is q̇2
-    # Desired velocities from IK
-    q1_dot_des_deg = np.rad2deg(manip_desired_state_data[2, :])  # q̇1_d from IK
-    q2_dot_des_deg = np.rad2deg(manip_desired_state_data[3, :])  # q̇2_d from IK
+    q1_dot_deg = np.rad2deg(manip_state_data[2, :])
+    q2_dot_deg = np.rad2deg(manip_state_data[3, :])
+    q1_dot_des_deg = np.rad2deg(manip_desired_state_data[2, :])
+    q2_dot_des_deg = np.rad2deg(manip_desired_state_data[3, :])
     ax18.plot(t, q1_dot_deg, 'b-', linewidth=2.5, label='q̇1 actual', alpha=0.8)
     ax18.plot(t, q2_dot_deg, 'r-', linewidth=2.5, label='q̇2 actual', alpha=0.8)
     ax18.plot(t, q1_dot_des_deg, 'b--', linewidth=1.5, label='q̇1 desired (IK)', alpha=0.7)
@@ -3609,7 +2958,6 @@ def run_lqr_manip_ee_traj_track(
     ax18.set_title('Manipulator Joint Velocities: Actual vs Desired (IK from cart)')
     
     ax19 = fig.add_subplot(gs[4, 2])
-    # EE position (computed from joint angles)
     ax19.plot(t, ee_positions[0, :], 'b-', linewidth=2, label='EE x')
     ax19.plot(t, ee_positions[1, :], 'r-', linewidth=2, label='EE y')
     ax19.plot(t, state_data[0, :], 'b:', linewidth=1.5, alpha=0.7, label='cart x')
@@ -3621,7 +2969,6 @@ def run_lqr_manip_ee_traj_track(
     ax19.set_title('Manipulator End-Effector Position vs Cart')
     
     ax20 = fig.add_subplot(gs[4, 3])
-    # EE velocity (computed from Jacobian)
     ax20.plot(t, ee_velocities[0, :], 'b-', linewidth=2, label='EE ẋ')
     ax20.plot(t, ee_velocities[1, :], 'r-', linewidth=2, label='EE ẏ')
     ax20.plot(t, state_data[4, :], 'b:', linewidth=1.5, alpha=0.7, label='cart ẋ')
@@ -3638,7 +2985,8 @@ def run_lqr_manip_ee_traj_track(
     plot_path = 'plots/lqr_manip_ee_traj_track_results.png'
     plt.savefig(plot_path, dpi=150, bbox_inches='tight')
     print(colored(f"✓ Main plots saved to {plot_path}", "green"))
-    
+    plt.show()
+
     # =======================================================================
     # TORQUE COMPARISON FIGURE (COMMENTED OUT - EE Controller disabled)
     # =======================================================================
@@ -3705,14 +3053,1367 @@ def run_lqr_manip_ee_traj_track(
     # torque_path = 'plots/lqr_manip_torque_comparison.png'
     # fig_torque.savefig(torque_path, dpi=150, bbox_inches='tight')
     # print(colored(f"✓ Torque comparison saved to {torque_path}", "green"))
+
+
+# ============================================================================
+# SYSTEM BUILDER CLASS
+# ============================================================================
+
+class SystemBuilder:
+    """
+    Builds a Drake MultibodyPlant with two model instances:
+    1. Manipulator (2-DOF cup manipulator)
+    2. Cart-Pendulum (4-DOF system)
     
-    # Display plots (blocking mode)
-    print(colored("📊 Displaying plots... (close window to continue)", "yellow"))
-    plt.show(block=True)
+    This class encapsulates the plant setup logic to avoid code duplication
+    across different simulation modes.
     
-    print(colored("\n" + "="*80, "green"))
-    print(colored("✓ Simulation Complete!", "green", attrs=["bold"]))
-    print(colored("="*80 + "\n", "green"))
+    Attributes:
+        builder: DiagramBuilder instance (created during build())
+        plant: MultibodyPlant instance (created during build())
+        scene_graph: SceneGraph instance (created during build())
+    """
+    
+    def __init__(self, physics_config, manipulator_urdf_path, 
+                 manipulator_joint_angles=None, manipulator_damping=(0.1, 0.1)):
+        """
+        Initialize the system builder with configurations.
+        
+        Args:
+            physics_config: PhysicsConfig for cart-pendulum
+            manipulator_urdf_path: Path to manipulator URDF file
+            manipulator_joint_angles: Dict of joint names to angles (radians)
+            manipulator_damping: Tuple of (q1_damping, q2_damping)
+        """
+        self.physics_config = physics_config
+        self.manipulator_urdf_path = manipulator_urdf_path
+        self.manipulator_joint_angles = manipulator_joint_angles or {
+            'link1_base': np.deg2rad(0.0),
+            'link2_link1': np.deg2rad(20.0),
+        }
+        self.manipulator_damping = manipulator_damping
+        
+        # These will be set during build()
+        self.builder = None
+        self.plant = None
+        self.scene_graph = None
+        self.weld_cart_to_ee = WELD_CART_TO_MANIP_EE  # Set to True to weld cart to manipulator EE, False for independent actuation
+        
+
+    def add_manipulator(self, plant):
+        """
+        Add manipulator to the plant as a model instance.
+        
+        Args:
+            plant: MultibodyPlant to add manipulator to
+            
+        Returns:
+            CupManipulator instance
+        """
+        manipulator_config = create_cup_manipulator_config(
+            urdf_path=self.manipulator_urdf_path,
+            joint_angles=self.manipulator_joint_angles,
+            damping=self.manipulator_damping,
+        )
+        
+        # Initialize manipulator and load URDF into plant
+        manipulator = CupManipulator(manipulator_config, enable_visualization=True)
+        parser = Parser(plant)
+        manipulator.load_urdf_to_plant(plant, parser)
+        
+        # Rotate base -90° around Y to align manipulator with X-Y plane (same as cart)
+        # This makes manipulator X-axis → world X-axis, manipulator Z-axis → world Y-axis
+        manipulator.weld_base_to_world(plant, orientation=np.array([0.0, 0.0, 0.0]))
+        
+        # Add actuators and end-effector frame BEFORE finalization
+        manipulator.add_joint_actuators(plant)
+        manipulator.add_end_effector_frame(plant)
+        
+        print(colored(f"✓ End-effector frame '{manipulator.EE_FRAME_NAME}' added to manipulator", "green"))
+        print(colored(f"  - EE_OFFSET (relative to link2): {manipulator.EE_OFFSET}", "cyan"))
+        print(colored(f"✓ Manipulator loaded (ModelInstance: {manipulator.model_instance})", "green"))
+        print(colored(f"  - State dimension: 4 (2 positions + 2 velocities)", "cyan"))
+        print(colored(f"  - Joints: link1_base, link2_link1", "cyan"))
+        
+        return manipulator
+    
+    def add_cart_pendulum_components(self, plant, manipulator=None):
+        """
+        Add cart-pendulum to the plant as a model instance.
+        
+        Args:
+            plant: MultibodyPlant to add cart-pendulum to
+            manipulator: CupManipulator instance (optional, required if weld_cart_to_ee=True)
+        Returns:
+            Tuple of (cart_pendulum, cart_model)
+        """
+        # Determine z-offset for cart-pendulum based on URDF joint origin
+        z_offset_from_urdf = CupManipulator.EE_XYZ_BASE[2]
+        print(colored(f"📍 Using z-offset from URDF: {z_offset_from_urdf:.5f} m", "cyan"))
+        
+        cart_model = plant.AddModelInstance("cart_pendulum")
+        
+        # ====================================================================
+        # DECISION: WELDED TO EE vs INDEPENDENT ACTUATION
+        # ====================================================================
+        if self.weld_cart_to_ee:
+            if manipulator is None:
+                raise ValueError("manipulator must be provided when weld_cart_to_ee=True")
+            
+            print(colored(f"\n🔗 Mode: Cart WELDED to manipulator EE (dependent control)", "yellow"))
+            print(colored(f"  - Kinematic chain: World → Manipulator → EE → Cart → Pendulum", "cyan"))
+            print(colored(f"  - Cart follows EE motion (NO independent cart actuators)", "cyan"))
+            
+            # Create cart-pendulum using CartPendulum2DExtended.build_plant_welded()
+            cart_pendulum = CartPendulum2DExtended(self.physics_config, z_offset=z_offset_from_urdf)
+            cart_body = cart_pendulum.build_plant_welded(plant, cart_model, register_visuals=True)
+            
+            # Get the manipulator's EE frame
+            ee_frame = manipulator.get_end_effector_frame(plant)
+            
+            # Weld cart body to EE frame (zero offset = cart center aligns with EE)
+            plant.WeldFrames(
+                frame_on_parent_F=ee_frame,
+                frame_on_child_M=cart_body.body_frame(),
+                X_FM=RigidTransform()
+            )
+            
+            print(colored(f"✓ Cart welded to EE frame '{manipulator.EE_FRAME_NAME}'", "green"))
+            print(colored(f"  - Cart DOF: 0 (welded, follows EE)", "cyan"))
+            print(colored(f"  - Pendulum DOF: 2 (pitch + roll gimbal)", "cyan"))
+            print(colored(f"  - NO cart actuators (controlled via manipulator)", "yellow"))
+            
+        else:
+            print(colored(f"\n⚙️ Mode: Cart INDEPENDENT actuation (uncoupled control)", "yellow"))
+            print(colored(f"  - Kinematic chain: World → Cart (via sliders) → Pendulum", "cyan"))
+            print(colored(f"  - Manipulator: World → Manip → EE (separate tree)", "cyan"))
+            print(colored(f"  - Cart has independent actuators (LQR controls both systems)", "cyan"))
+            
+            # Build cart-pendulum with normal world connection via prismatic joints
+            cart_pendulum = CartPendulum2DExtended(self.physics_config, z_offset=z_offset_from_urdf)
+            cart_pendulum.build_plant(plant, cart_model)
+            
+            print(colored(f"✓ Cart-pendulum has independent actuation", "green"))
+        
+        print(colored(f"✓ Cart-Pendulum created (ModelInstance: {cart_model})", "green"))
+        print(colored(f"  - Z-plane height: {z_offset_from_urdf:.5f} m", "cyan"))
+        
+        return cart_pendulum, cart_model
+    
+    def finalize_and_print_info(self, plant, manipulator):
+        """
+        Finalize the plant and print configuration information.
+        
+        Args:
+            plant: MultibodyPlant to finalize
+            manipulator: CupManipulator instance for info printing
+        """
+        plant.Finalize()
+        
+        print(colored(f"\n✓ Plant finalized with {plant.num_positions()} total positions, "
+                     f"{plant.num_velocities()} total velocities", "green"))
+        
+        # Extract and display manipulator configuration
+        config_q1 = self.manipulator_joint_angles['link1_base']
+        config_q2 = self.manipulator_joint_angles['link2_link1']
+        
+        # Calculate EE position at config angles for display
+        temp_context = plant.CreateDefaultContext()
+        manipulator.set_positions_user_order(plant, temp_context, {
+            "link1_base": config_q1,
+            "link2_link1": config_q2,
+        })
+        ee_world_pos = manipulator.get_end_effector_position(plant, temp_context)
+        
+        print(colored(f"  - EE position in world frame (at config q1={np.rad2deg(config_q1):.1f}°, "
+                     f"q2={np.rad2deg(config_q2):.1f}°): {ee_world_pos}", "cyan"))
+    
+    def build(self, time_step=0.001, meshcat=None):
+        """
+        Build the complete system with manipulator and cart-pendulum.
+        Creates the DiagramBuilder and stores it as a class attribute.
+        Adds plant and scene_graph to the builder and connects them.
+        
+        Args:
+            time_step: Simulation time step in seconds
+            meshcat: Optional Meshcat instance for printing URL
+            
+        Returns:
+            Tuple of (builder, plant, scene_graph, manipulator, cart_pendulum, cart_model)
+        """
+        # Create builder, plant, and scene graph (stored as attributes)
+        self.builder = DiagramBuilder()
+        self.plant = MultibodyPlant(time_step=time_step)
+        self.scene_graph = self.builder.AddSystem(SceneGraph())
+        self.plant.RegisterAsSourceForSceneGraph(self.scene_graph)
+    
+        
+        # Add manipulator
+        manipulator = self.add_manipulator(self.plant)
+        
+        # Add cart-pendulum
+        if self.weld_cart_to_ee:
+            print(colored(f"\n⚠️ WARNING: Cart-pendulum will be WELDED to manipulator EE. "
+                         f"Cart actuation inputs will be IGNORED.", "red"))
+            cart_pendulum, cart_model = self.add_cart_pendulum_components(self.plant, manipulator=manipulator)
+        else:            
+            print(colored(f"\n⚠️ WARNING: Cart-pendulum will have INDEPENDENT ACTUATION. "
+                         f"Ensure control system accounts for this.", "red"))
+            cart_pendulum, cart_model = self.add_cart_pendulum_components(self.plant)
+        
+        # Finalize and print info
+        self.finalize_and_print_info(self.plant, manipulator)
+        
+        # Add plant to builder and connect to scene_graph
+        self.builder.AddSystem(self.plant)
+        self.builder.Connect(
+            self.plant.get_geometry_pose_output_port(),
+            self.scene_graph.get_source_pose_port(self.plant.get_source_id())
+        )
+        self.builder.Connect(
+            self.scene_graph.get_query_output_port(),
+            self.plant.get_geometry_query_input_port()
+        )
+        
+        # Print meshcat URL if provided
+        if meshcat is not None:
+            print(colored(f"  - Meshcat will be available at: {meshcat.web_url()}", "cyan"))
+        
+        return self.builder, self.plant, self.scene_graph, manipulator, cart_pendulum, cart_model
+
+
+# ============================================================================
+# CONTROL SYSTEM BUILDER (STRATEGY PATTERN)
+# ============================================================================
+
+class ControlSystemBuilder(ABC):
+    """
+    Abstract base class for building different control strategies.
+    
+    Strategy Pattern: Encapsulates control system construction algorithms.
+    Each concrete builder creates a specific control architecture:
+    - LQR + Muscle Dynamics + ZFT (OFC)
+    - PD Control
+    - Model Predictive Control
+    - etc.
+    
+    Concrete classes have full freedom to structure control systems.
+    Only logging methods must be implemented.
+    """
+    
+    def __init__(self, builder: DiagramBuilder, plant: MultibodyPlant, 
+                 cart_model, manipulator):
+        """
+        Initialize builder with Drake components.
+        
+        Args:
+            builder: DiagramBuilder to add systems to
+            plant: MultibodyPlant with cart-pendulum and manipulator
+            cart_model: Cart-pendulum ModelInstance
+            manipulator: CupManipulator instance
+        """
+        self.builder = builder
+        self.plant = plant
+        self.cart_model = cart_model
+        self.manipulator = manipulator
+        
+        # Will store created systems for connection and logging
+        self.systems = {}
+        self.loggers = {}
+    
+    @abstractmethod
+    def add_loggers(self) -> Dict[str, VectorLogSink]:
+        """
+        Build data loggers for all control signals.
+        
+        Must be implemented by concrete classes.
+        
+        Returns:
+            Dictionary of logger names to VectorLogSink instances
+        """
+        pass
+    
+    @abstractmethod
+    def connect_loggers(self):
+        """
+        Connect loggers to their signal sources.
+        
+        Must be implemented by concrete classes.
+        """
+        pass
+    
+    def build_and_connect(self):
+        """
+        Build all control systems and connect them.
+        
+        Concrete classes should override this to define their own
+        control system construction and connection logic.
+        
+        Returns:
+            Tuple of (systems dict, loggers dict)
+        """
+        print(colored(f"\n🔧 Building control system: {self.__class__.__name__}", "yellow"))
+        
+        # Build and connect loggers (required by abstract methods)
+        self.loggers = self.add_loggers()
+        self.connect_loggers()
+        
+        print(colored(f"✓ Control system built with {len(self.systems)} blocks", "green"))
+        
+        return self.systems, self.loggers
+
+
+# ============================================================================
+# LQR + OFC CONTROL BUILDER (CONCRETE STRATEGY)
+# ============================================================================
+
+class LQRWithOFCOnlyCartPendulumBuilder(ControlSystemBuilder):
+    """
+    Builds LQR control with Optimal Feedback Control (OFC) architecture:
+    
+    Cart-Pendulum Control:
+    - Muscle Dynamics (low-pass filter on neural commands)
+    - ZFT Reference Mass (virtual mass for smooth trajectories)
+    - Impedance Force (spring-damper connection to reference)
+    - Finite-Horizon LQR (optimal time-varying feedback)
+    
+    Manipulator Control:
+    - IK Solver (converts cart trajectory to joint angles)
+    - Computed Torque Controller (joint-space tracking)
+    """
+    
+    def __init__(self, builder: DiagramBuilder, plant: MultibodyPlant, 
+                 cart_model, manipulator, config):
+        super().__init__(builder, plant, cart_model, manipulator)
+        self.config = config
+        
+        # Pre-compute linearization
+        self.A, self.B = build_linearized_system_2d(
+            config.physics_config,
+            config.impedance_config,
+            config.zft_config,
+            config.muscle_config
+        )
+        print(colored(f"✓ Linearized system: A ({self.A.shape}), B ({self.B.shape})", "green"))
+    
+    def build_and_connect(self):
+        """
+        Build all control systems and connect them.
+        
+        Returns:
+            Tuple of (systems dict, loggers dict)
+        """
+        print(colored(f"\n🔧 Building control system: {self.__class__.__name__}", "yellow"))
+        
+        # Build control systems
+        cp_systems = self.add_cart_system_blocks()
+        manip_systems = self.add_manipulator_system_blocks()
+        
+        self.systems.update(cp_systems)
+        self.systems.update(manip_systems)
+        
+        # Connect control loops
+        self.connect_cart_pendulum_control()
+        self.connect_manipulator_control()
+        
+        # Build and connect loggers
+        self.loggers = self.add_loggers()
+        self.connect_loggers()
+        
+        print(colored(f"✓ Control system built with {len(self.systems)} blocks", "green"))
+        
+        return self.systems, self.loggers
+    
+    def add_cart_system_blocks(self) -> Dict[str, LeafSystem]:
+        """Build LQR + OFC blocks for cart-pendulum."""
+        systems = {}
+        
+        # Muscle dynamics (2D low-pass filter)
+        systems['muscle'] = self.builder.AddSystem(
+            MuscleDynamics2D(self.config.muscle_config)
+        )
+        systems['muscle'].set_name("muscle_dynamics")
+        
+        # ZFT reference mass (virtual mass dynamics)
+        systems['zft'] = self.builder.AddSystem(
+            ZFTReferenceMass2D(self.config.zft_config)
+        )
+        systems['zft'].set_name("zft_reference")
+        
+        # Impedance force (spring-damper connection)
+        systems['impedance'] = self.builder.AddSystem(
+            ImpedanceForce2D(self.config.impedance_config)
+        )
+        systems['impedance'].set_name("impedance_force")
+        
+        # LQR controller (finite-horizon optimal control)
+        systems['lqr'] = self.builder.AddSystem(
+            FiniteHorizonLQRController2D(self.A, self.B, LQR_CONFIG)
+        )
+        systems['lqr'].set_name("lqr_controller")
+        
+        # ZeroOrderHold (breaks algebraic loop)
+        systems['state_hold'] = self.builder.AddSystem(ZeroOrderHold(0.01, 14))
+        systems['state_hold'].set_name("state_hold")
+        
+        # State extraction mux/demux
+        systems['cart_state_demux'] = self.builder.AddSystem(Demultiplexer([2, 2, 2, 2]))
+        systems['full_state_mux'] = self.builder.AddSystem(Multiplexer([2, 2, 2, 2, 2, 4]))
+        systems['cart_state_mux'] = self.builder.AddSystem(Multiplexer([2, 2]))
+        
+        return systems
+    
+    def add_manipulator_system_blocks (self) -> Dict[str, LeafSystem]:
+        """Build IK + computed torque control for manipulator."""
+        systems = {}
+        
+        # IK solver (cart trajectory → desired joint angles)
+        systems['manip_ik'] = self.builder.AddSystem(
+            ManipulatorIKDesiredAngles(self.manipulator, self.plant)
+        )
+        systems['manip_ik'].set_name("manipulator_ik_solver")
+        
+        # Joint-space computed torque controller
+        systems['manip_controller'] = self.builder.AddSystem(
+            ComputedTorqueJointSpaceController(
+                self.manipulator, self.plant, Kp=200.0, Kd=60.0, tau_max=100.0
+            )
+        )
+        systems['manip_controller'].set_name("manipulator_js_controller")
+        
+        return systems
+
+    def add_loggers(self) -> Dict[str, VectorLogSink]:
+        """Build loggers for LQR + OFC signals."""
+        loggers = {}
+        
+        # Base loggers
+        loggers['state'] = self.builder.AddSystem(VectorLogSink(8))
+        loggers['state'].set_name("state_logger")
+        
+        loggers['manip_state'] = self.builder.AddSystem(VectorLogSink(4))
+        loggers['manip_state'].set_name("manip_state_logger")
+        
+        ee_computer = self.builder.AddSystem(
+            ManipulatorEEStateComputer(self.plant, self.manipulator)
+        )
+        ee_computer.set_name("ee_state_computer")
+        loggers['ee_state'] = self.builder.AddSystem(VectorLogSink(4))
+        loggers['ee_state'].set_name("ee_state_logger")
+        loggers['ee_computer'] = ee_computer
+        
+        # OFC-specific loggers
+        loggers['ref'] = self.builder.AddSystem(VectorLogSink(4))
+        loggers['ref'].set_name("ref_logger")
+        
+        loggers['force'] = self.builder.AddSystem(VectorLogSink(2))
+        loggers['force'].set_name("force_logger")
+        
+        loggers['impedance'] = self.builder.AddSystem(VectorLogSink(2))
+        loggers['impedance'].set_name("impedance_logger")
+        
+        loggers['cart_traj'] = self.builder.AddSystem(VectorLogSink(4))
+        loggers['cart_traj'].set_name("cart_traj_logger")
+        
+        loggers['manip_desired'] = self.builder.AddSystem(VectorLogSink(4))
+        loggers['manip_desired'].set_name("manip_desired_state_logger")
+        
+        loggers['manip_torque'] = self.builder.AddSystem(VectorLogSink(2))
+        loggers['manip_torque'].set_name("manip_js_torque_logger")
+        
+        return loggers
+    
+    def connect_cart_pendulum_control(self):
+        """Connect LQR + OFC control loop for cart-pendulum."""
+        # Extract systems for convenience
+        muscle = self.systems['muscle']
+        zft = self.systems['zft']
+        impedance = self.systems['impedance']
+        lqr = self.systems['lqr']
+        state_hold = self.systems['state_hold']
+        cart_state_demux = self.systems['cart_state_demux']
+        full_state_mux = self.systems['full_state_mux']
+        cart_state_mux = self.systems['cart_state_mux']
+        
+        # ====================================================================
+        # STATE EXTRACTION: Plant → Demux → Mux
+        # ====================================================================
+        # Plant state: q = [x, y, α, β]ᵀ ∈ ℝ⁴, q̇ = [ẋ, ẏ, α̇, β̇]ᵀ ∈ ℝ⁴
+        # Full state: s_plant = [q; q̇] ∈ ℝ⁸
+        self.builder.Connect(
+            self.plant.get_state_output_port(self.cart_model),  # s_plant ∈ ℝ⁸
+            cart_state_demux.get_input_port()  # Split into 4 blocks of size 2
+        )
+        # Demux outputs: [0]→[x,y], [1]→[α,β], [2]→[ẋ,ẏ], [3]→[α̇,β̇]
+        
+        # Build cart state: s_cart = [x, y, ẋ, ẏ]ᵀ ∈ ℝ⁴
+        self.builder.Connect(
+            cart_state_demux.get_output_port(0),  # [x, y]ᵀ ∈ ℝ²
+            cart_state_mux.get_input_port(0)
+        )
+        self.builder.Connect(
+            cart_state_demux.get_output_port(2),  # [ẋ, ẏ]ᵀ ∈ ℝ²
+            cart_state_mux.get_input_port(1)
+        )
+        # Output: s_cart = [x, y, ẋ, ẏ]ᵀ ∈ ℝ⁴
+        
+        # ====================================================================
+        # ZFT REFERENCE MASS: Dynamics for smooth reference trajectory
+        # ====================================================================
+        # ZFT dynamics: ṡ_ref = f_zft(s_cart, F_muscle)
+        # State: s_ref = [x_ref, y_ref, ẋ_ref, ẏ_ref]ᵀ ∈ ℝ⁴
+        self.builder.Connect(
+            cart_state_mux.get_output_port(),  # s_cart ∈ ℝ⁴
+            zft.get_input_port(0)
+        )
+        self.builder.Connect(
+            muscle.get_output_port(),  # F_muscle = [F_x, F_y]ᵀ ∈ ℝ²
+            zft.get_input_port(1)
+        )
+        # Output: s_ref = [x_ref, y_ref, ẋ_ref, ẏ_ref]ᵀ ∈ ℝ⁴
+        
+        # ====================================================================
+        # IMPEDANCE FORCE: Spring-damper connection to reference
+        # ====================================================================
+        # Impedance law: F_imp = K(x_ref - x) + B(ẋ_ref - ẋ)
+        # where K ∈ ℝ²ˣ² (stiffness), B ∈ ℝ²ˣ² (damping)
+        self.builder.Connect(
+            cart_state_mux.get_output_port(),  # s_cart = [x, y, ẋ, ẏ]ᵀ ∈ ℝ⁴
+            impedance.get_input_port(0)
+        )
+        self.builder.Connect(
+            zft.get_output_port(),  # s_ref = [x_ref, y_ref, ẋ_ref, ẏ_ref]ᵀ ∈ ℝ⁴
+            impedance.get_input_port(1)
+        )
+        # Output: F_imp = [F_imp,x, F_imp,y]ᵀ ∈ ℝ²
+        
+        # ====================================================================
+        # ACTUATION: Impedance force → cart-pendulum
+        # ====================================================================
+        # Cart-pendulum equations: M(q)q̈ + C(q,q̇)q̇ + G(q) = τ_ext
+        # where τ_ext = [F_imp,x, F_imp,y, 0, 0]ᵀ (force on cart, no direct torque on gimbal)
+        self.builder.Connect(
+            impedance.get_output_port(),  # F_imp ∈ ℝ²
+            self.plant.get_actuation_input_port(self.cart_model)
+        )
+        
+        # ====================================================================
+        # FULL STATE ASSEMBLY: Build 14D state for LQR
+        # ====================================================================
+        # [x, y, α, β, ẋ, ẏ, α̇, β̇, F_x, F_y, x_ref, y_ref, ẋ_ref, ẏ_ref]
+        for i, port_idx in enumerate([0, 1, 2, 3]):
+            self.builder.Connect(
+                cart_state_demux.get_output_port(port_idx),
+                full_state_mux.get_input_port(i)
+            )
+        self.builder.Connect(muscle.get_output_port(), full_state_mux.get_input_port(4))
+        self.builder.Connect(zft.get_output_port(), full_state_mux.get_input_port(5))
+        
+        # ====================================================================
+        # LQR FEEDBACK LOOP: State → Hold → LQR → Muscle
+        # ====================================================================
+        self.builder.Connect(full_state_mux.get_output_port(), state_hold.get_input_port())
+        self.builder.Connect(state_hold.get_output_port(), lqr.get_input_port())
+        self.builder.Connect(lqr.get_output_port(), muscle.get_input_port())
+    
+    def connect_manipulator_control(self):
+        """Connect IK + computed torque control for manipulator."""
+        manip_ik = self.systems['manip_ik']
+        manip_controller = self.systems['manip_controller']
+        cart_state_mux = self.systems['cart_state_mux']
+        
+        # ====================================================================
+        # IK SOLVER: Cart trajectory → desired joint angles
+        # ====================================================================
+        self.builder.Connect(
+            cart_state_mux.get_output_port(),
+            manip_ik.get_input_port(0)  # desired cart trajectory
+        )
+        self.builder.Connect(
+            self.plant.get_state_output_port(),
+            manip_ik.get_input_port(1)  # full plant state
+        )
+        
+        # ====================================================================
+        # COMPUTED TORQUE CONTROLLER: IK → Controller → Actuators
+        # ====================================================================
+        self.builder.Connect(
+            manip_ik.get_output_port(),
+            manip_controller.get_input_port(0)  # desired joint state
+        )
+        self.builder.Connect(
+            self.plant.get_state_output_port(self.manipulator.model_instance),
+            manip_controller.get_input_port(1)  # current joint state
+        )
+        self.builder.Connect(
+            manip_controller.get_output_port(),
+            self.plant.get_actuation_input_port(self.manipulator.model_instance)
+        )
+    
+    
+    
+    def connect_loggers(self):
+        """Connect loggers to OFC-specific signals."""
+        # Connect base loggers
+        self.builder.Connect(
+            self.plant.get_state_output_port(self.cart_model),
+            self.loggers['state'].get_input_port()
+        )
+        self.builder.Connect(
+            self.plant.get_state_output_port(self.manipulator.model_instance),
+            self.loggers['manip_state'].get_input_port()
+        )
+        self.builder.Connect(
+            self.plant.get_state_output_port(self.manipulator.model_instance),
+            self.loggers['ee_computer'].get_input_port(0)
+        )
+        self.builder.Connect(
+            self.loggers['ee_computer'].get_output_port(),
+            self.loggers['ee_state'].get_input_port()
+        )
+        
+        # Connect OFC-specific loggers
+        self.builder.Connect(
+            self.systems['zft'].get_output_port(),
+            self.loggers['ref'].get_input_port()
+        )
+        self.builder.Connect(
+            self.systems['muscle'].get_output_port(),
+            self.loggers['force'].get_input_port()
+        )
+        self.builder.Connect(
+            self.systems['impedance'].get_output_port(),
+            self.loggers['impedance'].get_input_port()
+        )
+        self.builder.Connect(
+            self.systems['cart_state_mux'].get_output_port(),
+            self.loggers['cart_traj'].get_input_port()
+        )
+        self.builder.Connect(
+            self.systems['manip_ik'].get_output_port(),
+            self.loggers['manip_desired'].get_input_port()
+        )
+        self.builder.Connect(
+            self.systems['manip_controller'].get_output_port(),
+            self.loggers['manip_torque'].get_input_port()
+        )
+
+class LQRWithOFCForCompleteSystem(ControlSystemBuilder):
+    """
+    Builds LQR control with Optimal Feedback Control (OFC) architecture:
+    
+    Cart-Pendulum Control:
+    - Muscle Dynamics (low-pass filter on neural commands)
+    - ZFT Reference Mass (virtual mass for smooth trajectories)
+    - Impedance Force (spring-damper connection to reference)
+    - Finite-Horizon LQR (optimal time-varying feedback)
+    
+    Manipulator Control:
+    - IK Solver (converts cart trajectory to joint angles)
+    - Computed Torque Controller (joint-space tracking)
+    """
+    
+    def __init__(self, builder: DiagramBuilder, plant: MultibodyPlant, 
+                 cart_model, manipulator, config):
+        super().__init__(builder, plant, cart_model, manipulator)
+        self.config = config
+        
+        # Pre-compute linearization for welded system
+        print(colored("\n🔧 Linearizing welded cart-pendulum-manipulator system...", "yellow"))
+        self.A, self.B = build_linearized_for_complete_system_2d(
+            plant=plant,
+            manipulator=manipulator,
+            cart_model=cart_model,
+            physics_config=config.physics_config,
+        )
+        print(colored(f"✓ Linearized system: A ({self.A.shape}), B ({self.B.shape})", "green"))
+    
+    def build_and_connect(self):
+        """
+        Build all control systems and connect them.
+        
+        Returns:
+            Tuple of (systems dict, loggers dict)
+        """
+        print(colored(f"\n🔧 Building control system: {self.__class__.__name__}", "yellow"))
+        
+        # Build control blocks
+        self.add_cart_pen_manip_lqr_computed_torque_blocks()
+        
+        # Connect control loops
+        self.connect_system_control()
+        
+        # Build and connect loggers
+        self.loggers = self.add_loggers()
+        self.connect_loggers()
+        
+        print(colored(f"✓ Control system built with {len(self.systems)} blocks", "green"))
+        
+        return self.systems, self.loggers
+
+    def add_cart_pen_manip_lqr_computed_torque_blocks(self) -> Dict[str, object]:
+        """Create and name all blocks used by connect_system_control()."""
+        systems: Dict[str, object] = {}
+
+        # ----------------------------
+        # State handling: x -> (q, v)
+        # ----------------------------
+        systems["plant_state_demux"] = self.builder.AddSystem(
+            Demultiplexer([self.config.nq_total, self.config.nv_total])
+        )
+        systems["plant_state_demux"].set_name("plant_state_demux_q_v")
+
+        # A held copy for controller (avoid double-feeding the same demux)
+        systems["state_hold"] = self.builder.AddSystem(
+            ZeroOrderHold(self.config.controller_dt, self.config.nq_total + self.config.nv_total)
+        )
+        systems["state_hold"].set_name("state_hold_x")
+
+        systems["plant_state_demux_hold"] = self.builder.AddSystem(
+            Demultiplexer([self.config.nq_total, self.config.nv_total])
+        )
+        systems["plant_state_demux_hold"].set_name("plant_state_demux_hold_q_v")
+
+        # Optional split into arm vs pendulum (kept if you need it later)
+        systems["q_demux"] = self.builder.AddSystem(
+            Demultiplexer([self.config.nq_arm, self.config.nq_pend])
+        )
+        systems["q_demux"].set_name("q_demux_arm_pend")
+
+        systems["v_demux"] = self.builder.AddSystem(
+            Demultiplexer([self.config.nv_arm, self.config.nv_pend])
+        )
+        systems["v_demux"].set_name("v_demux_arm_pend")
+
+        # ----------------------------
+        # Kinematics: (q,v) -> (p, pdot)
+        # ----------------------------
+        systems["ee_kin"] = self.builder.AddSystem(
+            EndEffectorKinematics2D(self.config.ee_kin_config)
+        )
+        systems["ee_kin"].set_name("end_effector_kinematics_2d")
+
+        # ----------------------------
+        # Muscle: u -> F
+        # ----------------------------
+        systems["muscle"] = self.builder.AddSystem(
+            MuscleDynamics2D(self.config.muscle_config)
+        )
+        systems["muscle"].set_name("muscle_dynamics")
+
+        # ----------------------------
+        # ZFT: (p, pdot, F) -> (pzft, pzft_dot, pzft_ddot)
+        # ----------------------------
+        systems["zft"] = self.builder.AddSystem(
+            ZFTReferenceMass2D(self.config.zft_config)
+        )
+        systems["zft"].set_name("zft_reference_mass")
+
+        # Keep impedance block only if you really use it in Option A.
+        # If unused, don't create it (or you’ll forget to connect it).
+        if getattr(self.config, "use_impedance", False):
+            systems["impedance"] = self.builder.AddSystem(
+                ImpedanceForce2D(self.config.impedance_config)
+            )
+            systems["impedance"].set_name("impedance_force")
+
+        # ----------------------------
+        # IK: task -> joint refs
+        # ----------------------------
+        systems["manip_ik"] = self.builder.AddSystem(
+            ManipulatorIKDesiredAngles(self.config.ik_config)
+        )
+        systems["manip_ik"].set_name("ik_task_to_joint_reference")
+
+        # ----------------------------
+        # Computed torque
+        # ----------------------------
+        systems["computed_torque"] = self.builder.AddSystem(
+            ComputedTorqueInverseDynamicsController(self.config.computed_torque_config)
+        )
+        systems["computed_torque"].set_name("computed_torque_inverse_dynamics")
+
+        # Optional torque limits
+        if getattr(self.config, "use_torque_limits", True):
+            systems["torque_limit"] = self.builder.AddSystem(
+                ActuatorLimit2D(self.config.actuator_limit_config)
+            )
+            systems["torque_limit"].set_name("actuator_torque_limits")
+
+        # ----------------------------
+        # Convenience muxes
+        # ----------------------------
+        systems["ref_mux"] = self.builder.AddSystem(Multiplexer([2, 2, 2]))
+        systems["ref_mux"].set_name("joint_reference_mux")
+
+        systems["meas_mux"] = self.builder.AddSystem(
+            Multiplexer([self.config.nq_total, self.config.nv_total])
+        )
+        systems["meas_mux"].set_name("measured_state_mux")
+
+        systems["log_mux"] = self.builder.AddSystem(
+            Multiplexer([
+                2, 2,      # p, pdot
+                2, 2, 2,   # pzft, pzft_dot, pzft_ddot
+                2,         # F
+                self.config.nq_total,
+                self.config.nv_total,
+            ])
+        )
+        systems["log_mux"].set_name("logging_signal_mux")
+
+        # persist
+        self.systems.update(systems)
+        return systems
+
+    # ------------------------------------------------------------------
+    # Loggers
+    # ------------------------------------------------------------------
+    def add_loggers(self) -> Dict[str, object]:
+        """Build loggers for LQR + OFC signals."""
+        loggers = {}
+
+        # Keep your original ones if you want; just don’t hardcode wrong dims.
+        # If you truly want 8D, ensure your plant state really is 8D.
+        if getattr(self.config, "log_plant_state_dim", None) is not None:
+            n = self.config.log_plant_state_dim
+        else:
+            n = self.config.nq_total + self.config.nv_total
+
+        loggers["state"] = self.builder.AddSystem(VectorLogSink(n))
+        loggers["state"].set_name("state_logger")
+
+        loggers["torques"] = self.builder.AddSystem(VectorLogSink(self.config.nu))
+        loggers["torques"].set_name("torques_logger")
+
+        # Full “complete-system” muxed log
+        loggers["complete_system_log"] = LogVectorOutput(
+            self.systems["log_mux"].get_output_port(), self.builder
+        )
+
+        self.loggers.update(loggers)
+        return loggers
+
+    # ------------------------------------------------------------------
+    # Connections
+    # ------------------------------------------------------------------
+    def connect_system_control(self):
+        """Wire the blocks together (NO plant creation here)."""
+        # Required systems
+        plant_state_demux = self.systems["plant_state_demux"]
+        state_hold = self.systems["state_hold"]
+        plant_state_demux_hold = self.systems["plant_state_demux_hold"]
+
+        q_demux = self.systems["q_demux"]
+        v_demux = self.systems["v_demux"]
+
+        ee_kin = self.systems["ee_kin"]
+        muscle = self.systems["muscle"]
+        zft = self.systems["zft"]
+        ik = self.systems["ik"]
+        computed_torque = self.systems["computed_torque"]
+
+        torque_limit: Optional[object] = self.systems.get("torque_limit", None)
+
+        ref_mux = self.systems["ref_mux"]
+        meas_mux = self.systems["meas_mux"]
+
+        # --------------------------------------------------------------
+        # 1) Plant state -> demux (raw) and -> state_hold -> demux (held)
+        # --------------------------------------------------------------
+        self.builder.Connect(self.plant.get_state_output_port(), plant_state_demux.get_input_port())
+        self.builder.Connect(self.plant.get_state_output_port(), state_hold.get_input_port())
+        self.builder.Connect(state_hold.get_output_port(), plant_state_demux_hold.get_input_port())
+
+        # Raw q,v (useful for kinematics/logging)
+        q_port = plant_state_demux.get_output_port(0)
+        v_port = plant_state_demux.get_output_port(1)
+
+        # Held q,v (useful for controller stability / sampled-data control)
+        qh_port = plant_state_demux_hold.get_output_port(0)
+        vh_port = plant_state_demux_hold.get_output_port(1)
+
+        # Optional arm/pend split (currently not used downstream, but correct to wire)
+        self.builder.Connect(q_port, q_demux.get_input_port())
+        self.builder.Connect(v_port, v_demux.get_input_port())
+
+        # --------------------------------------------------------------
+        # 2) EE kinematics (use raw q,v)
+        # --------------------------------------------------------------
+        self.builder.Connect(q_port, ee_kin.get_input_port(0))
+        self.builder.Connect(v_port, ee_kin.get_input_port(1))
+
+        # --------------------------------------------------------------
+        # 3) ZFT: (p, pdot, F) -> (pzft, pzft_dot, pzft_ddot)
+        # --------------------------------------------------------------
+        self.builder.Connect(ee_kin.get_output_port(0), zft.get_input_port(0))   # p
+        self.builder.Connect(ee_kin.get_output_port(1), zft.get_input_port(1))   # pdot
+        self.builder.Connect(muscle.get_output_port(),  zft.get_input_port(2))   # F
+
+        # --------------------------------------------------------------
+        # 4) IK: (pzft, pzft_dot, pzft_ddot) -> joint refs
+        # --------------------------------------------------------------
+        self.builder.Connect(zft.get_output_port(0), ik.get_input_port(0))
+        self.builder.Connect(zft.get_output_port(1), ik.get_input_port(1))
+        self.builder.Connect(zft.get_output_port(2), ik.get_input_port(2))
+
+        self.builder.Connect(ik.get_output_port(0), ref_mux.get_input_port(0))
+        self.builder.Connect(ik.get_output_port(1), ref_mux.get_input_port(1))
+        self.builder.Connect(ik.get_output_port(2), ref_mux.get_input_port(2))
+
+        # --------------------------------------------------------------
+        # 5) Computed torque: (q,v, refs) -> tau
+        # Use HELD q,v here (common for sampled controllers)
+        # --------------------------------------------------------------
+        self.builder.Connect(qh_port, computed_torque.get_input_port(0))  # q
+        self.builder.Connect(vh_port, computed_torque.get_input_port(1))  # v
+        self.builder.Connect(ik.get_output_port(0), computed_torque.get_input_port(2))  # qa_ref
+        self.builder.Connect(ik.get_output_port(1), computed_torque.get_input_port(3))  # qd_ref
+        self.builder.Connect(ik.get_output_port(2), computed_torque.get_input_port(4))  # qdd_ref
+
+        # --------------------------------------------------------------
+        # 6) Torque -> plant actuation (NO local 'plant' variable)
+        # --------------------------------------------------------------
+        if torque_limit is not None:
+            self.builder.Connect(computed_torque.get_output_port(), torque_limit.get_input_port())
+            self.builder.Connect(torque_limit.get_output_port(), self.plant.get_actuation_input_port())
+        else:
+            self.builder.Connect(computed_torque.get_output_port(), self.plant.get_actuation_input_port())
+
+        # --------------------------------------------------------------
+        # 7) Expose measured state mux (if other controllers use it)
+        # --------------------------------------------------------------
+        self.builder.Connect(q_port, meas_mux.get_input_port(0))
+        self.builder.Connect(v_port, meas_mux.get_input_port(1))
+
+    def connect_loggers(self):
+        """Connect all loggers to their signal sources."""
+        # Connect base loggers (state, manip_state, ee_state)
+        self.builder.Connect(
+            self.plant.get_state_output_port(),
+            self.loggers["state"].get_input_port()
+        )
+        
+        self.builder.Connect(
+            self.plant.get_state_output_port(self.manipulator.model_instance),
+            self.loggers["manip_state"].get_input_port()
+        )
+        
+        self.builder.Connect(
+            self.plant.get_state_output_port(self.manipulator.model_instance),
+            self.loggers["ee_computer"].get_input_port(0)
+        )
+        self.builder.Connect(
+            self.loggers["ee_computer"].get_output_port(),
+            self.loggers["ee_state"].get_input_port()
+        )
+        
+        # Connect torques logger
+        if "computed_torque" in self.systems:
+            self.builder.Connect(
+                self.systems["computed_torque"].get_output_port(),
+                self.loggers["torques"].get_input_port()
+            )
+        
+        # Optional: Create complete system log from log_mux if it exists
+        if "log_mux" in self.systems:
+            plant_state_demux = self.systems["plant_state_demux"]
+            ee_kin = self.systems["ee_kin"]
+            muscle = self.systems["muscle"]
+            zft = self.systems["zft"]
+            log_mux = self.systems["log_mux"]
+
+            # log_mux order: [p(2), pdot(2), pzft(2), pzft_dot(2), pzft_ddot(2), F(2), q(nq), v(nv)]
+            self.builder.Connect(ee_kin.get_output_port(0), log_mux.get_input_port(0))
+            self.builder.Connect(ee_kin.get_output_port(1), log_mux.get_input_port(1))
+            self.builder.Connect(zft.get_output_port(0), log_mux.get_input_port(2))
+            self.builder.Connect(zft.get_output_port(1), log_mux.get_input_port(3))
+            self.builder.Connect(zft.get_output_port(2), log_mux.get_input_port(4))
+            self.builder.Connect(muscle.get_output_port(), log_mux.get_input_port(5))
+            self.builder.Connect(plant_state_demux.get_output_port(0), log_mux.get_input_port(6))
+            self.builder.Connect(plant_state_demux.get_output_port(1), log_mux.get_input_port(7))
+            
+            # Create complete system log
+            self.loggers["complete_system_log"] = LogVectorOutput(
+                log_mux.get_output_port(), self.builder
+            )
+
+
+# ============================================================================
+# SIMULATION CLASS
+# ============================================================================
+
+class Simulation:
+    """
+    Manages simulation execution for cart-pendulum-manipulator system.
+    
+    Uses composition with:
+    - SystemBuilder: Builds the multibody plant
+    - ControlSystemBuilder: Builds and connects control systems (strategy pattern)
+    
+    Responsibilities:
+    - Configure initial states (EE position, cart position)
+    - Store simulation components (plant, manipulator, etc.)
+    - Run simulation loop with pluggable control strategies
+    
+    Attributes:
+        config: SimulationConfig with all simulation parameters
+        system_builder: SystemBuilder instance for creating the multibody system
+        control_builder: ControlSystemBuilder instance (optional, set later)
+        builder: DiagramBuilder (set during setup)
+        plant: MultibodyPlant (set during setup)
+        scene_graph: SceneGraph (set during setup)
+        manipulator: CupManipulator (set during setup)
+        cart_model: ModelInstanceIndex for cart-pendulum (set during setup)
+        ee_world_pos: End-effector position in world frame
+        cart_init_pos: Initial cart position [x, y, α, β]
+        control_systems: Dictionary of control system blocks
+        loggers: Dictionary of data loggers
+    """
+    
+    def __init__(self, config: SimulationConfig, system_builder: SystemBuilder,
+                 control_builder: ControlSystemBuilder = None):
+        """
+        Initialize simulation with configuration and builders.
+        
+        Args:
+            config: SimulationConfig with all simulation parameters
+            system_builder: SystemBuilder for creating the multibody system
+            control_builder: ControlSystemBuilder for control architecture (optional)
+        """
+        self.config = config
+        self.system_builder = system_builder
+        self.control_builder = control_builder
+        
+        # Will be set during setup_system()
+        self.builder = None
+        self.plant = None
+        self.scene_graph = None
+        self.manipulator = None
+        self.cart_model = None
+        self.cart_pendulum = None
+        
+        # Will be set during configure_initial_state()
+        self.ee_world_pos = None
+        self.cart_init_pos = None
+        self.manipulator_initial_q = None
+        
+        # Will be set after control builder runs
+        self.control_systems = {}
+        self.loggers = {}
+        
+    def setup_system(self):
+        """
+        Build the multibody system using the SystemBuilder.
+        
+        Creates the DiagramBuilder, MultibodyPlant, SceneGraph, and adds
+        manipulator and cart-pendulum to the plant.
+        """
+        (self.builder, self.plant, self.scene_graph, 
+         self.manipulator, self.cart_pendulum, self.cart_model) = self.system_builder.build(meshcat=self.config.meshcat)
+        
+    def configure_initial_state(self, context=None, cart_x_override=None, cart_y_override=None):
+        """
+        Calculate and optionally apply initial state to a Drake context.
+        
+        When context=None: Calculates values using temporary context, stores them.
+        When context provided: Applies stored values to the given context.
+        
+        This unified method handles both initial calculation and later application,
+        eliminating duplication.
+        
+        Args:
+            context: Optional Drake context to apply state to. If None, only calculates.
+            cart_x_override: Optional override for cart X position
+            cart_y_override: Optional override for cart Y position
+        """
+        # Calculate manipulator initial angles (only once)
+        if self.manipulator_initial_q is None:
+            self.manipulator_initial_q = np.array([
+                self.system_builder.manipulator_joint_angles['link1_base'],     # q1
+                self.system_builder.manipulator_joint_angles['link2_link1'],    # q2
+            ])
+        
+        # Determine which context to use
+        needs_temp_context = context is None
+        work_context = self.plant.CreateDefaultContext() if needs_temp_context else context
+        plant_context = self.plant.GetMyMutableContextFromRoot(work_context)
+        
+        # Set manipulator positions (needed for both calculation and application)
+        self.manipulator.set_positions_user_order(self.plant, plant_context, {
+            "link1_base": self.manipulator_initial_q[0],
+            "link2_link1": self.manipulator_initial_q[1],
+        })
+        
+        # Calculate EE position and cart position (only once)
+        if self.ee_world_pos is None:
+            self.ee_world_pos = self.manipulator.get_end_effector_position(self.plant, plant_context)
+        
+        # if cart_init_pos is None, calculate it based on config or default to EE position
+        if self.cart_init_pos is None:
+            # Get cart position from config or default to EE position
+            if self.config.physics_config.cart_initial_position is not None:
+                cart_x = self.config.physics_config.cart_initial_position[0]
+                cart_y = self.config.physics_config.cart_initial_position[1]
+            else:
+                cart_x = self.ee_world_pos[0]
+                cart_y = self.ee_world_pos[1]
+            
+            # Get pendulum angles from config or default to hanging
+            if self.config.physics_config.pendulum_initial_angles is not None:
+                alpha = self.config.physics_config.pendulum_initial_angles[0]
+                beta = self.config.physics_config.pendulum_initial_angles[1]
+            else:
+                alpha = 0.0  # α (pitch) = 0 (hanging)
+                beta = 0.0   # β (roll) = 0 (hanging)
+            
+            self.cart_init_pos = np.array([cart_x, cart_y, alpha, beta])
+        
+        # If context was provided, apply full state (positions + velocities)
+        if context is not None:
+            # Set manipulator velocities to zero
+            self.manipulator.set_velocities_user_order(self.plant, plant_context, {
+                "link1_base": 0.0,
+                "link2_link1": 0.0,
+            })
+            
+            # Set cart positions (with optional override)
+            cart_x = cart_x_override if cart_x_override is not None else self.cart_init_pos[0]
+            cart_y = cart_y_override if cart_y_override is not None else self.cart_init_pos[1]
+            
+            cart_pendulum_positions = np.array([cart_x, cart_y, self.cart_init_pos[2], self.cart_init_pos[3]])
+            self.plant.SetPositions(plant_context, self.cart_model, cart_pendulum_positions)
+            self.plant.SetVelocities(plant_context, self.cart_model, np.zeros(4))
+        
+        # Print summary only on first call (with temp context)
+        if needs_temp_context:
+            self._print_initial_config_summary(work_context)
+    
+    def _print_initial_config_summary(self, context=None):
+        """
+        Print summary of initial configuration.
+        
+        Args:
+            context: Optional context for verifying cart world position
+        """
+        print(colored(f"\n📄 Initial Configuration:", "cyan"))
+        print(colored(f"  - Manipulator: q1={np.rad2deg(self.manipulator_initial_q[0]):.1f}°, "
+                     f"q2={np.rad2deg(self.manipulator_initial_q[1]):.1f}°", "cyan"))
+        print(colored(f"  - Cart positioned at EE: ({self.cart_init_pos[0]:.3f}, "
+                     f"{self.cart_init_pos[1]:.3f}) m", "cyan"))
+        print(colored(f"  - Pendulum: α={np.rad2deg(self.cart_init_pos[2]):.1f}°, "
+                     f"β={np.rad2deg(self.cart_init_pos[3]):.1f}°", "cyan"))
+        print(colored(f"\n🌍 World Frame Positions:", "yellow", attrs=["bold"]))
+        print(colored(f"  - EE in world frame: ({self.ee_world_pos[0]:.3f}, "
+                     f"{self.ee_world_pos[1]:.3f}, {self.ee_world_pos[2]:.3f}) m", "yellow"))
+        
+        if context is not None:
+            # Set cart position for verification
+            plant_context = self.plant.GetMyMutableContextFromRoot(context)
+            self.plant.SetPositions(plant_context, self.cart_model, self.cart_init_pos)
+            
+            cart_body = self.plant.GetBodyByName("cart", self.cart_model)
+            cart_world_pos = self.plant.CalcPointsPositions(
+                plant_context, cart_body.body_frame(), [0, 0, 0], self.plant.world_frame()
+            ).flatten()
+            print(colored(f"  - Cart in world frame: ({cart_world_pos[0]:.3f}, "
+                         f"{cart_world_pos[1]:.3f}, {cart_world_pos[2]:.3f}) m", "yellow"))
+    
+    def setup_control_builder(self, control_builder: ControlSystemBuilder):
+        """
+        Set or change the control builder (strategy).
+        
+        Args:
+            control_builder: ControlSystemBuilder instance
+        """
+        self.control_builder = control_builder
+        self.control_builder.builder = self.builder
+        self.control_builder.plant = self.plant
+        self.control_builder.cart_model = self.cart_model
+        self.control_builder.manipulator = self.manipulator
+    
+    def build_control_system(self):
+        """
+        Build control system using the provided ControlSystemBuilder.
+        
+        This is where the strategy pattern is applied:
+        Different control builders create different control architectures.
+        """
+        if self.control_builder is None:
+            raise ValueError("No control builder provided - use set_control_builder() first")
+        
+        # Set the control builder's drake components (if not already set during __init__)
+        if not hasattr(self.control_builder, 'builder') or self.control_builder.builder is None:
+            self.control_builder.builder = self.builder
+            self.control_builder.plant = self.plant
+            self.control_builder.cart_model = self.cart_model
+            self.control_builder.manipulator = self.manipulator
+        
+        # Build and connect control systems
+        self.control_systems, self.loggers = self.control_builder.build_and_connect()
+        
+        print(colored(f"✓ Control system configured: {type(self.control_builder).__name__}", "green"))
+
+    def _setup_simulator(self, diagram):
+        """
+        Setup simulator with initial conditions.
+        
+        Args:
+            cart_x_init: Optional override for cart X position
+            cart_y_init: Optional override for cart Y position
+        """
+        simulator = Simulator(diagram)
+        context = simulator.get_mutable_context()
+        
+        # Apply pre-calculated initial state to simulation context
+        self.configure_initial_state(context)
+        
+        # Publish initial state and add visualization
+        plant_context = self.plant.GetMyMutableContextFromRoot(context)
+        diagram.ForcedPublish(context)
+        add_frames_to_meshcat(self.config.meshcat, self.plant, plant_context,
+                            self.manipulator, self.cart_model)
+        
+        print(colored(f"✓ Initial state configured at: {self.config.meshcat.web_url()}", "green"))
+        
+        return simulator
+    
+    def _run_simulation_loop(self, simulator, visualizer):
+        """Run the simulation loop."""
+        visualizer.StartRecording()
+        simulator.set_target_realtime_rate(1.0)
+        
+        dt_sim = 0.01
+        current_time = 0.0
+        debug_interval = 1.0
+        next_debug_time = debug_interval
+        
+        print(colored("\n🚀 Starting simulation...", "cyan"))
+        
+        while current_time < self.config.duration:
+            if current_time >= next_debug_time:
+                self._print_debug_info(simulator, current_time)
+                next_debug_time += debug_interval
+            
+            simulator.AdvanceTo(current_time + dt_sim)
+            current_time += dt_sim
+        
+        print(colored(f"\n✓ Simulation complete at t={current_time:.2f}s", "green"))
+        visualizer.PublishRecording()
+    
+    def run(self, cart_x_init=None, cart_y_init=None):
+        """
+        Run simulation with the configured control system.
+        
+        This method replaces the mode-specific run methods (run_lqr_with_manipulator_tracking, etc.)
+        with a single generic run() that works with any control builder.
+        
+        Args:
+            cart_x_init: Initial cart X position (defaults to self.cart_init_pos[0])
+            cart_y_init: Initial cart Y position (defaults to self.cart_init_pos[1])
+        """
+        # Build control system if not already built
+        if not self.control_systems:
+            self.build_control_system()
+        
+        # Add visualization
+        visualizer = MeshcatVisualizer.AddToBuilder(
+            self.builder, self.scene_graph, self.config.meshcat
+        )
+        
+        # Add frame updater
+        frame_list = self._build_frame_list()
+        frame_updater = self.builder.AddSystem(
+            MeshcatFrameUpdater(self.config.meshcat, self.plant, frame_list, update_period=0.033)
+        )
+        frame_updater.set_name("frame_updater")
+        self.builder.Connect(self.plant.get_state_output_port(), frame_updater.get_input_port(0))
+        
+        # Build diagram and create simulator
+        diagram = self.builder.Build()
+        simulator = self._setup_simulator(diagram)
+        
+        # Run simulation loop
+        self._run_simulation_loop(simulator, visualizer)
+        
+        # Extract and plot results
+        self._extract_and_plot_results(simulator.get_context())
+    
+    def _build_frame_list(self):
+        """Build frame list for visualization."""
+        from pydrake.multibody.tree import FrameIndex
+        
+        temp_context = self.plant.CreateDefaultContext()
+        frame_list = []
+        
+        for i in range(self.plant.num_frames()):
+            frame = self.plant.get_frame(FrameIndex(i))
+            frame_name = frame.name()
+            if frame_name == "world":
+                continue
+            
+            if "link" in frame_name.lower() or "cup_center" in frame_name.lower():
+                length = 0.15
+            elif "cart" in frame_name.lower():
+                length = 0.12
+            elif "pendulum" in frame_name.lower() or "gimbal" in frame_name.lower():
+                length = 0.10
+            else:
+                length = 0.08
+            
+            frame_list.append((frame_name, frame, length))
+        
+        return frame_list
+    
+    def _print_debug_info(self, simulator, current_time):
+        """Print debug information during simulation."""
+        context = simulator.get_context()
+        plant_context = self.plant.GetMyMutableContextFromRoot(context)
+        
+        cart_state = self.plant.GetPositionsAndVelocities(plant_context, self.cart_model)
+        manip_state = self.plant.GetPositionsAndVelocities(plant_context, self.manipulator.model_instance)
+        ee_pos = self.manipulator.get_end_effector_position(self.plant, plant_context)
+        
+        print(colored(f"\n[t={current_time:.2f}s]", "cyan"))
+        print(f"  Cart: ({cart_state[0]:.3f}, {cart_state[1]:.3f})m")
+        print(f"  Manip: q1={np.rad2deg(manip_state[0]):.1f}°, q2={np.rad2deg(manip_state[1]):.1f}°")
+        print(f"  EE: ({ee_pos[0]:.3f}, {ee_pos[1]:.3f})m")
+        print(f"  Error: {np.sqrt((ee_pos[0]-cart_state[0])**2 + (ee_pos[1]-cart_state[1])**2)*1000:.1f} mm")
+    
+    def _extract_and_plot_results(self, context):
+        """Extract logged data and generate plots."""
+        # Extract all logs
+        t = self.loggers['state'].FindLog(context).sample_times()
+        state_data = self.loggers['state'].FindLog(context).data()
+        manip_state_data = self.loggers['manip_state'].FindLog(context).data()
+        ee_state_data = self.loggers['ee_state'].FindLog(context).data()
+        
+        # Extract control-specific logs if available
+        if 'ref' in self.loggers:
+            ref_data = self.loggers['ref'].FindLog(context).data()
+            force_data = self.loggers['force'].FindLog(context).data()
+            impedance_data = self.loggers['impedance'].FindLog(context).data()
+            cart_traj_data = self.loggers['cart_traj'].FindLog(context).data()
+            manip_desired_data = self.loggers['manip_desired'].FindLog(context).data()
+            manip_torque_data = self.loggers['manip_torque'].FindLog(context).data()
+            
+            # Call LQR-specific plotting function
+            plot_lqr_manip_ee_traj_track_results(
+                t, state_data, ref_data, cart_traj_data,
+                ee_state_data[0:2, :], ee_state_data[2:4, :],
+                force_data, impedance_data, manip_state_data,
+                manip_desired_data, manip_torque_data, self.config
+            )
+        else:
+            # Generic plotting for non-LQR controllers
+            print(colored("ℹ️  No LQR-specific loggers found, skipping detailed plots", "yellow"))
+        
+        plt.show(block=True)
+        print(colored("\n✓ Simulation Complete!", "green", attrs=["bold"]))
+    
+    
+
+
 
 # ============================================================================
 # MAIN SIMULATION
@@ -3720,7 +4421,6 @@ def run_lqr_manip_ee_traj_track(
 
 def main():
     
-
     # ========================================================================
     # BUILD CONTROL DIAGRAM
     # ========================================================================
@@ -3773,14 +4473,9 @@ def main():
         # This creates the first ModelInstance.
         # The manipulator will remain FIXED at its initial configuration in most modes.
         
-        manipulator_config = create_cup_manipulator_config(
-            urdf_path="model_using_onshape_to_robot/cup_manipulator2/cup_manipulator_obj_right_frame.urdf", 
-            joint_angles={
-                'link1_base': np.deg2rad(-10.0),   # q1: Base to link1
-                'link2_link1': np.deg2rad(20.0),   # q2: Link1 to link2
-            },
-            damping=(0.1, 0.1),
-        )
+        # Use global MANIPULATOR_CONFIG
+        manipulator_config = MANIPULATOR_CONFIG
+        
         #Initialize manipulator and load URDF into plant
         manipulator = CupManipulator(manipulator_config, enable_visualization=True)
         parser = Parser(plant)
@@ -4010,8 +4705,8 @@ def main():
                                 # Solve IK for manipulator EE position
                                 target_xy = np.array([new_x, new_y])
                                 print(colored(f"  Solving IK for target ({new_x:.3f}, {new_y:.3f})...", "cyan"))
-                                q_solution, success = solve_initial_pose_via_ik(
-                                    plant, manipulator, target_xy, current_manip_q, pos_tol=0.001, verbose=True
+                                q_solution, success = manipulator.solve_initial_pose_via_ik(
+                                    plant, target_xy, current_manip_q, pos_tol=0.001, verbose=True
                                 )
                                 
                                 if success:
@@ -4047,166 +4742,8 @@ def main():
         
         return
     
-    elif args.mode == 'finite-horizon-lqr-for-min-effort_cart_pend_only':
-        print("\n" + "="*80)
-        print(colored("2D CART-PENDULUM (EXTENDED) - MUSCLE DYNAMICS & OFC", "cyan", attrs=["bold"]))
-        print("="*80)
-        print(colored(f"Mode: {args.mode}", "yellow"))
-        print(colored(f"Target: ({args.target_x:.2f}, {args.target_y:.2f}) m", "yellow"))
-        print(colored(f"Duration: {args.duration:.1f} s", "yellow"))
-        print(colored(f"Horizon: {args.horizon:.1f} s", "yellow"))
-        print("="*80 + "\n")
-        
-        # Get global configurations
-        physics_config = PHYSICS_CONFIG
-        muscle_config = MUSCLE_CONFIG
-        impedance_config = IMPEDANCE_CONFIG
-        zft_config = ZFT_CONFIG
-        
-        # Start Meshcat
-        meshcat = StartMeshcat()
-        print(colored(f"🌐 Meshcat: {meshcat.web_url()}\n", "green", attrs=["bold"]))
-        
-        # ========================================================================
-        # BUILD MULTIBODY PLANT WITH TWO SEPARATE MODEL INSTANCES
-        # ========================================================================
-        # The plant will contain TWO robots:
-        # 1. Manipulator (2-DOF cup manipulator) - for visualization
-        # 2. Cart-Pendulum (4-DOF system) - actively controlled
-        #
-        # Each robot gets its own ModelInstance, which allows us to:
-        # - Query states separately: plant.get_state_output_port(model_instance)
-        # - Apply forces separately: plant.get_actuation_input_port(model_instance)
-        # - Set initial conditions separately
-        #
-        # This is how we separate "cart-pendulum only" states from "full system" states
-        builder = DiagramBuilder()
-        plant = MultibodyPlant(time_step=0.001)  # 1ms time step for simulation
-        scene_graph = builder.AddSystem(SceneGraph())
-        plant.RegisterAsSourceForSceneGraph(scene_graph)
-        
-        # ========================================================================
-        # STEP 1: ADD MANIPULATOR TO MAIN PLANT (MODEL INSTANCE 1)
-        # ========================================================================
-        # Create manipulator configuration and add it to the main plant.
-        # This creates the first ModelInstance.
-        # The manipulator will remain FIXED at its initial configuration in most modes.
-        
-        manipulator_config = create_cup_manipulator_config(
-            urdf_path="model_using_onshape_to_robot/cup_manipulator/cup_manipulator_obj_natural_order.urdf", 
-            joint_angles={
-                'link1_base': np.deg2rad(-10.0),   # q1: Base to link1
-                'link2_link1': np.deg2rad(20.0),   # q2: Link1 to link2
-            },
-            damping=(0.1, 0.1),
-        )
-        #Initialize manipulator and load URDF into plant
-        manipulator = CupManipulator(manipulator_config, enable_visualization=True)
-        parser = Parser(plant)
-        manipulator.load_urdf_to_plant(plant, parser)  # Loads URDF, creates model instance
-        # Rotate base -90° around Y to align manipulator with X-Y plane (same as cart)
-        # This makes manipulator X-axis → world X-axis, manipulator Z-axis → world Y-axis
-        manipulator.weld_base_to_world(plant, orientation=np.array([0.0, -np.pi/2, 0.0]))
-        
-        # Add actuators to manipulator joints
-        manipulator.add_joint_actuators(plant)
-        
-        print(colored(f"✓ Manipulator loaded (ModelInstance: {manipulator.model_instance})", "green"))
-        print(colored(f"  - State dimension: 4 (2 positions + 2 velocities)", "cyan"))
-        print(colored(f"  - Joints: link1_base, link2_link1", "cyan"))
-        
-        
-        # Determine z-offset for cart-pendulum based on URDF joint origin
-        z_offset_from_urdf = 1.17625  # meters, from link1_base joint origin
-        print(colored(f"📍 Using z-offset from URDF: {z_offset_from_urdf:.5f} m", "cyan"))
-        
-
-        # Initialize cart-pendulum with this z-offset to ensure it is visually aligned with the manipulator's end-effector
-        cart_pendulum = CartPendulum2DExtended(physics_config, z_offset=z_offset_from_urdf)
-        cart_model = plant.AddModelInstance("cart_pendulum")  # Creates new model instance
-        cart_pendulum.build_plant(plant, cart_model)  # Builds cart-pendulum in this instance
-        
-        print(colored(f"✓ Cart-Pendulum (2D Extended) created (ModelInstance: {cart_model})", "green"))
-        print(colored(f"  - State dimension: 8 (4 positions + 4 velocities)", "cyan"))
-        print(colored(f"  - DOFs: x, y (cart), α, β (pendulum gimbal angles)", "cyan"))
-        print(colored(f"  - Z-plane height: {z_offset_from_urdf:.5f} m", "cyan"))
-        
-        
-        plant.Finalize()  # Must be called before adding to diagram
-        print(colored(f"\n✓ Plant finalized with {plant.num_positions()} total positions, "
-                    f"{plant.num_velocities()} total velocities", "green"))
-        
-
-        # ========================================================================
-        # CONFIGURE INITIAL STATE
-        # ========================================================================
-        # Initial configuration in natural [q1, q2] order
-        initial_q = np.array([np.deg2rad(-40.0), np.deg2rad(80.0)])  # [q1, q2]
-        
-        # Calculate EE position at configured joint angles
-        temp_context = plant.CreateDefaultContext()
-        manipulator.set_positions_user_order(plant, temp_context, {
-            "link1_base": initial_q[0],
-            "link2_link1": initial_q[1],
-        })
-        ee_pos_3d = manipulator.get_end_effector_position(plant, temp_context)
-        
-        # Use actual 3D position from manipulator EE
-        # Cart state: [x, y, α, β] where x,y are from EE's X,Z coordinates in world frame
-        cart_init_pos = np.array([ee_pos_3d[0], ee_pos_3d[2], 0.0, 0.0])  # [x, y, α, β]
-        
-        # Get world frame positions for debugging
-        ee_world_pos = manipulator.get_end_effector_position(plant, temp_context)
-        
-        cart_body = plant.GetBodyByName("cart", cart_model)
-        cart_world_pos = plant.CalcPointsPositions(
-            temp_context, cart_body.body_frame(), [0, 0, 0], plant.world_frame()
-        ).flatten()
-        
-        # Print configuration summary
-        print(colored(f"\n📄 Initial Configuration:", "cyan"))
-        print(colored(f"  - Manipulator: q1={np.rad2deg(initial_q[0]):.1f}°, q2={np.rad2deg(initial_q[1]):.1f}°", "cyan"))
-        print(colored(f"  - Manipulator EE: ({ee_pos_3d[0]:.3f}, {ee_pos_3d[1]:.3f}, {ee_pos_3d[2]:.3f}) m", "cyan"))
-        print(colored(f"  - Cart positioned at EE: ({cart_init_pos[0]:.3f}, {cart_init_pos[1]:.3f}) m", "cyan"))
-        print(colored(f"  - Pendulum hanging: α=0°, β=0°", "cyan"))
-        print(colored(f"\n🌍 World Frame Positions:", "yellow", attrs=["bold"]))
-        print(colored(f"  - EE in world frame: ({ee_world_pos[0]:.3f}, {ee_world_pos[1]:.3f}, {ee_world_pos[2]:.3f}) m", "yellow"))
-        print(colored(f"  - Cart in world frame: ({cart_world_pos[0]:.3f}, {cart_world_pos[1]:.3f}, {cart_world_pos[2]:.3f}) m", "yellow"))
-        print(colored("\n🚀 Running finite-horizon LQR control for cart-pendulum only...", "cyan"))
-        # Create fresh builder for control diagram (cart-pendulum only, no manipulator)
-        control_builder = DiagramBuilder()
-        
-        # Create a new plant with ONLY cart-pendulum (no manipulator)
-        cart_only_plant = MultibodyPlant(time_step=0.001)
-        cart_only_scene_graph = control_builder.AddSystem(SceneGraph())
-        cart_only_plant.RegisterAsSourceForSceneGraph(cart_only_scene_graph)
-        
-        # Add cart-pendulum to the new plant
-        cart_only_pendulum = CartPendulum2DExtended(physics_config, z_offset=z_offset_from_urdf)
-        cart_only_model = cart_only_plant.AddModelInstance("cart_pendulum")
-        cart_only_pendulum.build_plant(cart_only_plant, cart_only_model)
-        cart_only_plant.Finalize()
-        
-        # Add the cart-only plant to builder
-        control_builder.AddSystem(cart_only_plant)
-        
-        # Connect plant to scene graph
-        control_builder.Connect(
-            cart_only_plant.get_geometry_pose_output_port(),
-            cart_only_scene_graph.get_source_pose_port(cart_only_plant.get_source_id())
-        )
-        control_builder.Connect(
-            cart_only_scene_graph.get_query_output_port(),
-            cart_only_plant.get_geometry_query_input_port()
-        )
-        
-        run_finite_horizon_lqr_cart_pend_only(
-            control_builder, cart_only_plant, cart_only_scene_graph, meshcat, cart_only_model, None,
-            None, physics_config, impedance_config, zft_config, muscle_config, args,
-            cart_x_init=args.cart_x_init, cart_y_init=args.cart_y_init, initial_q=None
-        )
     
-    elif args.mode == 'lqr-manip-ee-traj-track':
+    elif args.mode == 'lqr-applied-to-cart-manip-following-cart':
         print("\n" + "="*80)
         print(colored("2D CART-PENDULUM (EXTENDED) - MUSCLE DYNAMICS & OFC", "cyan", attrs=["bold"]))
         print("="*80)
@@ -4216,178 +4753,175 @@ def main():
         print(colored(f"Horizon: {args.horizon:.1f} s", "yellow"))
         print("="*80 + "\n")
         
-        # Get global configurations
-        physics_config = PHYSICS_CONFIG
-        muscle_config = MUSCLE_CONFIG
-        impedance_config = IMPEDANCE_CONFIG
-        zft_config = ZFT_CONFIG
-        
         # Start Meshcat
         meshcat = StartMeshcat()
         print(colored(f"🌐 Meshcat: {meshcat.web_url()}\n", "green", attrs=["bold"]))
         
-        # ========================================================================
-        # BUILD MULTIBODY PLANT WITH TWO SEPARATE MODEL INSTANCES
-        # ========================================================================
-        # The plant will contain TWO robots:
-        # 1. Manipulator (2-DOF cup manipulator) - for visualization
-        # 2. Cart-Pendulum (4-DOF system) - actively controlled
-        #
-        # Each robot gets its own ModelInstance, which allows us to:
-        # - Query states separately: plant.get_state_output_port(model_instance)
-        # - Apply forces separately: plant.get_actuation_input_port(model_instance)
-        # - Set initial conditions separately
-        #
-        # This is how we separate "cart-pendulum only" states from "full system" states
-        builder = DiagramBuilder()
-        plant = MultibodyPlant(time_step=0.001)  # 1ms time step for simulation
-        scene_graph = builder.AddSystem(SceneGraph())
-        plant.RegisterAsSourceForSceneGraph(scene_graph)
-        
-        # ========================================================================
-        # STEP 1: ADD MANIPULATOR TO MAIN PLANT (MODEL INSTANCE 1)
-        # ========================================================================
-        # Create manipulator configuration and add it to the main plant.
-        # This creates the first ModelInstance.
-        # The manipulator will remain FIXED at its initial configuration in most modes.
-        
-        manipulator_config = create_cup_manipulator_config(
-            urdf_path="model_using_onshape_to_robot/cup_manipulator2/cup_manipulator_obj_right_frame.urdf", 
-            joint_angles={
-                'link1_base': np.deg2rad(0.0),     # q1: Base to link1
-                'link2_link1': np.deg2rad(20.0),   # q2: Link1 to link2
-            },
-            damping=(0.1, 0.1),
+        # Create simulation configuration from args and global configs
+        sim_config = SimulationConfig.from_args(
+            args=args,
+            physics_config=PHYSICS_CONFIG,
+            muscle_config=MUSCLE_CONFIG,
+            impedance_config=IMPEDANCE_CONFIG,
+            zft_config=ZFT_CONFIG,
+            meshcat=meshcat,
         )
-        #Initialize manipulator and load URDF into plant
-        manipulator = CupManipulator(manipulator_config, enable_visualization=True)
-        parser = Parser(plant)
-        manipulator.load_urdf_to_plant(plant, parser)  # Loads URDF, creates model instance
-        # Rotate base -90° around Y to align manipulator with X-Y plane (same as cart)
-        # This makes manipulator X-axis → world X-axis, manipulator Z-axis → world Y-axis
-        manipulator.weld_base_to_world(plant, orientation=np.array([0.0, 0.0, 0.0]))
         
-        # Add actuators and end-effector frame BEFORE finalization
-        manipulator.add_joint_actuators(plant)
-        manipulator.add_end_effector_frame(plant)
-        print(colored(f"✓ End-effector frame '{manipulator.EE_FRAME_NAME}' added to manipulator", "green"))
-        print(colored(f"  - EE_OFFSET (relative to link2): {manipulator.EE_OFFSET}", "cyan"))
+        # ====================================================================
+        # STEP 1: Build system (multibody plant, manipulator, cart)
+        # ====================================================================
+        system_builder = SystemBuilder(
+            physics_config=sim_config.physics_config,
+            manipulator_urdf_path=sim_config.manipulator_urdf_path,
+            manipulator_joint_angles=sim_config.manipulator_joint_angles,
+            manipulator_damping=sim_config.manipulator_damping,
+        )
         
-        print(colored(f"✓ Manipulator loaded (ModelInstance: {manipulator.model_instance})", "green"))
-        print(colored(f"  - State dimension: 4 (2 positions + 2 velocities)", "cyan"))
-        print(colored(f"  - Joints: link1_base, link2_link1", "cyan"))
-        
-        
-        # Determine z-offset for cart-pendulum based on URDF joint origin
-        z_offset_from_urdf = 1.248125  # meters, from link1_base joint origin
-        print(colored(f"📍 Using z-offset from URDF: {z_offset_from_urdf:.5f} m", "cyan"))
-        
-
-        # Initialize cart-pendulum with this z-offset to ensure it is visually aligned with the manipulator's end-effector
-        cart_pendulum = CartPendulum2DExtended(physics_config, z_offset=z_offset_from_urdf)
-        cart_model = plant.AddModelInstance("cart_pendulum")  # Creates new model instance
-        cart_pendulum.build_plant(plant, cart_model)  # Builds cart-pendulum in this instance
-        
-        print(colored(f"✓ Cart-Pendulum (2D Extended) created (ModelInstance: {cart_model})", "green"))
-        print(colored(f"  - State dimension: 8 (4 positions + 4 velocities)", "cyan"))
-        print(colored(f"  - DOFs: x, y (cart), α, β (pendulum gimbal angles)", "cyan"))
-        print(colored(f"  - Z-plane height: {z_offset_from_urdf:.5f} m", "cyan"))
-        
-        
-        plant.Finalize()  # Must be called before adding to diagram
-
-        print(colored(f"\n✓ Plant finalized with {plant.num_positions()} total positions, "
-                    f"{plant.num_velocities()} total velocities", "green"))
-        
-        # Extract config angles for display
-        config_q1 = manipulator_config.joint_configs["link1_base"].position
-        config_q2 = manipulator_config.joint_configs["link2_link1"].position
-        
-        # Calculate EE position at config angles for display
-        temp_context = plant.CreateDefaultContext()
-        manipulator.set_positions_user_order(plant, temp_context, {
-            "link1_base": config_q1,
-            "link2_link1": config_q2,
-        })
-        ee_world_pos_post_finalize = manipulator.get_end_effector_position(plant, temp_context)
-        
-        print(colored(f"  - EE position in world frame (at config q1={np.rad2deg(config_q1):.1f}°, q2={np.rad2deg(config_q2):.1f}°): {ee_world_pos_post_finalize}", "cyan"))
-        print(colored(f"  - Meshcat will be available at: {meshcat.web_url()}", "cyan"))
-        
-        
-        # ========================================================================
-        # CONFIGURE INITIAL STATE
-        # ========================================================================
-        # Use manipulator config angles for initial cart position calculation
-        manipulator_initial_q = np.array([
-            manipulator_config.joint_configs["link1_base"].position,     # q1
-            manipulator_config.joint_configs["link2_link1"].position,    # q2
-        ])
-        
-        # Calculate EE position at configured joint angles
-        temp_context = plant.CreateDefaultContext()
-        manipulator.set_positions_user_order(plant, temp_context, {
-            "link1_base": manipulator_initial_q[0],
-            "link2_link1": manipulator_initial_q[1],
-        })
-        # Get world frame positions for debugging
-        ee_world_pos = manipulator.get_end_effector_position(plant, temp_context)
-        
-        # Define cart initial position at manipulator EE
-        # Cart state: [x, y, α, β] where:
-        #   - x = world X (horizontal)
-        #   - y = world Y (horizontal, perpendicular to X)
-        # CRITICAL: Both manipulator and cart operate in X-Y plane, so direct mapping:
-        cart_init_pos = np.array([ee_world_pos[0], ee_world_pos[1], 0.0, 0.0])  # [x from EE_X, y from EE_Y, α, β]
-        
-        # Set cart position in temp context for frame visualization
-        plant.SetPositions(temp_context, cart_model, cart_init_pos)
-        
-        
-        
-        cart_body = plant.GetBodyByName("cart", cart_model)
-        cart_world_pos = plant.CalcPointsPositions(
-            temp_context, cart_body.body_frame(), [0, 0, 0], plant.world_frame()
-        ).flatten()
-        
-        # Print configuration summary
-        print(colored(f"\n📄 Initial Configuration:", "cyan"))
-        print(colored(f"  - Manipulator: q1={np.rad2deg(manipulator_initial_q[0]):.1f}°, q2={np.rad2deg(manipulator_initial_q[1]):.1f}°", "cyan"))
-        print(colored(f"  - Cart positioned at EE: ({cart_init_pos[0]:.3f}, {cart_init_pos[1]:.3f}) m", "cyan"))
-        print(colored(f"  - Pendulum hanging: α=0°, β=0°", "cyan"))
-        print(colored(f"\n🌍 World Frame Positions:", "yellow", attrs=["bold"]))
-        print(colored(f"  - EE in world frame: ({ee_world_pos[0]:.3f}, {ee_world_pos[1]:.3f}, {ee_world_pos[2]:.3f}) m", "yellow"))
-        print(colored(f"  - Cart in world frame: ({cart_world_pos[0]:.3f}, {cart_world_pos[1]:.3f}, {cart_world_pos[2]:.3f}) m", "yellow"))
-        
-        # # Plot coordinate frames to verify orientation
-        # plot_frames_top_view(plant, temp_context, manipulator, cart_model, 
-        #                    title="Initial Frame Orientations - LQR Tracking Mode")
-        # plt.show(block=False)
-        # plt.pause(0.1)  # Brief pause to display plot
+        # Build the system and get Drake components
+        (builder, plant, scene_graph, 
+         manipulator, cart_pendulum, cart_model) = system_builder.build(meshcat=meshcat)
         
         print(colored("\n🚀 Running LQR with manipulator EE trajectory tracking (computed torque)...", "cyan"))
         
-        # Add plant to the main builder (scene_graph was already added at line ~4110)
-        builder.AddSystem(plant)
-        
-        # Connect plant to scene graph
-        builder.Connect(
-            plant.get_geometry_pose_output_port(),
-            scene_graph.get_source_pose_port(plant.get_source_id())
-        )
-        builder.Connect(
-            scene_graph.get_query_output_port(),
-            plant.get_geometry_query_input_port()
+        # ====================================================================
+        # STEP 2: Create control builder using system components
+        # ====================================================================
+        control_builder = LQRWithOFCOnlyCartPendulumBuilder(
+            builder=builder,
+            plant=plant,
+            cart_model=cart_model,
+            manipulator=manipulator,
+            config=sim_config
         )
         
-        # Run the LQR controller with manipulator EE tracking
-        # The function will build its own diagram with all control systems
-        run_lqr_manip_ee_traj_track(
-            builder, plant, scene_graph, meshcat, cart_model, manipulator,
-            ee_world_pos, physics_config, impedance_config, zft_config, muscle_config, args,
-            cart_x_init=cart_init_pos[0], cart_y_init=cart_init_pos[1]
+        # ====================================================================
+        # STEP 3: Create simulation with system builder and control builder
+        # ====================================================================
+        simulation = Simulation(
+            config=sim_config,
+            system_builder=system_builder,
+            control_builder=control_builder
+        )
+        
+        # Set the Drake components (already built by system_builder)
+        simulation.builder = builder
+        simulation.plant = plant
+        simulation.scene_graph = scene_graph
+        simulation.manipulator = manipulator
+        simulation.cart_pendulum = cart_pendulum
+        simulation.cart_model = cart_model
+        
+        # Configure initial state (EE position, cart position), only for vizualization. The actual initial states
+        # are set before the simulation
+        simulation.configure_initial_state()
+        
+        # ====================================================================
+        # STEP 4: Run simulation with the configured control strategy
+        # ====================================================================
+        simulation.run(
+            cart_x_init=simulation.cart_init_pos[0],
+            cart_y_init=simulation.cart_init_pos[1]
         )
 
+    elif args.mode == 'lqr-applied-to-both-cart-manip':
+        print("\n" + "="*80)
+        print(colored("2D CART-PENDULUM (EXTENDED) - LQR on BOTH CART & MANIPULATOR", "cyan", attrs=["bold"]))
+        print("="*80)
+        print(colored(f"Mode: {args.mode}", "yellow"))
+        print(colored(f"Target: ({args.target_x:.2f}, {args.target_y:.2f}) m", "yellow"))
+        print(colored(f"Duration: {args.duration:.1f} s", "yellow"))
+        print(colored(f"Horizon: {args.horizon:.1f} s", "yellow"))
+        print("="*80 + "\n")
+        
+        # Start Meshcat
+        meshcat = StartMeshcat()
+        print(colored(f"🌐 Meshcat: {meshcat.web_url()}\n", "green", attrs=["bold"]))
+        
+        # Create simulation configuration from args and global configs
+        sim_config = SimulationConfig.from_args(
+            args=args,
+            physics_config=PHYSICS_CONFIG,
+            muscle_config=MUSCLE_CONFIG,
+            impedance_config=IMPEDANCE_CONFIG,
+            zft_config=ZFT_CONFIG,
+            meshcat=meshcat,
+        )
+        
+        # ====================================================================
+        # STEP 1: Build system (multibody plant, manipulator, cart)
+        # ====================================================================
+        system_builder = SystemBuilder(
+            physics_config=sim_config.physics_config,
+            manipulator_urdf_path=sim_config.manipulator_urdf_path,
+            manipulator_joint_angles=sim_config.manipulator_joint_angles,
+            manipulator_damping=sim_config.manipulator_damping,
+        )
+        
+        # Build the system and get Drake components
+        (builder, plant, scene_graph, 
+         manipulator, cart_pendulum, cart_model) = system_builder.build(meshcat=meshcat)
+        
+        print(colored("\n🚀 Running LQR with manipulator and cart...", "cyan"))
+        
+        initial_viz = False  # Set to True to visualize initial configuration before control is applied
+        
+        if initial_viz:
+            # Add Meshcat visualizer to view the system
+            visualizer = MeshcatVisualizer.AddToBuilder(builder, scene_graph, meshcat)
+            
+            print(colored("\n🚀 Viewing welded cart-manipulator system...", "cyan"))
+            print(colored(f"   View at: {meshcat.web_url()}", "cyan"))
+            
+            # Build diagram and create simulator
+            diagram = builder.Build()
+            simulator = Simulator(diagram)
+            context = simulator.get_mutable_context()
+            plant_context = plant.GetMyMutableContextFromRoot(context)
+            
+            # Set initial manipulator configuration
+            initial_q = np.array([np.deg2rad(0.0), np.deg2rad(20.0)])  # [q1, q2]
+            manipulator.set_positions_user_order(plant, plant_context, {
+                "link1_base": initial_q[0],
+                "link2_link1": initial_q[1],
+            })
+            
+            # Set pendulum angle (only pitch in welded mode)
+            plant.SetPositions(plant_context, cart_model, np.array([0.0]))  # pitch = 0
+            
+            # Set all velocities to zero
+            plant.SetVelocities(plant_context, np.zeros(plant.num_velocities()))
+            
+            # Publish initial state to Meshcat
+            diagram.ForcedPublish(context)
+            
+            # Get EE position for info
+            ee_world_pos = manipulator.get_end_effector_position(plant, plant_context)
+            
+            print(colored(f"\n📄 System Configuration:", "cyan"))
+            print(colored(f"  - DOF: {plant.num_positions()} positions, {plant.num_velocities()} velocities", "cyan"))
+            print(colored(f"  - Manipulator: q1={np.rad2deg(initial_q[0]):.1f}°, q2={np.rad2deg(initial_q[1]):.1f}°", "cyan"))
+            print(colored(f"  - EE position: ({ee_world_pos[0]:.3f}, {ee_world_pos[1]:.3f}, {ee_world_pos[2]:.3f}) m", "cyan"))
+            print(colored(f"  - Cart welded to EE (follows manipulator motion)", "green"))
+            print(colored(f"  - Pendulum hanging from cart (pitch = 0°)", "cyan"))
+            
+            print(colored("\n🎬 System ready for viewing. Press Ctrl+C to exit.\n", "yellow"))
+            
+            try:
+                while True:
+                    time.sleep(0.1)
+            except KeyboardInterrupt:
+                print(colored("\n✓ Visualization stopped.", "green"))
+        
+        # ====================================================================
+        # STEP 2: Create control builder using system components
+        # ====================================================================
+        control_builder = LQRWithOFCForCompleteSystem(
+            builder=builder,
+            plant=plant,
+            cart_model=cart_model,
+            manipulator=manipulator,
+            config=sim_config
+        )
 
 if __name__ == "__main__":
     main()
