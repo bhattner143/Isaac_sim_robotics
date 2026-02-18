@@ -90,7 +90,7 @@ from robot_types import (
     CartPendulumConfig,
 )
 
-from script_cup_manipulator_controller_ofc import (
+from scripts_old.script_cup_manipulator_controller_ofc import (
     CupManipulator,
     CartPendulum3D,
     MuscleDynamics,
