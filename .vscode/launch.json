@@ -1,0 +1,52 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "🤖 LQR: Both Cart + Manip",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/script_cup_manipulator_pendulam_lqr_min_effort_2d.py",
+            "python": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "--mode", "lqr-applied-to-both-cart-manip",
+                "--duration", "10.0",
+                "--target-x", "0.5",
+                "--target-y", "0.0",
+                "--horizon", "10.0"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "🎯 LQR: Manip Follows Cart",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/script_cup_manipulator_pendulam_lqr_min_effort_2d.py",
+            "python": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "--mode", "lqr-applied-to-cart-manip-following-cart",
+                "--duration", "10.0",
+                "--target-x", "-1.0",
+                "--target-y", "0.5",
+                "--horizon", "10.0"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "👁️ Scene Viz",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/script_cup_manipulator_pendulam_lqr_min_effort_2d.py",
+            "python": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "--mode", "scene-viz"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

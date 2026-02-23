@@ -40,7 +40,6 @@ env/
 env_isaacsim/
 
 # IDEs
-.vscode/
 .idea/
 *.swp
 *.swo

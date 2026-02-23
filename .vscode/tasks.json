@@ -1,0 +1,76 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "🤖 LQR: Both Cart + Manip",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_lqr_min_effort_2d.py",
+                "--mode", "lqr-applied-to-both-cart-manip",
+                "--duration", "10.0",
+                "--target-x", "0.5",
+                "--target-y", "0.0",
+                "--horizon", "10.0"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🎯 LQR: Manip Follows Cart",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_lqr_min_effort_2d.py",
+                "--mode", "lqr-applied-to-cart-manip-following-cart",
+                "--duration", "10.0",
+                "--target-x", "-1.0",
+                "--target-y", "0.5",
+                "--horizon", "10.0"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "👁️ Scene Viz",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_lqr_min_effort_2d.py",
+                "--mode", "scene-viz"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}
