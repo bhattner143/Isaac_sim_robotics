@@ -1,0 +1,664 @@
+\documentclass[11pt, a4paper]{article}
+
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{bm}
+\usepackage{float}
+\usetikzlibrary{arrows.meta, positioning, fit, calc, shapes.geometric}
+
+\geometry{margin=2.5cm}
+
+\title{%
+  \textbf{LQR with Optimal Feedback Control (OFC)} \\[0.5em]
+  \large Mode: \texttt{lqr-applied-to-both-cart-manip} \\[0.2em]
+  \normalsize 2D Welded Cart-Pendulum System with Muscle Dynamics and
+  Joint-Space Manipulator Control
+}
+\author{Research Note}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================================
+\section{Overview}
+% ============================================================================
+
+This note describes the formulation and implementation of the
+\texttt{lqr-applied-to-both-cart-manip} simulation mode.
+The key architectural difference from the
+\texttt{lqr-applied-to-cart-manip-following-cart} mode is that the
+\textbf{cart body is rigidly welded to the manipulator end-effector (EE)}.
+There are therefore no prismatic actuators on the cart: the cart position is
+\emph{entirely determined} by the manipulator's joint angles via forward
+kinematics.
+
+\begin{enumerate}
+  \item \textbf{Manipulator (2~DOF):} A 2-link revolute arm whose EE is
+        driven by an OFC chain (LQR $\to$ Muscle $\to$ ZFT $\to$ IK $\to$
+        Computed-Torque) to reach the target $(x^*, y^*)$.
+  \item \textbf{Cart-Pendulum (2~DOF):} A 3D gimbal pendulum welded to the
+        manipulator EE. It receives no direct actuation — the pendulum is
+        stabilised indirectly through the motion of the EE (and hence the
+        cart body).
+\end{enumerate}
+
+The two sub-systems share a single Drake \texttt{MultibodyPlant} with
+\emph{separate model instances} but a rigid weld constraint connecting the
+cart body to the EE frame.
+
+\medskip
+\noindent\textbf{Key contrast with the other mode:}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lll}
+\toprule
+\textbf{Aspect} & \textbf{cart-manip-following-cart} & \textbf{both-cart-manip} \\
+\midrule
+Cart actuation    & Prismatic (impedance force)  & None (welded to EE) \\
+Manipulator role  & Passive tracker via IK + CTC & Active driver of cart \\
+Impedance block   & \checkmark\ present           & $\times$\ removed \\
+Cart $[x,y]$      & Plant state (prismatic DOF)  & FK output: $\mathrm{FK}(q_1,q_2)$ \\
+LQR state space   & 14D (cart + pend + muscle + ZFT) & 14D (arm + pend + muscle + ZFT) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ============================================================================
+\section{State and Coordinate Definitions}
+% ============================================================================
+
+\subsection{Plant State (8D)}
+
+Because the cart is welded to the EE, the plant no longer contains prismatic
+DOF for the cart.  Instead the plant state is:
+
+\[
+\bm{s}_{\mathrm{plant}} =
+\underbrace{[q_1,\; q_2]^{\top}}_{\text{arm joints}}
+\oplus
+\underbrace{[\alpha,\; \beta]^{\top}}_{\text{pend.\ angles}}
+\oplus
+\underbrace{[\dot{q}_1,\; \dot{q}_2]^{\top}}_{\text{arm vel.}}
+\oplus
+\underbrace{[\dot{\alpha},\; \dot{\beta}]^{\top}}_{\text{pend.\ ang.\ vel.}}
+\in \mathbb{R}^{8}
+\]
+
+where $q_1$ is the base-to-link1 joint angle and $q_2$ is the link1-to-link2
+joint angle.  Note that \textbf{Drake returns joints in URDF parse order},
+which for this URDF is $[q_2, q_1]$; index conversion is handled internally.
+
+\subsection{EE / Cart Position (computed)}
+
+The cart body position in the world frame is \emph{not} a state variable; it
+is computed from the arm state via forward kinematics:
+
+\[
+\bm{p} = [x, y]^{\top} = f_{\mathrm{FK}}(q_1, q_2) \in \mathbb{R}^{2}
+\]
+\[
+\dot{\bm{p}} = J(q_1, q_2)\,[\dot{q}_1, \dot{q}_2]^{\top}, \quad
+J = \frac{\partial f_{\mathrm{FK}}}{\partial \bm{q}} \in \mathbb{R}^{2\times 2}
+\]
+
+A dedicated Drake \texttt{LeafSystem} (\texttt{EndEffectorKinematics2D})
+evaluates these at every integration step and outputs $(\bm{p}, \dot{\bm{p}})$.
+
+\subsection{Full OFC / Augmented State (14D)}
+
+The LQR operates on the augmented state:
+
+\[
+\bm{x} =
+\begin{bmatrix}
+q_1,\; q_2,\; \alpha,\; \beta,\;
+\dot{q}_1,\; \dot{q}_2,\; \dot{\alpha},\; \dot{\beta},\;
+F_x,\; F_y,\;
+x_{\mathrm{ref}},\; y_{\mathrm{ref}},\;
+\dot{x}_{\mathrm{ref}},\; \dot{y}_{\mathrm{ref}}
+\end{bmatrix}^{\top} \in \mathbb{R}^{14}
+\]
+
+where the first 8 entries come from the plant, the next 2 from the muscle
+dynamics, and the last 4 from the ZFT reference mass.
+
+\subsection{Manipulator State (4D)}
+
+\[
+\bm{s}_{\text{manip}} =
+[q_1,\; q_2,\; \dot{q}_1,\; \dot{q}_2]^{\top} \in \mathbb{R}^{4}
+\]
+
+% ============================================================================
+\section{Control Architecture}
+% ============================================================================
+
+\subsection{Signal Chain}
+
+All actuation flows through the manipulator joint torques:
+
+\begin{center}
+\textbf{LQR} $\xrightarrow{\bm{u}}$
+\textbf{Muscle} $\xrightarrow{\bm{F}}$
+\textbf{ZFT} $\xrightarrow{\bm{s}_{\mathrm{ref}}}$
+\textbf{IK} $\xrightarrow{\bm{q}_d, \dot{\bm{q}}_d, \ddot{\bm{q}}_d}$
+\textbf{CTC} $\xrightarrow{\bm{\tau}}$
+\textbf{Manipulator Plant} $\xrightarrow{\bm{p} = f_{\mathrm{FK}}}$ (cart moves)
+\end{center}
+
+\noindent The pendulum angles $\alpha, \beta$ are shaped
+\emph{indirectly} by the cart (EE) acceleration that results from the joint
+torques — there is no direct torque input to the pendulum.
+
+\subsection{Block Descriptions}
+
+\subsubsection*{Block 1 — Muscle Dynamics}
+
+\[
+\boxed{
+\dot{F}_i = \frac{-F_i + u_i}{\tau_m}, \quad i \in \{x, y\}
+}
+\]
+
+\begin{itemize}
+  \item \textbf{Input:} $\bm{u} \in \mathbb{R}^2$ (LQR neural command)
+  \item \textbf{Output:} $\bm{F} = [F_x, F_y]^{\top} \in \mathbb{R}^2$ (muscle force)
+  \item \textbf{Time constant:} $\tau_m = 0.03\;\mathrm{s}$
+\end{itemize}
+
+\subsubsection*{Block 2 — ZFT Reference Mass}
+
+The muscle force drives a virtual reference mass that provides the smooth EE
+target trajectory.  Its spring-damper coupling is to the \emph{EE position}
+$\bm{p} = f_{\mathrm{FK}}(\bm{q})$, not to the plant cart state (there is no
+prismatic cart state).
+
+\[
+\boxed{
+M_{\mathrm{ref}}\,\ddot{\bm{p}}_{\mathrm{ref}}
+= \bm{F}
++ K\,(\bm{p} - \bm{p}_{\mathrm{ref}})
++ D\,(\dot{\bm{p}} - \dot{\bm{p}}_{\mathrm{ref}})
+}
+\]
+
+\begin{itemize}
+  \item \textbf{Inputs:} $\bm{F}$ (muscle); $\bm{p}, \dot{\bm{p}}$ (EE kinematics via FK)
+  \item \textbf{Output:} $\bm{s}_{\mathrm{ref}} = [x_{\mathrm{ref}}, y_{\mathrm{ref}},
+        \dot{x}_{\mathrm{ref}}, \dot{y}_{\mathrm{ref}}]^{\top} \in \mathbb{R}^4$;
+        also $\ddot{\bm{p}}_{\mathrm{ref}} \in \mathbb{R}^2$ for feed-forward
+  \item \textbf{Parameters:} $M_{\mathrm{ref}} = 1.0\;\mathrm{kg}$,
+        $K = 50\;\mathrm{N/m}$, $D = 10\;\mathrm{N\cdot s/m}$
+\end{itemize}
+
+\subsubsection*{Block 3 — IK Solver (ZFT Joint Reference)}
+
+Rather than a one-shot IK per step, a \emph{differential IK} integrates joint
+velocity commands resulting from the ZFT output:
+
+\[
+\boxed{
+\dot{\bm{q}}_d = J^{\dagger}(\bm{q})\,
+\bigl[\,K_p(\bm{p}_{\mathrm{ref}} - \bm{p}) + \dot{\bm{p}}_{\mathrm{ref}}\,\bigr]
++ J^{\dagger}(\bm{q})\,\ddot{\bm{p}}_{\mathrm{ref}}\,\Delta t
+}
+\]
+
+where $J^{\dagger}$ is the Moore--Penrose pseudoinverse of the $2\times 2$
+Jacobian.  The joint position reference $\bm{q}_d$ is obtained by integration.
+This approach avoids the overhead of a full nonlinear IK solve at every step.
+
+\begin{itemize}
+  \item \textbf{Inputs:} $\bm{p}_{\mathrm{ref}}, \dot{\bm{p}}_{\mathrm{ref}},
+        \ddot{\bm{p}}_{\mathrm{ref}}$ (ZFT outputs); plant state (for $J$ and warm-start)
+  \item \textbf{Outputs:} $\bm{q}_d, \dot{\bm{q}}_d, \ddot{\bm{q}}_d \in \mathbb{R}^2$
+\end{itemize}
+
+\subsubsection*{Block 4 — Finite-Horizon LQR Controller}
+
+The LQR minimises the quadratic cost over a finite horizon $T$:
+
+\[
+\boxed{
+J = \int_0^T \left[\bm{e}^{\top} Q\, \bm{e}
+                 + \bm{u}^{\top} R\, \bm{u}\right] dt
+  + \bm{e}(T)^{\top} Q_N\, \bm{e}(T)
+}
+\]
+
+where $\bm{e} = \bm{x} - \bm{x}^{*}$ is the 14D state error from the goal:
+
+\[
+\bm{x}^{*} =
+[q_1^*, q_2^*, 0, 0, 0, 0, 0, 0, 0, 0, x^*, y^*, 0, 0]^{\top}
+\]
+
+with $(q_1^*, q_2^*)$ solved analytically from the target $(x^*, y^*)$ via
+2-link IK.  The backward Riccati ODE gives the time-varying gain:
+
+\[
+\bm{u}(t) = -R^{-1}B^{\top}P(t)\,\bm{e}(t)
+\]
+
+\paragraph{Cost matrices:}
+\begin{align*}
+Q &= \mathrm{diag}(100, 100, 500, 500, 50, 50, 100, 100, 0.1, 0.1, 1, 1, 1, 1) \\
+Q_N &= 2\,Q \\
+R &= \mathrm{diag}(10, 10)
+\end{align*}
+
+The larger $R$ (compared to the other mode) penalises neural effort more
+heavily, giving smoother joint motion.
+
+\subsubsection*{Block 5 — Joint-Space Computed-Torque Controller}
+
+\[
+\boxed{
+\bm{\tau} = M(\bm{q})\,\ddot{\bm{q}}_d
+          + C(\bm{q}, \dot{\bm{q}})\,\dot{\bm{q}}
+          + G(\bm{q})
+          + K_p (\bm{q}_d - \bm{q})
+          + K_d (\dot{\bm{q}}_d - \dot{\bm{q}})
+}
+\]
+
+\begin{itemize}
+  \item \textbf{Inputs:} $[\bm{q}_d, \dot{\bm{q}}_d, \ddot{\bm{q}}_d]$ (IK);
+        $[\bm{q}, \dot{\bm{q}}]$ (plant)
+  \item \textbf{Output:} $\bm{\tau} \in \mathbb{R}^2$ (joint torques, capped at
+        $\pm 100\;\mathrm{N\cdot m}$)
+  \item \textbf{Gains:} $K_p = 200\;\mathrm{N\cdot m/rad}$,
+        $K_d = 60\;\mathrm{N\cdot m\cdot s/rad}$
+\end{itemize}
+
+The torques $\bm{\tau}$ are the \textbf{only} actuation input to the plant.
+
+% ============================================================================
+\section{Block Diagram}
+% ============================================================================
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  box/.style   = {draw, rounded corners=3pt, minimum width=2.8cm, minimum height=1.1cm,
+                  text centered, font=\small\bfseries, fill=white},
+  greenbox/.style = {box, fill=green!15},
+  bluebox/.style  = {box, fill=blue!10},
+  graybox/.style  = {box, fill=gray!12},
+  arr/.style   = {-{Latex[length=2mm]}, thick},
+  darr/.style  = {-{Latex[length=2mm]}, thick, dashed, gray},
+  node distance = 1.6cm and 2.0cm,
+]
+
+% ---------------------------------------------------------------
+% TOP ROW: State label + equations
+% ---------------------------------------------------------------
+\node[graybox, minimum width=6.0cm, minimum height=1.4cm, align=left, font=\small]
+  (state_box) at (0, 3.8)
+  {$\bm{x} = [q_1, q_2, \alpha, \beta, \dot{q}_1, \dot{q}_2, \dot{\alpha}, \dot{\beta},$\\
+   $\phantom{\bm{x}=}F_x, F_y, x_{\mathrm{ref}}, y_{\mathrm{ref}}, \dot{x}_{\mathrm{ref}}, \dot{y}_{\mathrm{ref}}]^\top \in \mathbb{R}^{14}$};
+
+\node[graybox, minimum width=7.5cm, minimum height=1.4cm, align=left, font=\small]
+  (cost_box) at (9.5, 3.8)
+  {$J = \int_0^T\!\bigl[\bm{e}^\top Q \bm{e} + \bm{u}^\top R \bm{u}\bigr]dt + \bm{e}(T)^\top Q_N \bm{e}(T)$\\
+   $\bm{e} = \bm{x} - \bm{x}^*$, \quad $\bm{u}(t) = -R^{-1}B^\top P(t)\bm{e}(t)$};
+
+% ---------------------------------------------------------------
+% MAIN SIGNAL PATH (middle row)
+% ---------------------------------------------------------------
+\node[bluebox]  (lqr)  at (0, 1.5)   {LQR\\Controller};
+\node[box]      (musc) at (3.0, 1.5) {Muscle\\Dynamics};
+\node[box]      (zft)  at (6.2, 1.5) {ZFT Reference\\Mass};
+\node[box]      (ik)   at (9.4, 1.5) {Differential\\IK Solver};
+\node[box]      (ctc)  at (12.6, 1.5){Computed-\\Torque Ctrl};
+\node[greenbox] (plant) at (15.8, 1.5){Manipulator\\Plant\\(+ Welded Cart)};
+
+% Arrows: main path
+\draw[arr] (lqr)  -- node[above,font=\tiny] {$\bm{u}$} (musc);
+\draw[arr] (musc) -- node[above,font=\tiny] {$\bm{F}$} (zft);
+\draw[arr] (zft)  -- node[above,font=\tiny] {$\bm{s}_{\mathrm{ref}}$\\$\ddot{\bm{p}}_{\mathrm{ref}}$} (ik);
+\draw[arr] (ik)   -- node[above,font=\tiny] {$\bm{q}_d,\dot{\bm{q}}_d,\ddot{\bm{q}}_d$} (ctc);
+\draw[arr] (ctc)  -- node[above,font=\tiny] {$\bm{\tau}$} (plant);
+
+% ---------------------------------------------------------------
+% EE Kinematics block (below ZFT)
+% ---------------------------------------------------------------
+\node[graybox, minimum width=2.8cm, minimum height=0.9cm, font=\small]
+  (eekin) at (6.2, -0.6)
+  {EE Kinematics\\$\bm{p}=f_{\mathrm{FK}}(\bm{q})$};
+
+% Plant feeds EE kin
+\draw[darr] (plant.south) -- ++(0,-0.4) -| node[right, font=\tiny, pos=0.75] {$\bm{q}, \dot{\bm{q}}$} (eekin.east);
+
+% EE kin feeds ZFT (EE position as cart position)
+\draw[arr] (eekin.north) -- node[right,font=\tiny] {$\bm{p},\dot{\bm{p}}$} (zft.south);
+
+% ---------------------------------------------------------------
+% Equations below blocks
+% ---------------------------------------------------------------
+\node[font=\scriptsize, below=0.15cm of musc, align=center]
+  {$\dot{F}_i = \tfrac{-F_i+u_i}{\tau_m}$};
+
+\node[font=\scriptsize, below=0.15cm of zft, yshift=-0.9cm, align=center]
+  {$M_{\mathrm{ref}}\ddot{\bm{p}}_{\mathrm{ref}} = \bm{F} + K(\bm{p}{-}\bm{p}_{\mathrm{ref}}) + D(\dot{\bm{p}}{-}\dot{\bm{p}}_{\mathrm{ref}})$};
+
+\node[font=\scriptsize, below=0.15cm of ctc, align=center]
+  {$\bm{\tau} = M\ddot{\bm{q}}_d + C\dot{\bm{q}} + G + K_p(\bm{q}_d{-}\bm{q}) + K_d(\dot{\bm{q}}_d{-}\dot{\bm{q}})$};
+
+% ---------------------------------------------------------------
+% 14D state feedback path
+% ---------------------------------------------------------------
+% Plant -> state mux (shown as curved path going below)
+\draw[darr] (plant.south) ++(0,-0.4) -- ++(0,-1.4)
+    -- ++(-17.8, 0)
+    -- (lqr.south |- {coordinate (0,-2.4)})
+    -- (lqr.south)
+    node[below, font=\tiny, pos=0.35] {$\bm{x}\ (14\mathrm{D},\ \text{via ZOH})$};
+
+% muscle -> aug state (implicit, shown as text annotation)
+\node[font=\scriptsize, below=2.3cm of lqr, align=center, text width=2.5cm]
+  {Full OFC State (14D)};
+
+% ---------------------------------------------------------------
+% IK also takes plant state for warm-start
+% ---------------------------------------------------------------
+\draw[darr] (plant.south) ++(0,-0.4) -- ++(0,-0.8)
+    -- (ik.south |- {coordinate (0,-1.2)})
+    -- (ik.south)
+    node[right, font=\tiny, pos=0.6] {$\bm{q},\dot{\bm{q}}$};
+
+% ---------------------------------------------------------------
+% "No impedance" annotation
+% ---------------------------------------------------------------
+\node[font=\scriptsize\itshape, text=red!60!black, align=center]
+  at (6.2, 0.45) {No impedance block:\\cart driven only by $\bm{\tau}$};
+
+\end{tikzpicture}
+}%
+\caption{%
+  Block diagram of the \texttt{lqr-applied-to-both-cart-manip} mode.
+  The cart body is welded to the manipulator EE, so there are no prismatic
+  actuators.  All actuation is through joint torques $\bm{\tau}$.
+  Dashed arrows: feedback and warm-start signals.
+  The EE kinematics block converts arm joint angles to task-space position
+  $\bm{p} = f_{\mathrm{FK}}(\bm{q})$, which replaces the cart state in the
+  ZFT ODE.}
+\label{fig:block_both}
+\end{figure}
+
+% ============================================================================
+\section{Signal Flow Summary}
+% ============================================================================
+
+\begin{table}[H]
+\centering
+\caption{Signal connections in the control loop (\texttt{lqr-applied-to-both-cart-manip}).}
+\label{tab:signals}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{llll}
+\toprule
+\textbf{From} & \textbf{To} & \textbf{Signal} & \textbf{Dim.} \\
+\midrule
+LQR Controller        & Muscle Dynamics       & $\bm{u}$ (neural command)             & $\mathbb{R}^2$ \\
+Muscle Dynamics       & ZFT Reference Mass    & $\bm{F}$ (muscle force)               & $\mathbb{R}^2$ \\
+Muscle Dynamics       & State Mux (14D)       & $\bm{F}$ (for LQR state)             & $\mathbb{R}^2$ \\
+EE Kinematics         & ZFT Reference Mass    & $\bm{p}, \dot{\bm{p}}$ (EE as cart)  & $\mathbb{R}^4$ \\
+ZFT Reference Mass    & IK Solver             & $\bm{p}_{\mathrm{ref}}, \dot{\bm{p}}_{\mathrm{ref}}, \ddot{\bm{p}}_{\mathrm{ref}}$ & $\mathbb{R}^6$ \\
+ZFT Reference Mass    & State Mux (14D)       & $\bm{s}_{\mathrm{ref}}$               & $\mathbb{R}^4$ \\
+IK Solver             & Computed-Torque Ctrl  & $\bm{q}_d, \dot{\bm{q}}_d, \ddot{\bm{q}}_d$ & $\mathbb{R}^6$ \\
+Manipulator Plant     & Computed-Torque Ctrl  & $[\bm{q}, \dot{\bm{q}}]$ (arm state) & $\mathbb{R}^4$ \\
+Computed-Torque Ctrl  & Manipulator Plant     & $\bm{\tau}$ (joint torques)           & $\mathbb{R}^2$ \\
+Manipulator Plant     & EE Kinematics         & $\bm{q}, \dot{\bm{q}}$ (plant state) & $\mathbb{R}^4$ \\
+Manipulator Plant     & IK Solver             & plant state (warm-start)              & $\mathbb{R}^8$ \\
+\midrule
+Manipulator Plant     & State Mux             & $\bm{s}_{\mathrm{plant}}$ (8D)       & $\mathbb{R}^8$ \\
+State Mux             & ZOH ($10\;\mathrm{ms}$) & $\bm{x}$ (14D)                     & $\mathbb{R}^{14}$ \\
+ZOH                   & LQR Controller        & $\hat{\bm{x}}$ (held)                & $\mathbb{R}^{14}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================================
+\section{Linearised System}
+% ============================================================================
+
+The LQR is designed on the 14D augmented linearisation obtained from the
+welded plant.  The equilibrium $(\bm{x}^*, \bm{u}^* = \bm{0})$ is:
+
+\[
+\bm{x}^* = [q_1^*, q_2^*, 0, 0, 0, 0, 0, 0, 0, 0, x^*, y^*, 0, 0]^{\top}
+\]
+
+where $(q_1^*, q_2^*)$ is solved analytically from the 2-link inverse kinematics
+for the target $(x^*, y^*)$.  Around this equilibrium:
+
+\[
+\dot{\bm{x}} = A\,\bm{x} + B\,\bm{u}
+\]
+
+The matrices $A \in \mathbb{R}^{14\times 14}$ and $B \in \mathbb{R}^{14\times 2}$
+are obtained by \texttt{build\_linearized\_for\_complete\_system\_2d()}, which
+uses Drake's automatic Jacobian (via \texttt{Linearize}) on the welded plant
+augmented with muscle and ZFT dynamics.
+
+The Riccati equation is solved backward in time from $t = T$ to $t = 0$ at
+$\Delta t = 10\;\mathrm{ms}$ to obtain the gain schedule
+$K(t) = R^{-1}B^{\top}P(t)$, which is interpolated online.
+
+% ============================================================================
+\section{Simulation Parameters}
+% ============================================================================
+
+\begin{table}[H]
+\centering
+\caption{Default simulation parameters.}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lll}
+\toprule
+\textbf{Parameter} & \textbf{Value} & \textbf{Description} \\
+\midrule
+Arm link 1 length   & $\approx 2.20\;\mathrm{m}$ & From URDF geometry \\
+Arm link 2 length   & $\approx 1.25\;\mathrm{m}$ & From URDF geometry \\
+Pendulum mass       & $0.3\;\mathrm{kg}$         & \\
+Pendulum length     & $0.25\;\mathrm{m}$         & \\
+Arm damping         & $0.1\;\mathrm{N\cdot s/rad}$ & Both joints \\
+Pendulum damping    & $0.1\;\mathrm{N\cdot s/rad}$ & Both gimbal axes \\
+$\tau_m$            & $0.03\;\mathrm{s}$          & Muscle time constant \\
+$M_{\mathrm{ref}}$  & $1.0\;\mathrm{kg}$          & ZFT reference mass \\
+$K$                 & $50\;\mathrm{N/m}$          & ZFT impedance stiffness \\
+$D$                 & $10\;\mathrm{N\cdot s/m}$   & ZFT impedance damping \\
+$K_p$               & $200\;\mathrm{N\cdot m/rad}$        & CTC position gain \\
+$K_d$               & $60\;\mathrm{N\cdot m\cdot s/rad}$  & CTC velocity gain \\
+$\tau_{\max}$       & $100\;\mathrm{N\cdot m}$    & Joint torque limit \\
+LQR horizon $T$     & $10.0\;\mathrm{s}$          & \\
+$\Delta t$ (LQR)    & $10\;\mathrm{ms}$           & Riccati integration step \\
+Simulation $\Delta t$ & $1\;\mathrm{ms}$          & Drake integrator step \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================================
+\section{Implementation Notes}
+% ============================================================================
+
+\begin{itemize}
+  \item \textbf{Weld constraint}: The cart body is added to the plant inside
+        \texttt{SystemBuilder.build()} when \texttt{weld\_cart\_to\_manip\_ee=True}.
+        Drake enforces the constraint algebraically so the cart position is
+        always equal to the EE pose with zero constraint force residual.
+
+  \item \textbf{No impedance block}: Unlike the companion mode, the impedance
+        force block (\texttt{ImpedanceForce2D}) is \textbf{not instantiated}.
+        The sole actuation path is joint torques $\bm{\tau}$.
+
+  \item \textbf{Differential IK}: The \texttt{ZFTJointReferenceIK} system uses
+        the velocity-integration method (\texttt{ik\_method="differential"})
+        with position feedback gain $K_p = 10\;\mathrm{s}^{-1}$ rather than
+        solving a full nonlinear IK problem at every step.  This avoids
+        kinematic singularities and is faster.
+
+  \item \textbf{EE kinematics}: The \texttt{EndEffectorKinematics2D} system
+        computes $(\bm{p}, \dot{\bm{p}})$ from the plant context at every
+        step using Drake's \texttt{CalcPointsPositions} and the geometric
+        Jacobian.
+
+  \item \textbf{Drake joint ordering}: The URDF returns joints in parse order
+        $[q_2, q_1]$.  All user-facing code uses $[q_1, q_2]$ order;
+        conversions happen inside \texttt{CupManipulator}.
+
+  \item \textbf{ZOH}: A Zero-Order Hold at $10\;\mathrm{ms}$ on the 14D
+        augmented state breaks the algebraic loop between the LQR and the
+        continuous plant/muscle/ZFT dynamics.
+\end{itemize}
+
+% ============================================================================
+\newpage
+\section{Equation Flow Summary}
+% ============================================================================
+
+This section traces the complete signal chain from sensor reading to actuator
+output at every simulation step.
+
+\subsection*{Step-by-step signal chain}
+
+\bigskip
+\noindent\textbf{(1) Read plant state.}
+The plant outputs its 8D state:
+\[
+\bm{s}_{\mathrm{plant}}(t)
+= [\,q_1,\;q_2,\;\alpha,\;\beta,\;\dot{q}_1,\;\dot{q}_2,\;\dot{\alpha},\;\dot{\beta}\,]^{\!\top}
+\in\mathbb{R}^{8}
+\]
+
+\bigskip
+\noindent\textbf{(2) EE kinematics — compute cart position via FK.}
+The arm joint angles $\bm{q} = [q_1, q_2]^{\top}$ are passed to the EE
+kinematics block:
+\[
+\bm{p}(t) = f_{\mathrm{FK}}(\bm{q}),
+\qquad
+\dot{\bm{p}}(t) = J(\bm{q})\,\dot{\bm{q}}
+\]
+This $(\bm{p}, \dot{\bm{p}})$ substitutes for the cart state in all downstream
+blocks — the welded cart has no independent position state.
+
+\bigskip
+\noindent\textbf{(3) Muscle dynamics — low-pass filter on neural command.}
+\[
+\dot{\bm{F}}(t) = \frac{-\bm{F}(t) + \bm{u}(t)}{\tau_m}
+\quad\Longrightarrow\quad
+\bm{F}(t) \in\mathbb{R}^{2}
+\]
+$\bm{F}$ is fed to the ZFT reference mass and also stacked into the 14D state.
+
+\bigskip
+\noindent\textbf{(4) ZFT reference mass — smooth end-effector target.}
+\[
+\ddot{\bm{p}}_{\mathrm{ref}}(t)
+= \frac{1}{M_{\mathrm{ref}}}\!\left[
+    \bm{F}(t)
+    + K\bigl(\bm{p}(t) - \bm{p}_{\mathrm{ref}}(t)\bigr)
+    + D\bigl(\dot{\bm{p}}(t) - \dot{\bm{p}}_{\mathrm{ref}}(t)\bigr)
+  \right]
+\]
+Integration gives:
+\[
+\bm{s}_{\mathrm{ref}}(t)
+= [\,x_{\mathrm{ref}},\;y_{\mathrm{ref}},\;\dot{x}_{\mathrm{ref}},\;\dot{y}_{\mathrm{ref}}\,]^{\!\top}
+\in\mathbb{R}^{4}
+\]
+All three outputs ($\bm{p}_{\mathrm{ref}},\dot{\bm{p}}_{\mathrm{ref}},
+\ddot{\bm{p}}_{\mathrm{ref}}$) feed the IK solver.
+
+\bigskip
+\noindent\textbf{(5) Full 14D state assembly.}
+\[
+\bm{x}(t) =
+\underbrace{[q_1, q_2, \alpha, \beta]}_{\text{joint/pend pos.}}
+\oplus
+\underbrace{[\dot{q}_1, \dot{q}_2, \dot{\alpha}, \dot{\beta}]}_{\text{joint/pend vel.}}
+\oplus
+\underbrace{[F_x, F_y]}_{\text{muscle}}
+\oplus
+\underbrace{[x_{\mathrm{ref}}, y_{\mathrm{ref}}, \dot{x}_{\mathrm{ref}}, \dot{y}_{\mathrm{ref}}]}_{\text{ZFT ref.}}
+\]
+A ZOH ($\Delta = 10\;\mathrm{ms}$) samples this to $\hat{\bm{x}}$.
+
+\bigskip
+\noindent\textbf{(6) Finite-horizon LQR — optimal neural command.}
+\[
+\bm{u}(t) = -\underbrace{R^{-1}B^{\!\top}P(t)}_{K(t)}\,\bigl(\hat{\bm{x}}(t) - \bm{x}^{*}\bigr)
+\in\mathbb{R}^{2}
+\]
+This closes the outer loop back to Step 3 (muscle input) at the next step.
+
+\bigskip
+\noindent\textbf{(7) Differential IK — ZFT target to joint references.}
+\[
+\dot{\bm{q}}_d(t)
+= J^{\dagger}(\bm{q})\bigl[K_p(\bm{p}_{\mathrm{ref}} - \bm{p})
++ \dot{\bm{p}}_{\mathrm{ref}}\bigr]
++ J^{\dagger}(\bm{q})\,\ddot{\bm{p}}_{\mathrm{ref}}\,\Delta t
+\]
+\[
+\bm{q}_d(t) = \bm{q}_d(t{-}\Delta t) + \dot{\bm{q}}_d(t)\,\Delta t
+\]
+
+\bigskip
+\noindent\textbf{(8) Computed-torque controller — joint torques.}
+\[
+\bm{\tau}(t)
+= M(\bm{q})\ddot{\bm{q}}_d
++ C(\bm{q},\dot{\bm{q}})\dot{\bm{q}}
++ G(\bm{q})
++ K_p(\bm{q}_d - \bm{q})
++ K_d(\dot{\bm{q}}_d - \dot{\bm{q}})
+\in\mathbb{R}^{2}
+\]
+$\bm{\tau}$ is the \textbf{sole actuation signal} applied to the welded plant.
+The joint motion moves the EE (and the welded cart) toward the target, while
+the pendulum is stabilised indirectly through the resulting EE acceleration.
+
+\subsection*{Compact causal chain}
+
+\[
+\bm{s}_{\mathrm{plant}}
+\;\xrightarrow{\text{FK}}\;
+\bm{p}, \dot{\bm{p}}
+\;\xrightarrow[\text{ZFT}]{\bm{F}}\;
+\bm{p}_{\mathrm{ref}},\dot{\bm{p}}_{\mathrm{ref}},\ddot{\bm{p}}_{\mathrm{ref}}
+\;\xrightarrow{\text{diff.\ IK}}\;
+\bm{q}_d, \dot{\bm{q}}_d, \ddot{\bm{q}}_d
+\;\xrightarrow{\text{CTC}}\;
+\bm{\tau}
+\;\longrightarrow\;
+\text{plant}
+\]
+\[
+\bm{s}_{\mathrm{plant}} \oplus \bm{F} \oplus \bm{s}_{\mathrm{ref}}
+\;\xrightarrow{\text{mux}}\;
+\bm{x}_{14}
+\;\xrightarrow{\text{ZOH}}\;
+\hat{\bm{x}}
+\;\xrightarrow{\text{LQR}}\;
+\bm{u}
+\;\xrightarrow{\tau_m}\;
+\bm{F}
+\quad\text{(closes loop)}
+\]
+
+\noindent Each arrow represents a Drake system connection.  There is no
+separate manipulator tracking loop — in this mode the manipulator \emph{is}
+the cart actuator.
+
+\end{document}

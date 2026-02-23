@@ -1,0 +1,609 @@
+\documentclass[11pt, a4paper]{article}
+
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{bm}
+\usepackage{float}
+\usetikzlibrary{arrows.meta, positioning, fit, calc, shapes.geometric}
+
+\geometry{margin=2.5cm}
+
+\title{%
+  \textbf{LQR with Optimal Feedback Control (OFC)} \\[0.5em]
+  \large Mode: \texttt{lqr-applied-to-cart-manip-following-cart} \\[0.2em]
+  \normalsize 2D Cart-Pendulum System with Muscle Dynamics and Manipulator Tracking
+}
+\author{Research Note}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================================
+\section{Overview}
+% ============================================================================
+
+This note describes the formulation and implementation of the
+\texttt{lqr-applied-to-cart-manip-following-cart} simulation mode.
+The system consists of two coupled sub-systems:
+
+\begin{enumerate}
+  \item \textbf{Cart-Pendulum (4~DOF):} A 2D cart moving in the $XY$-plane
+        carrying a 3D gimbal pendulum. It is controlled by a biologically
+        inspired Optimal Feedback Control (OFC) loop using Muscle Dynamics,
+        a Zero-Force-Trajectory (ZFT) Reference Mass, Impedance Force, and a
+        Finite-Horizon LQR.
+  \item \textbf{Cup Manipulator (2~DOF):} A 2-link revolute manipulator whose
+        end-effector (EE) is driven to track the cart's 2D position via online
+        Inverse Kinematics (IK) and a Joint-Space Computed-Torque Controller.
+\end{enumerate}
+
+The two sub-systems share the same Drake \texttt{MultibodyPlant} but have
+\emph{separate model instances} so their states and actuations can be queried
+and applied independently.
+
+% ============================================================================
+\section{State and Coordinate Definitions}
+% ============================================================================
+
+\subsection{Cart-Pendulum State (8D)}
+
+\[
+\bm{s}_{\text{cart}} =
+\underbrace{[x,\; y]^{\top}}_{\text{cart position}}
+\oplus
+\underbrace{[\alpha,\; \beta]^{\top}}_{\text{pend. angles}}
+\oplus
+\underbrace{[\dot{x},\; \dot{y}]^{\top}}_{\text{cart velocity}}
+\oplus
+\underbrace{[\dot{\alpha},\; \dot{\beta}]^{\top}}_{\text{pend. ang. vel.}}
+\in \mathbb{R}^{8}
+\]
+
+where $\alpha$ is the pendulum pitch and $\beta$ is the roll (gimbal angles).
+
+\subsection{Full OFC State (14D)}
+
+The LQR operates on the extended state:
+
+\[
+\bm{x} =
+\begin{bmatrix}
+x,\; y,\; \alpha,\; \beta,\;
+\dot{x},\; \dot{y},\; \dot{\alpha},\; \dot{\beta},\;
+F_x,\; F_y,\;
+x_{\mathrm{ref}},\; y_{\mathrm{ref}},\;
+\dot{x}_{\mathrm{ref}},\; \dot{y}_{\mathrm{ref}}
+\end{bmatrix}^{\top} \in \mathbb{R}^{14}
+\]
+
+\subsection{Manipulator State (4D)}
+
+\[
+\bm{s}_{\text{manip}} =
+[q_1,\; q_2,\; \dot{q}_1,\; \dot{q}_2]^{\top} \in \mathbb{R}^{4}
+\]
+
+where $q_1$ is the base-to-link1 joint angle and $q_2$ is the link1-to-link2
+joint angle.
+
+% ============================================================================
+\section{Control Architecture}
+% ============================================================================
+
+\subsection{Cart-Pendulum Control Loop (OFC)}
+
+The cart-pendulum control uses a biologically inspired OFC architecture with
+four cascaded blocks:
+
+\begin{center}
+\textbf{LQR} $\xrightarrow{\bm{u}}$
+\textbf{Muscle Dynamics} $\xrightarrow{\bm{F}}$
+\textbf{ZFT Reference Mass} $\xrightarrow{\bm{s}_{\mathrm{ref}}}$
+\textbf{Impedance Force} $\xrightarrow{\bm{F}_{\mathrm{imp}}}$
+\textbf{Cart-Pendulum Plant}
+\end{center}
+
+\noindent\textbf{Important:} the muscle force $\bm{F}$ is fed into the
+\emph{ZFT reference mass}, not directly into the impedance block.
+The impedance block receives only $\bm{s}_{\mathrm{ref}}$ (position and
+velocity of the reference mass) and $\bm{s}_{\mathrm{cart}}$ (actual cart
+state). $\bm{F}$ reaches the impedance output only \emph{indirectly}, by
+shaping how the reference mass moves.
+
+\subsubsection*{Block 1 — Muscle Dynamics (Low-Pass Actuator Filter)}
+
+The neural command $\bm{u} = [u_x, u_y]^{\top}$ is filtered through
+first-order muscle dynamics:
+
+\[
+\boxed{
+\dot{F}_i = \frac{-F_i + u_i}{\tau_m}, \quad i \in \{x, y\}
+}
+\]
+
+\begin{itemize}
+  \item \textbf{Input:} $\bm{u} \in \mathbb{R}^2$ (LQR neural command)
+  \item \textbf{State:} $\bm{F} = [F_x, F_y]^{\top} \in \mathbb{R}^2$
+  \item \textbf{Output:} $\bm{F} \in \mathbb{R}^2$ (muscle force)
+  \item \textbf{Time constant:} $\tau_m = 0.03\;\mathrm{s}$ (human muscle)
+\end{itemize}
+
+This low-pass filter captures the finite bandwidth of biological muscles and
+prevents instantaneous force jumps.
+
+\subsubsection*{Block 2 — ZFT Reference Mass (Smooth Reference Trajectory)}
+
+The muscle force $\bm{F}$ is the \emph{only} direct input from the muscle
+block that propagates forward. It drives the ZFT reference mass ODE together
+with a spring-damper coupling to the actual cart position. This is the
+mechanism by which the neural command shapes the reference trajectory ---
+$\bm{F}$ never enters the impedance block directly.
+
+The ZFT dynamics are:
+
+\[
+\boxed{
+M_{\mathrm{ref}}\,\ddot{\bm{p}}_{\mathrm{ref}}
+= \bm{F} + K\,(\bm{p} - \bm{p}_{\mathrm{ref}})
+         + D\,(\dot{\bm{p}} - \dot{\bm{p}}_{\mathrm{ref}})
+}
+\]
+
+where $\bm{p} = [x, y]^{\top}$, $\bm{p}_{\mathrm{ref}} = [x_{\mathrm{ref}},\, y_{\mathrm{ref}}]^{\top}$.
+
+\begin{itemize}
+  \item \textbf{Inputs:}
+        $\bm{s}_{\mathrm{cart}} = [x, y, \dot{x}, \dot{y}]^{\top} \in \mathbb{R}^4$
+        and $\bm{F} \in \mathbb{R}^2$
+  \item \textbf{State:}
+        $\bm{s}_{\mathrm{ref}} = [x_{\mathrm{ref}}, y_{\mathrm{ref}},
+        \dot{x}_{\mathrm{ref}}, \dot{y}_{\mathrm{ref}}]^{\top} \in \mathbb{R}^4$
+  \item \textbf{Output:} $\bm{s}_{\mathrm{ref}} \in \mathbb{R}^4$
+  \item \textbf{Parameters:} $M_{\mathrm{ref}} = 1.0\;\mathrm{kg}$,
+        $K = 50\;\mathrm{N/m}$, $D = 10\;\mathrm{N\cdot s/m}$
+\end{itemize}
+
+The ZFT reference mass provides the ``efference copy'' of the intended
+trajectory, decoupling perception from control.
+
+\subsubsection*{Block 3 — Impedance Force (Spring-Damper Coupling)}
+
+The impedance block computes the external force applied to the cart by
+connecting it to the ZFT reference via a virtual spring-damper:
+
+\[
+\boxed{
+\bm{F}_{\mathrm{imp}}
+= K\,(\bm{p}_{\mathrm{ref}} - \bm{p})
++ D\,(\dot{\bm{p}}_{\mathrm{ref}} - \dot{\bm{p}})
+}
+\]
+
+\begin{itemize}
+  \item \textbf{Inputs:}
+        $\bm{s}_{\mathrm{cart}} \in \mathbb{R}^4$ (actual cart pos.\ + vel.) and
+        $\bm{s}_{\mathrm{ref}} \in \mathbb{R}^4$ (ZFT reference pos.\ + vel.).
+        \textbf{The muscle force $\bm{F}$ is NOT a direct input here.}
+  \item \textbf{Output:} $\bm{F}_{\mathrm{imp}} \in \mathbb{R}^2$ (cart actuation)
+  \item \textbf{Parameters:} $K = 50\;\mathrm{N/m}$, $D = 10\;\mathrm{N\cdot s/m}$
+\end{itemize}
+
+$\bm{F}_{\mathrm{imp}}$ is applied directly to the cart's prismatic actuators.
+The pendulum receives no direct torque input --- it is shaped purely by the
+resulting cart motion.  The muscle force $\bm{F}$ influences $\bm{F}_{\mathrm{imp}}$
+only \emph{indirectly}: by driving the ZFT ODE, it changes
+$\bm{s}_{\mathrm{ref}}$, which in turn changes the spring-damper error seen
+by the impedance block.
+
+\subsubsection*{Block 4 — Finite-Horizon LQR Controller}
+
+The LQR minimises the quadratic cost over a finite horizon $T$:
+
+\[
+\boxed{
+J = \int_0^T \left[\bm{e}^{\top} Q\, \bm{e}
+                 + \bm{u}^{\top} R\, \bm{u}\right] dt
+  + \bm{e}(T)^{\top} Q_N\, \bm{e}(T)
+}
+\]
+
+where $\bm{e} = \bm{x} - \bm{x}^{*}$ is the 14D state error with goal state
+
+\[
+\bm{x}^{*} =
+[x^*, y^*, 0, 0, 0, 0, 0, 0, 0, 0, x^*, y^*, 0, 0]^{\top}
+\]
+
+The time-varying gain is obtained by solving the backward Riccati equation:
+
+\[
+-\dot{P}(t) = A^{\top}P + PA - PBR^{-1}B^{\top}P + Q,
+\quad P(T) = Q_N
+\]
+
+yielding the control law:
+
+\[
+\bm{u}(t) = -R^{-1}B^{\top}P(t)\,\bm{e}(t)
+\]
+
+\paragraph{Cost matrices:}
+\begin{align*}
+Q &= \mathrm{diag}(100, 100, 500, 500, 10, 10, 100, 100, 0.1, 0.1, 1, 1, 0.1, 0.1) \\
+Q_N &= 2\,Q \\
+R &= \mathrm{diag}(1, 1)
+\end{align*}
+
+The system $(A, B)$ is obtained by linearising the 14D OFC dynamics around
+the equilibrium (upright pendulum, zero velocity, zero force, cart at goal).
+
+\subsection{Manipulator Control Loop}
+
+The manipulator tracks the cart's 2D position using two cascaded blocks:
+
+\begin{center}
+\textbf{Cart Position} $\xrightarrow{\bm{p}_{\mathrm{cart}}}$
+\textbf{IK Solver} $\xrightarrow{[q_d, \dot{q}_d]}$
+\textbf{Computed-Torque Controller} $\xrightarrow{\bm{\tau}}$
+\textbf{Manipulator Plant}
+\end{center}
+
+\subsubsection*{Block 5 — Inverse Kinematics (IK Solver)}
+
+At every control step the desired cart position
+$\bm{p}_{\mathrm{cart}} = [x, y]^{\top}$ is used as the EE target.
+Drake's \texttt{InverseKinematics} solver finds joint angles
+$\bm{q}_d = [q_{d,1}, q_{d,2}]^{\top}$ such that:
+
+\[
+\boxed{
+f_{\mathrm{FK}}(\bm{q}_d) = \bm{p}_{\mathrm{cart}}, \quad
+\|\bm{q}_d - \bm{q}_{\mathrm{prev}}\|_2 \to \min
+}
+\]
+
+where $f_{\mathrm{FK}}$ is the forward-kinematics map of the manipulator and
+warm-starting with the previous solution ensures continuity.
+The desired joint velocities $\dot{\bm{q}}_d$ are computed numerically from
+consecutive IK solutions.
+
+\subsubsection*{Block 6 — Joint-Space Computed-Torque Controller}
+
+A computed-torque law cancels the manipulator nonlinear dynamics and imposes
+a linear PD law on the joint error:
+
+\[
+\boxed{
+\bm{\tau} = M(\bm{q})\,\ddot{\bm{q}}_d
+          + C(\bm{q}, \dot{\bm{q}})\,\dot{\bm{q}}
+          + G(\bm{q})
+          + K_p (\bm{q}_d - \bm{q})
+          + K_d (\dot{\bm{q}}_d - \dot{\bm{q}})
+}
+\]
+
+\begin{itemize}
+  \item \textbf{Inputs:}
+        desired state $[\bm{q}_d, \dot{\bm{q}}_d, \ddot{\bm{q}}_d]$
+        and current state $[\bm{q}, \dot{\bm{q}}]$
+  \item \textbf{Output:} $\bm{\tau} \in \mathbb{R}^2$ (joint torques)
+  \item \textbf{Gains:} $K_p = 200\;\mathrm{N\cdot m/rad}$,
+                        $K_d = 60\;\mathrm{N\cdot m\cdot s/rad}$,
+                        $\tau_{\max} = 100\;\mathrm{N\cdot m}$
+\end{itemize}
+
+% ============================================================================
+\section{Block Diagram}
+% ============================================================================
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{lqr_cart_manip_following.pdf}
+\caption{Block diagram of the \texttt{lqr-applied-to-cart-manip-following-cart} mode.
+         Solid arrows: signals in the primary control path.
+         Dashed arrows: auxiliary feedback/feedforward signals.}
+\label{fig:block_diagram}
+\end{figure}
+
+% ============================================================================
+\section{Signal Flow Summary}
+% ============================================================================
+
+Table~\ref{tab:signals} summarises every signal connection in the diagram.
+
+\begin{table}[H]
+\centering
+\caption{Signal connections in the control loop.}
+\label{tab:signals}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{llll}
+\toprule
+\textbf{From} & \textbf{To} & \textbf{Signal} & \textbf{Dim.} \\
+\midrule
+LQR Controller       & Muscle Dynamics          & $\bm{u}$ (neural command)             & $\mathbb{R}^2$ \\
+Muscle Dynamics      & ZFT Reference Mass       & $\bm{F}$ (muscle force)               & $\mathbb{R}^2$ \\
+Muscle Dynamics      & State Mux (14D)          & $\bm{F}$ (for LQR state)             & $\mathbb{R}^2$ \\
+Cart-Pendulum Plant  & ZFT Reference Mass       & $\bm{s}_{\mathrm{cart}}$              & $\mathbb{R}^4$ \\
+Cart-Pendulum Plant  & Impedance Force          & $\bm{s}_{\mathrm{cart}}$              & $\mathbb{R}^4$ \\
+ZFT Reference Mass   & Impedance Force          & $\bm{s}_{\mathrm{ref}}$ (\emph{only ZFT output goes to impedance, not} $\bm{F}$) & $\mathbb{R}^4$ \\
+Impedance Force      & Cart-Pendulum Plant      & $\bm{F}_{\mathrm{imp}}$ (actuation) & $\mathbb{R}^2$ \\
+Cart-Pendulum Plant  & State Mux                & $\bm{s}_{\mathrm{cart}}$ (8D)     & $\mathbb{R}^8$ \\
+Muscle Dynamics      & State Mux                & $\bm{F}$                          & $\mathbb{R}^2$ \\
+ZFT Reference Mass   & State Mux                & $\bm{s}_{\mathrm{ref}}$           & $\mathbb{R}^4$ \\
+State Mux            & ZOH (state hold)         & $\bm{x}$ (14D)                    & $\mathbb{R}^{14}$ \\
+ZOH                  & LQR Controller           & $\bm{x}$ (14D, held)              & $\mathbb{R}^{14}$ \\
+\midrule
+Cart-Pendulum Plant  & IK Solver                & $[x, y, \dot{x}, \dot{y}]$       & $\mathbb{R}^4$ \\
+IK Solver            & Computed-Torque Ctrl.    & $[\bm{q}_d, \dot{\bm{q}}_d, \ddot{\bm{q}}_d]$ & $\mathbb{R}^6$ \\
+Manipulator Plant    & Computed-Torque Ctrl.    & $[\bm{q}, \dot{\bm{q}}]$         & $\mathbb{R}^4$ \\
+Computed-Torque Ctrl.& Manipulator Plant        & $\bm{\tau}$ (joint torques)       & $\mathbb{R}^2$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================================
+\section{Linearised System}
+% ============================================================================
+
+The LQR is designed on the linearised 14D OFC system.
+Let $\bm{x}$ be the full state and $\bm{u}$ the neural command.
+Around the equilibrium $(\bm{x}^*, \bm{u}^* = \bm{0})$ the dynamics are:
+
+\[
+\dot{\bm{x}} = A\,\bm{x} + B\,\bm{u}
+\]
+
+The $A \in \mathbb{R}^{14 \times 14}$ and $B \in \mathbb{R}^{14 \times 2}$
+matrices encode:
+\begin{itemize}
+  \item \textbf{Cart-Pendulum linearisation:} obtained from the Drake
+        \texttt{Linearize()} helper applied to the 8D \texttt{MultibodyPlant}
+        at the upright equilibrium.
+  \item \textbf{Muscle augmentation:} the muscle dynamics
+        $\dot{F}_i = (-F_i + u_i)/\tau_m$ extend the $A$ and $B$ matrices by
+        two rows/columns each.
+  \item \textbf{ZFT augmentation:} the reference-mass dynamics extend the
+        state by four more rows.
+\end{itemize}
+
+The discrete-time Riccati equation is solved backward in time from $t = T$ to
+$t = 0$ at timestep $\Delta t = 10\;\mathrm{ms}$ to obtain $P(t)$, then the
+gain schedule $K(t) = R^{-1}B^{\top}P(t)$ is stored and interpolated online.
+
+% ============================================================================
+\section{Simulation Parameters}
+% ============================================================================
+
+\begin{table}[H]
+\centering
+\caption{Default simulation parameters.}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lll}
+\toprule
+\textbf{Parameter} & \textbf{Value} & \textbf{Description} \\
+\midrule
+Cart mass           & $3.0\;\mathrm{kg}$  & \\
+Pendulum mass       & $0.3\;\mathrm{kg}$  & \\
+Pendulum length     & $0.25\;\mathrm{m}$  & \\
+Cart damping        & $0.5\;\mathrm{N\cdot s/m}$ & \\
+Pendulum damping    & $0.1\;\mathrm{N\cdot s/rad}$ & \\
+$\tau_m$            & $0.03\;\mathrm{s}$   & Muscle time constant \\
+$M_{\mathrm{ref}}$  & $1.0\;\mathrm{kg}$   & ZFT reference mass \\
+$K$                 & $50\;\mathrm{N/m}$   & Impedance stiffness \\
+$D$                 & $10\;\mathrm{N\cdot s/m}$ & Impedance damping \\
+$K_p$               & $200\;\mathrm{N\cdot m/rad}$ & Joint PD: position gain \\
+$K_d$               & $60\;\mathrm{N\cdot m\cdot s/rad}$ & Joint PD: velocity gain \\
+LQR horizon $T$     & $10.0\;\mathrm{s}$   & \\
+$\Delta t$ (LQR)    & $10\;\mathrm{ms}$    & Riccati integration step \\
+Simulation $\Delta t$ & $1\;\mathrm{ms}$   & Drake integrator step \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================================
+\section{Implementation Notes}
+% ============================================================================
+
+\begin{itemize}
+  \item A \textbf{Zero-Order Hold (ZOH)} at $10\;\mathrm{ms}$ is inserted
+        between the 14D state multiplexer and the LQR input to break the
+        algebraic loop introduced by directly feeding the LQR output (through
+        muscle and impedance) back to itself via the ZFT state.
+
+  \item The \textbf{IK solver} is warm-started with the previous joint
+        solution at every step to ensure smooth, continuous joint trajectories
+        and avoid large discontinuous jumps.
+
+  \item All systems are \textbf{Drake LeafSystems} wired inside a single
+        \texttt{DiagramBuilder}, which guarantees correct simulation semantics
+        (context-based state isolation, publication order, etc.).
+
+  \item The cart-pendulum and manipulator share the \textbf{same
+        \texttt{MultibodyPlant}} but have separate \texttt{ModelInstance}
+        handles, enabling independent state access and actuation while
+        capturing any physical coupling.
+\end{itemize}
+
+% ============================================================================
+\newpage
+\section{Equation Flow Summary}
+% ============================================================================
+
+This section presents the complete signal chain as a single, self-contained
+narrative — from sensor reading to actuator output — showing exactly how each
+equation feeds into the next at every simulation step.
+
+\subsection*{Step-by-step signal chain}
+
+\noindent At every simulation step $t$, the following sequence executes:
+
+\bigskip
+\noindent\textbf{(1) Read plant state.}
+The cart-pendulum plant outputs its 8D state:
+\[
+\bm{s}_{\mathrm{cart}}(t)
+= \bigl[\,x,\;y,\;\alpha,\;\beta,\;\dot{x},\;\dot{y},\;\dot{\alpha},\;\dot{\beta}\,\bigr]^{\!\top}
+\in\mathbb{R}^8
+\]
+A demultiplexer splits this into four 2-vectors
+$[\bm{p}, \bm{\theta}, \dot{\bm{p}}, \dot{\bm{\theta}}]$,
+and a multiplexer re-assembles the \emph{cart-only} sub-state:
+\[
+\bm{s}_{\mathrm{c}}(t) = [\,x,\;y,\;\dot{x},\;\dot{y}\,]^{\!\top} \in\mathbb{R}^4
+\]
+
+\bigskip
+\noindent\textbf{(2) Muscle dynamics — low-pass filter on neural command.}
+The LQR command $\bm{u} \in\mathbb{R}^2$ (from the previous ZOH slot) drives
+first-order actuator dynamics:
+\[
+\dot{\bm{F}}(t) = \frac{-\bm{F}(t) + \bm{u}(t)}{\tau_m}
+\quad\Longrightarrow\quad
+\bm{F}(t) \in\mathbb{R}^2
+\]
+The muscle state $\bm{F}$ is (a) fed to the \textbf{ZFT reference mass only}
+(not to the impedance block directly), and (b) stacked into the 14D state
+for the LQR. $\bm{F}$ reaches the impedance output only indirectly, by
+shaping how the reference mass moves.
+
+\bigskip
+\noindent\textbf{(3) ZFT reference mass — smooth reference trajectory.}
+The virtual reference mass is driven by muscle force and the error to the cart:
+\[
+\ddot{\bm{p}}_{\mathrm{ref}}(t)
+= \frac{1}{M_{\mathrm{ref}}}\!\left[
+    \bm{F}(t)
+    + K\bigl(\bm{p}(t) - \bm{p}_{\mathrm{ref}}(t)\bigr)
+    + D\bigl(\dot{\bm{p}}(t) - \dot{\bm{p}}_{\mathrm{ref}}(t)\bigr)
+  \right]
+\]
+Integrating gives:
+\[
+\bm{s}_{\mathrm{ref}}(t) = [\,x_{\mathrm{ref}},\;y_{\mathrm{ref}},\;\dot{x}_{\mathrm{ref}},\;\dot{y}_{\mathrm{ref}}\,]^{\!\top}
+\in\mathbb{R}^4
+\]
+
+\bigskip
+\noindent\textbf{(4) Impedance force --- virtual spring-damper actuation.}
+Using only $\bm{s}_{\mathrm{c}}$ (actual cart state) and
+$\bm{s}_{\mathrm{ref}}$ (ZFT output), the impedance block
+computes the external force applied to the cart:
+\[
+\bm{F}_{\mathrm{imp}}(t)
+= K\bigl(\bm{p}_{\mathrm{ref}} - \bm{p}\bigr)
++ D\bigl(\dot{\bm{p}}_{\mathrm{ref}} - \dot{\bm{p}}\bigr)
+\in\mathbb{R}^2
+\]
+\textbf{Note:} $\bm{F}$ (muscle force) is \emph{not} a direct input here.
+It enters this equation only indirectly through $\bm{p}_{\mathrm{ref}}$,
+which was shaped by the ZFT ODE in Step~3.
+This is the \emph{sole actuation input} to the cart-pendulum plant.
+The pendulum angles $\alpha,\beta$ are shaped indirectly by the resulting
+cart acceleration.
+
+\bigskip
+\noindent\textbf{(5) Full 14D state assembly.}
+All sub-states are concatenated:
+\[
+\bm{x}(t) =
+\underbrace{[\,x,\;y,\;\alpha,\;\beta\,]}_{\text{cart pos.}}
+\oplus
+\underbrace{[\,\dot{x},\;\dot{y},\;\dot{\alpha},\;\dot{\beta}\,]}_{\text{cart vel.}}
+\oplus
+\underbrace{[\,F_x,\;F_y\,]}_{\text{muscle}}
+\oplus
+\underbrace{[\,x_{\mathrm{ref}},\;y_{\mathrm{ref}},\;\dot{x}_{\mathrm{ref}},\;\dot{y}_{\mathrm{ref}}\,]}_{\text{ZFT ref.}}
+\in\mathbb{R}^{14}
+\]
+A Zero-Order Hold (ZOH, $\Delta = 10\;\mathrm{ms}$) samples this to
+$\hat{\bm{x}}(t)$ before passing it to the LQR.
+
+\bigskip
+\noindent\textbf{(6) Finite-horizon LQR — optimal neural command.}
+The state error $\bm{e}(t) = \hat{\bm{x}}(t) - \bm{x}^{*}$ enters the
+time-varying gain computed by the backward Riccati pass:
+\[
+\bm{u}(t) = -\underbrace{R^{-1}B^{\!\top}P(t)}_{K(t)}\,\bm{e}(t)
+\in\mathbb{R}^2
+\]
+This $\bm{u}(t)$ closes the outer loop back to \textbf{Step 2} (muscle input)
+at the next time step.
+
+\bigskip
+\noindent\textbf{(7) IK solver — cart position to joint angles.}
+In parallel, the cart position $[x,y]$ is used as the EE target for the
+manipulator's inverse kinematics:
+\[
+\bm{q}_d(t) = f_{\mathrm{IK}}\!\bigl([x(t),\,y(t)],\;\bm{q}_d(t{-}\Delta t)\bigr)
+\in\mathbb{R}^2
+\]
+Desired joint velocity is approximated numerically:
+$\dot{\bm{q}}_d = (\bm{q}_d(t) - \bm{q}_d(t{-}\Delta t))/\Delta t$.
+
+\bigskip
+\noindent\textbf{(8) Computed-torque controller — joint torques.}
+The nonlinear manipulator dynamics are cancelled and a PD law is imposed:
+\[
+\bm{\tau}(t)
+= M(\bm{q})\ddot{\bm{q}}_d
++ C(\bm{q},\dot{\bm{q}})\dot{\bm{q}}
++ G(\bm{q})
++ K_p(\bm{q}_d - \bm{q})
++ K_d(\dot{\bm{q}}_d - \dot{\bm{q}})
+\in\mathbb{R}^2
+\]
+$\bm{\tau}$ is applied directly to the manipulator joints,
+driving the end-effector to follow the cart trajectory.
+
+\subsection*{Compact causal chain}
+
+\noindent The complete equation flow can be read as a single chain of
+dependencies:
+
+\[
+\underbrace{\bm{s}_{\mathrm{cart}}}_{\text{plant}}
+\;\xrightarrow{\text{demux/mux}}\;
+\bm{s}_{\mathrm{c}}
+\;\xrightarrow[\text{ZFT}]{\bm{F}}\;
+\bm{s}_{\mathrm{ref}}
+\;\xrightarrow{\text{imp.}}\;
+\bm{F}_{\mathrm{imp}}
+\;\longrightarrow\;
+\text{cart plant}
+\]
+\[
+\bm{s}_{\mathrm{cart}} \oplus \bm{F} \oplus \bm{s}_{\mathrm{ref}}
+\;\xrightarrow{\text{mux}}\;
+\bm{x}_{14}
+\;\xrightarrow{\text{ZOH}}\;
+\hat{\bm{x}}
+\;\xrightarrow{\text{LQR}}\;
+\bm{u}
+\;\xrightarrow{\tau_m}\;
+\bm{F}
+\quad\text{(closes loop)}
+\]
+\[
+\bm{s}_{\mathrm{c}}
+\;\xrightarrow{\text{IK}}\;
+\bm{q}_d, \dot{\bm{q}}_d
+\;\xrightarrow{\text{CTC}}\;
+\bm{\tau}
+\;\longrightarrow\;
+\text{manip.\ plant}
+\]
+
+\noindent Each arrow represents a Drake system connection.
+The cart-pendulum loop (top two lines) and the manipulator loop (bottom line)
+run concurrently inside the same Drake \texttt{Diagram} at every integration
+step.
+
+\end{document}
