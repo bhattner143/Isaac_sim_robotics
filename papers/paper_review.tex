@@ -2,6 +2,11 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{hyperref}
 \usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{bm}
+\usepackage{xcolor}
 \title{Short Review: Stability, Robustness, and Control of Complex Object Manipulation}
 \author{Compiled for project notes}
 \date{\today}
@@ -10,7 +15,7 @@
 \maketitle
 
 \section*{Overview}
-This short review summarizes four papers on human control of dynamically complex objects (e.g., a ``cup of coffee'') and the implications for robot control. Each summary highlights the task setup, experiments, and main results.
+This short review summarizes five papers on human control of dynamically complex objects (e.g., a ``cup of coffee'') and the implications for robot control. Each summary highlights the task setup, experiments, and main results. The final section provides a comparative analysis of the three core papers in the folder (Bazzi 2018; Razavian et al.\ 2021; Razavian et al.\ 2023), focusing on what each proves, their similarities and differences, and their methodological use of contraction theory, optimal feedback control (OFC) with minimum effort, and minimum jerk.
 
 \section{Bazzi et al., 2018 (Chaos): Stability and Predictability in Human Control of Complex Objects}
 \textbf{Focus.} Proposes contraction theory as a stability analysis tool for transient, nonlinear, underactuated interactions, and tests it on a ``cup-of-coffee'' proxy task.
@@ -30,8 +35,11 @@ This short review summarizes four papers on human control of dynamically complex
 
 \textbf{Key results.}
 \begin{itemize}[leftmargin=1.2em]
-  \item Human trajectories pass through contraction regions, which attenuates perturbations.
-  \item Exploiting contraction reduces the need for corrective feedback and improves predictability of interaction dynamics.
+  \item Contraction regions are computed by solving a PDE for the metric $M(x)$; the analysis does not require the system to be near an equilibrium, making it applicable to transient tasks unlike Lyapunov-based methods.
+  \item \textbf{Assistive perturbations:} cup trajectories entered a contraction region \emph{before} the perturbation and remained inside throughout---the convergent dynamics absorbed the perturbation automatically.
+  \item \textbf{Resistive perturbations:} subjects accessed a contraction region only \emph{after} the perturbation---a reactive strategy to re-stabilise the trajectory.
+  \item These two distinct strategies show subjects adapted their phase-space routing to the perturbation type, exploiting passive dynamics to overcome neural delays and noise.
+  \item Earlier work showed that subjects did not minimise force but maximised predictability (measured by mutual information), suggesting that predictability---not effort---is the primary objective.
 \end{itemize}
 
 \section{Ebert et al., 2020 (ICRA manuscript): Stability and Predictability in Dynamically Complex Physical Interactions}
@@ -103,14 +111,21 @@ Here $M$ is the cup/cart mass, $m$ the internal mass, $l$ the effective pendulum
   \item \emph{Dynamic primitives with impedance:} represent motion as an attractor plus an impedance operator that shapes interaction forces.
 \end{itemize}
 
-\textbf{Extended model (zero-force trajectory).} The proposed extension computes a ``zero-force'' trajectory for the impedance operator: an optimal, maximally smooth trajectory that minimizes interaction forces induced by the internal dynamics. This improves prediction of human behavior in the complex-object task.
+\textbf{Extended model (zero-force trajectory).}
+The winning model integrates three elements:
+\begin{enumerate}[leftmargin=1.5em]
+  \item \emph{Mechanical impedance} between the controller and the cup, providing intrinsic stability against interaction forces.
+  \item \emph{Optimal feedback control} (not pre-planned feedforward) that drives the system toward the target by continuously computing control actions.
+  \item \emph{Minimum-jerk objective}: the OFC minimises $\int_0^T \dddot{y}(t)^2\,dt$, generating a maximally smooth reference trajectory.
+\end{enumerate}
+The resulting OFC reference is called the ``zero-force trajectory'' because it is the path the impedance operator tracks---if tracked perfectly, the impedance element would exert zero net force against the internal dynamics.  It is \emph{not} obtained by directly minimising $F_{\text{inter}}$; rather, jerk minimisation via OFC naturally produces a reference that is smooth enough to keep interaction forces small.  This model outperforms all baselines (pure minimum-jerk, OFC with minimum effort, and dynamic primitives with fixed impedance) when the rolling ball introduces complex interaction forces and external perturbations are applied.
 
 \subsection*{Worked example (for notes)}
 Assume a planar cup--ball model with small angles. Pick $M=0.6\,\mathrm{kg}$, $m=0.2\,\mathrm{kg}$, $l=0.12\,\mathrm{m}$, $G=5$. For a $T=2\,\mathrm{s}$ transport from $y(0)=0$ to $y(T)=0.4\,\mathrm{m}$:
 \begin{enumerate}[leftmargin=1.2em]
-  \item Generate a minimum-jerk $y(t)$ (closed-form polynomial).
-  \item Simulate the coupled dynamics to obtain $\phi(t)$ and interaction forces.
-  \item Compute the ``zero-force'' trajectory by optimizing $y(t)$ to minimize $\int_0^T F_{\text{inter}}(t)^2\,dt$ subject to boundary conditions.
+  \item Set up the coupled state-space $(y,\phi,\dot{y},\dot{\phi})$ and add a spring--damper impedance $(k_p,k_d)$ between a reference $y_{\text{ref}}$ and the cup.
+  \item Run an OFC with the minimum-jerk cost $\int_0^T \dddot{y}_{\text{ref}}^2\,dt$; the OFC produces $y_{\text{ref}}(t)$---the zero-force trajectory.
+  \item Simulate closed-loop: the impedance element applies $F = k_p(y_{\text{ref}}-y)+k_d(\dot{y}_{\text{ref}}-\dot{y})$ to the cup; compare $\phi(t)$ and $F_{\text{inter}}$ to the minimum-jerk and minimum-effort baselines.
 \end{enumerate}
 
 \subsection*{How to implement in the cup manipulator system}
@@ -118,16 +133,374 @@ Assume a planar cup--ball model with small angles. Pick $M=0.6\,\mathrm{kg}$, $m
   \item \textbf{State definition:} set $x=[y,\dot{y},\phi,\dot{\phi}]^\top$ from the cart position and pendulum angle already logged in the PyDrake simulation.
   \item \textbf{Model fitting:} estimate $M,m,l,G$ from URDF inertial parameters or fit them to free-swing responses (log $y,\phi$ and identify parameters).
   \item \textbf{Controller baseline:} implement minimum-jerk $y(t)$ as the desired cart trajectory and apply a PD/impedance controller to track it.
-  \item \textbf{Zero-force trajectory:} add an optimization step that adjusts $y(t)$ to minimize interaction forces (approximate with $F_{\text{inter}}\approx (M+m)\ddot{y}+m l\ddot{\phi}$). Use a spline parameterization and solve a small least-squares problem.
+  \item \textbf{Zero-force trajectory:} add a spring--damper impedance $(k_p,k_d)$ between a reference trajectory $y_{\text{ref}}$ and the cart.  Run OFC with minimum-jerk cost on $y_{\text{ref}}$; the resulting $y_{\text{ref}}(t)$ is the zero-force trajectory.  The impedance closes the loop between reference and plant.
   \item \textbf{Perturbations:} add $F_{\text{pert}}$ as a time-windowed force on the cart (assistive/resistive blocks) to reproduce the experimental protocol.
   \item \textbf{Evaluation:} compare trajectory error, peak $|\phi|$, and force norms between (i) minimum-jerk, (ii) OFC, and (iii) zero-force trajectory.
 \end{itemize}
 
-\section*{Cross-paper synthesis}
+\section{Razavian et al., 2023 (Neural Computation): Body Mechanics, Optimality, and Sensory Feedback}
+\textbf{Focus.} Investigates how three cornerstones of motor control---body mechanics (mechanical impedance), choice of objective function, and sensory feedback---jointly determine behavior when humans interact with a dynamically complex object.  The study asks whether including a physically realistic limb model changes which objective function the brain appears to use and whether feedback is necessary.
+
+\textbf{Experimental task.}
 \begin{itemize}[leftmargin=1.2em]
-  \item Across studies, humans appear to seek stability---specifically, contraction or exponential convergence---to handle perturbations and internal dynamics.
-  \item The ``cup-of-coffee'' proxy (cart--pendulum or cup--ball) is a consistent benchmark for studying underactuated manipulation.
-  \item Stability-centered analyses (contraction metrics) and impedance-aware control models are promising templates for robot control in dynamic interactions.
+  \item Same cup-and-ball proxy as Razavian et al.\ (2021): linearised cart--pendulum, haptic manipulandum, horizontal transport task.
+  \item Eleven participants; four blocks of 100 trials each, crossing object type (rigid vs.\ cup-and-ball) with perturbation protocol (mostly null vs.\ mostly perturbed).
+  \item The perturbation is an impulsive resistive force (20\,N, 20\,ms) at 60\% of the motion path; ``catch'' trials probe unexpected perturbation or absence thereof.
 \end{itemize}
 
+\textbf{Control models.}  Four variants of stochastic OFC (Todorov, 2005) are compared, formed by crossing two factors:
+\begin{itemize}[leftmargin=1.2em]
+  \item \emph{Objective function:} minimum effort ($\min \int u^2\,dt$) vs.\ minimum jerk ($\min \int \dddot{x}^2\,dt$).
+  \item \emph{Body model:} with vs.\ without a linear spring--damper impedance $(k_p, k_d)$ that couples a neural reference trajectory $x_{\text{ref}}$ to the cup.
+\end{itemize}
+The minimum-effort models couple the OFC through a first-order muscle model ($\tau\dot{F}=u-F$, $\tau=30$\,ms) that acts as the interaction force source.  The minimum-jerk models remove the muscle model entirely: the OFC output is directly the cup jerk $\dddot{x}$ (or $\dddot{x}_{\text{ref}}$ when impedance is present), so penalising $u^\top R\,u$ minimises jerk by construction.
+
+\textbf{Key results.}
+\begin{itemize}[leftmargin=1.2em]
+  \item \textbf{Impedance is essential.}  Only models with impedance reproduce two perturbation signatures that occur within ${<}$\,20\,ms---faster than any neural reflex (stretch reflex onset is 20--50\,ms):
+    \begin{itemize}
+      \item A sudden \emph{increase} in interaction force immediately after the perturbation: the velocity drop caused by the impulse instantly raises the damping force $k_d(\dot{x}_{\text{ref}}-\dot{x})$, increasing $F_{\text{inter}}$ without any neural command.
+      \item An instantaneous \emph{rebound} of cup velocity: the stiffness $k_p(x_{\text{ref}}-x)$ stores the perturbation energy and immediately accelerates the cup back, producing the rebound peak within 5\,ms of perturbation end.
+    \end{itemize}
+  \item \textbf{Cost function becomes irrelevant.}  Without impedance, minimum-effort and minimum-jerk models produce distinctly different kinematics.  With impedance, the two cost functions are statistically indistinguishable ($p \geq 0.195$ in all blocks): the energy-buffering of impedance masks the fingerprint of the objective function in the observable behaviour.
+  \item \textbf{Sensory feedback becomes secondary.}  Without impedance, a feedforward replay of OFC commands fails catch trials (cannot cope with unexpected perturbations or their absence).  With impedance, feedforward and feedback variants perform equivalently---impedance substitutes for online sensory corrections.
+\end{itemize}
+
+\textbf{Conclusion.}  Mechanical impedance is not incidental but constitutive of skilled motor control: OFC without embodiment falls short of reproducing features of human movement that arise purely from the arm's mechanics.  The paper frames this through two philosophical perspectives: (i)~a \emph{brain-controls-body} view, in which the brain as sole top-down authority specifies all movement characteristics---challenged here because body mechanics filters the cost-function and feedback signatures from the data; and (ii)~a \emph{brain-and-body-work-together} view, in which mechanical impedance is a lower-level autonomous agent that shares control authority with the neural controller, akin to passive walkers or morphological computation in animals.  The practical implication: inferring the brain's true cost function or feedback strategy from kinematic data alone will be systematically confounded by the body's mechanics---``the formidable challenge to gain insights into the neural controller due to its tight intertwining with the body's and the task's dynamics.''
+
+% -----------------------------------------------------------------------
+\subsection*{Interpretive Notes on the Discussion (Section~4)}
+
+\paragraph{Core argument.}
+The authors argue that optimal feedback control (OFC) models are routinely fitted to motion data with the body treated as a transparent ``command in, motion out'' device.  Mechanical impedance---springiness and damping in the limb---breaks this assumption in three distinct ways:
+\begin{enumerate}[leftmargin=1.4em]
+  \item It produces fast, apparently ``intelligent'' responses to disturbances \emph{before the nervous system could react}.
+  \item It makes different brain objectives (cost functions) look the same in the observed motion.
+  \item It reduces how necessary sensory feedback appears, because the body itself passively filters perturbations.
+\end{enumerate}
+The take-home message: a lot of what one might attribute to neural computation can actually be body physics.
+
+\paragraph{Mechanical impedance in plain terms.}
+Impedance describes how much the arm resists motion when pushed.  In 1-D:
+\[
+  F_{\text{imp}} = k\,(x - x_0) + b\,(\dot{x} - \dot{x}_0),
+\]
+where $k$ is stiffness (spring-like: displacement $\to$ restoring force), $b$ is damping (shock-absorber-like: velocity $\to$ resisting force), and $(x_0, \dot{x}_0)$ is the zero-force reference trajectory.  The paper adds exactly this linear spring--damper element between the OFC reference and the actual hand/cup.
+
+\paragraph{The fast-timescale argument.}
+The perturbation in the experiment is a 20\,N, 20\,ms resistive impulse---too brief for any reflex to respond to (upper-limb stretch reflex onset: 20--50\,ms; voluntary response: $\gtrsim 100$\,ms; 50\,ms sensory delay is built into the model).  The paper evaluates what happens immediately after the impulse under two conditions:
+
+\smallskip\noindent
+\textbf{Case A --- no impedance (pure OFC + delayed feedback).}  At the instant of the impulse the model has no spring or damper coupling to resist the sudden velocity change.  Response is driven entirely by feedback, which arrives no sooner than the 50\,ms sensory delay.  Predictions therefore show:
+\begin{itemize}[leftmargin=1.2em,topsep=2pt]
+  \item A delayed and sluggish corrective force lacking the sharp initial jump seen in human data.
+  \item No immediate velocity rebound---the cup stays deflected until the feedback correction arrives.
+\end{itemize}
+
+\noindent
+\textbf{Case B --- with impedance.}  The impulse suddenly changes cup velocity $\dot x$.  Instantly:
+\begin{itemize}[leftmargin=1.2em,topsep=2pt]
+  \item The damper term $b(\dot x_0 - \dot x)$ spikes, because $\dot x$ dropped but $\dot x_0$ did not.  This creates an immediate jump in interaction force---matching human data---without any neural command.
+  \item The stiffness term $k(x_0 - x)$ stores the displacement error as potential energy and immediately begins to accelerate the cup back, producing the observed velocity rebound within ${\sim}5$\,ms of perturbation end.
+\end{itemize}
+This is what the paper calls impedance acting as an ``energy buffer'': it stores energy during the perturbation (spring) and dissipates it (damper), shaping the response instantaneously.
+
+\paragraph{Why impedance blurs the cost function.}
+Without impedance, minimum-effort and minimum-jerk controllers emit noticeably different force and kinematic profiles---researchers routinely use such differences to argue for one objective over the other.  With impedance, however:
+\begin{itemize}[leftmargin=1.2em,topsep=2pt]
+  \item High-frequency, jerky components of the neural command are \emph{filtered} by limb damping and compliance before they reach the cup.
+  \item The observed hand/cup trajectory is dominated by the mechanical low-pass characteristic of the limb, not by fine differences in the OFC objective.
+  \item Both cost functions therefore produce \emph{nearly identical kinematics} ($p\geq 0.195$), making them empirically indistinguishable.
+\end{itemize}
+This resonates with the independent findings of Wong et al.\ (2021)---smooth movement is also energy-efficient---and Diedrichsen (2010)---minimum effort implicitly minimises variance; with impedance present, these normally-distinct predictions converge.
+
+\paragraph{Why impedance blurs feedback vs.\ feedforward.}
+In catch trials the perturbation is unexpectedly absent (or unexpectedly present).  Without impedance a pre-recorded feedforward replay breaks down---the controller has no way to handle the surprise.  With impedance, the spring--damper element passively absorbs the mismatch, so feedforward and feedback variants perform equivalently.
+
+This does \emph{not} mean feedback is unnecessary in general.  Large or prolonged perturbations will still require sensory-driven corrections.  The paper's scope is restricted to the specific perturbation magnitude and timescale of the cup-transport task; within that window, impedance substitutes for online feedback.
+
+\paragraph{The two perspectives on impedance (Section~4.4).}
+\begin{description}[leftmargin=1.4em,style=nextline]
+  \item[\emph{Brain controls the body.}]  The classical view: neural commands specify movement; the body is the plant.  This view is challenged here because body mechanics can mask cost-function differences and mimic fast corrections that would otherwise require neural computation.  Inferring the brain's strategy from observed motion is therefore structurally ambiguous once impedance is present.
+  \item[\emph{Brain and body work together.}]  Alternatively, mechanical impedance is a \emph{built-in low-level controller}: the brain need not compute everything; it can exploit physical properties (stiffness, damping) that automatically stabilise and shape movement.  Passive dynamic walkers are the canonical illustration---stable locomotion emerges largely from mechanics with minimal neural control.  In the same vein, the arm may delegate rapid disturbance rejection to its own mechanics, reserving neural resources for slower, higher-level planning.
+\end{description}
+
+\noindent
+\textbf{One-sentence summary.}  If impedance is ignored, the brain is over-credited---the arm's passive spring--damper mechanics can produce rapid disturbance rejection and make different ``optimal'' strategies look indistinguishable in the data, so attributing those features to neural computation is unjustified.
+
+\pagebreak
+% -----------------------------------------------------------------------
+\section*{Comparative Analysis of the Three Core Papers}
+
+The three papers below form a coherent progression on the same experimental platform---the cup-of-coffee proxy task (cart--pendulum or cup-and-ball)---each probing a different facet of how humans tame complex internal dynamics.
+
+\subsection*{What Each Paper Sets Out to Prove}
+
+\begin{itemize}[leftmargin=1.2em]
+  \item \textbf{Bazzi et al.\ 2018} argues that \emph{contraction theory} provides the right mathematical vocabulary for human motor control under transient, nonlinear conditions.  The key departure from prior work is that Lyapunov stability requires the system to be near a fixed equilibrium---inapplicable to fast, goal-directed transport tasks.  Contraction analysis instead identifies regions in phase space where neighbouring trajectories converge exponentially regardless of initial conditions, making it suitable for transient movements that begin and end far from any steady state.  The paper solves a PDE for the cart--pendulum contraction metric, maps the resulting regions in phase space, and then tests whether human trajectories systematically pass through them.  The central claim: \textit{humans exploit passive contraction to accommodate perturbations---entering contraction regions \emph{before} assistive perturbations (letting convergent dynamics absorb them) and re-entering only \emph{after} resistive ones (a reactive re-stabilisation)---thereby circumventing corrective neural feedback and its delays.}
+
+  \item \textbf{Razavian et al.\ 2021} argues that standard motor-control models (minimum jerk, OFC with minimum effort, dynamic primitives with constant impedance) all \emph{fail} to capture human behavior when real internal dynamics are present.  The paper proposes combining three elements: (i)~mechanical impedance between controller and object, (ii)~OFC in the feedback loop (not a pre-planned feedforward trajectory), and (iii)~a \emph{minimum-jerk} objective.  The resulting OFC reference is termed the ``zero-force trajectory'' because smooth jerk-minimising references naturally keep the impedance from exerting large forces against the internal dynamics---it is \emph{not} derived by directly minimising $F_{\text{inter}}$.  The central claim: \textit{impedance-mediated OFC with a minimum-jerk objective---not smoothness or effort as a standalone criterion---is necessary to model complex-object manipulation.}
+
+  \item \textbf{Razavian et al.\ 2023} turns the question around: instead of extending the controller, it extends the \emph{body model} by adding mechanical impedance, then asks how that changes what we can infer about the controller.  The central claim: \textit{once a physically realistic impedance is included, the distinction between different cost functions (effort vs.\ jerk) and between feedback vs.\ feedforward control vanishes---body mechanics subsumes the role previously attributed to the neural controller.}
+\end{itemize}
+
+\subsection*{Similarities}
+
+\begin{itemize}[leftmargin=1.2em]
+  \item \textbf{Shared experimental platform.}  All three use the cup-and-ball / cart--pendulum proxy for transporting a cup of coffee, with a haptic manipulandum and impulsive perturbations along a horizontal track.
+  \item \textbf{Underactuated dynamics.}  The critical challenge is a single actuated DOF (cup position) coupled to one or more unactuated DOF (pendulum angle), creating interaction forces the controller cannot directly govern.
+  \item \textbf{Perturbation-based probing.}  Each study uses perturbations---assistive, resistive, expected, or unexpected---as the main experimental tool to reveal control structure.
+  \item \textbf{Stability and predictability as objectives.}  Across all three, human strategies are interpreted as attempts to achieve predictable, stable interactions rather than simply minimising a kinematic cost.
+  \item \textbf{Impedance as a key construct.}  Mechanical impedance (or its absence) features prominently in all three analyses: as a source of contraction (2018), as a dynamic primitive (2021), and as the critical body-mechanical element (2023).
+\end{itemize}
+
+\subsection*{Major Differences}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lp{3.2cm}p{3.2cm}p{3.2cm}@{}}
+\toprule
+ & \textbf{Bazzi 2018} & \textbf{Razavian 2021} & \textbf{Razavian 2023} \\
+\midrule
+\textbf{Core tool} & Contraction / PDE metric & Dynamic primitives + zero-force traj.& Stochastic OFC with impedance \\
+\textbf{Controller modelled?} & No---phase-space analysis only & Partial (impedance attractor) & Fully (LQG + muscle + impedance) \\
+\textbf{Stability notion} & Exponential convergence in contraction region (global, transient) & Impedance-defined attractor & Energy buffering by spring--damper \\
+\textbf{Feedback role} & Bypassed by contraction; not modelled & Not analysed & Explicit: feedback $\equiv$ feedforward when impedance present \\
+\textbf{Cost function} & Not applicable (no controller) & Min jerk via OFC $\Rightarrow$ zero-force ref & Min effort vs.\ min jerk compared; indistinguishable with impedance \\
+\textbf{Perturbation strategy} & Assistive: enter before; resistive: enter after & Not distinguished & Expected vs.\ unexpected (catch-trial paradigm) \\
+\textbf{Main finding} & Humans exploit passive contraction regions; predictability, not force, is optimised & Standard models fail; zero-force reference is key & Impedance makes cost function and feedback secondary \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection*{Methodology: Contraction Theory, OFC, and Optimality Criteria}
+
+\begin{itemize}[leftmargin=1.2em]
+  \item \textbf{Contraction theory (Bazzi 2018).}
+  Contraction analysis (Lohmiller \& Slotine, 1998) asks: does a Riemannian metric $M(x)\succ 0$ exist such that
+  \[
+    \dot{V} \leq -2\lambda V, \quad V = \delta x^\top M(x)\,\delta x,
+  \]
+  for all virtual displacements $\delta x$ along every trajectory?  If so, all trajectories converge exponentially at rate $\lambda$---a \emph{global}, transient stability guarantee that does not require proximity to an equilibrium.  In practice $M(x)$ is found by solving a PDE (analogous in difficulty to constructing a Lyapunov function; no systematic method exists, but semi-definite and sums-of-squares programming are emerging alternatives).  The paper solves this PDE analytically for the linearised cart--pendulum and maps the resulting contraction regions in $(x,\dot{x},\theta,\dot{\theta})$ phase space as ellipsoidal level sets of $V$.  Human trajectories are then overlaid: assistive-perturbation trials enter the region before the perturbation and remain inside; resistive-perturbation trials re-enter after.  Crucially, this approach \emph{requires no cost function and no explicit controller model}; it characterises only the geometry of the passive dynamics.
+
+  \item \textbf{OFC with minimum effort (Razavian 2021, 2023).}
+  Both later papers adopt the linear-quadratic Gaussian (LQG) OFC framework (Todorov \& Jordan, 2002; Todorov, 2005):
+  \[
+    \min_{u} \sum_{t=0}^{N} \bigl[ x_t^\top Q_t x_t + u_t^\top R\, u_t \bigr],
+    \quad
+    x_{t+1} = A x_t + B(I + \varepsilon_t) u_t + \xi_t,
+    \quad
+    y_t = H x_t + \omega_t.
+  \]
+  Setting $R = I$ and penalising the muscular control signal $u$ proxies for \emph{minimum neuromuscular effort}.  Razavian (2021) shows this cost is insufficient for cup-and-ball dynamics; Razavian (2023) retains the same cost but adds impedance to the body model, whereupon the fit to human data improves dramatically.
+
+  \item \textbf{OFC with minimum jerk (Razavian 2023).}
+  Minimum jerk (Flash \& Hogan, 1985) is encoded in the LQG framework by redefining the control input as $u = \dddot{x}$ and including $\ddot{x}$ as a state.  Penalising $u^\top R\, u$ then minimises $\int \dddot{x}^2\,dt$.  The key result: without impedance, minimum-jerk and minimum-effort produce distinguishably different cup kinematics; with impedance, they are statistically identical.  This demonstrates that body mechanics \emph{filters} the cost function's fingerprint from the observable behaviour.
+
+  \item \textbf{Zero-force trajectory (Razavian 2021).}
+  The zero-force trajectory is the OFC reference $y_{\text{ref}}(t)$ generated by minimising the minimum-jerk cost $\int_0^T \dddot{y}_{\text{ref}}^2\,dt$ within a full OFC feedback loop that includes the cup-and-ball dynamics and a spring--damper impedance.  It is called ``zero-force'' because the smooth, jerk-minimising reference is the one the impedance operator would track without exerting net interaction forces against the internal dynamics---not because $F_{\text{inter}}$ is minimised directly.  The key innovation relative to classic minimum-jerk models is that (i) the reference is generated by a \emph{feedback} controller (OFC) rather than a pre-planned polynomial, and (ii) the impedance element mediates the connection between reference and plant, providing intrinsic stability against interaction forces.
+\end{itemize}
+
+\subsection*{Synthesis and Progression}
+
+The three papers form a conceptually coherent ladder:
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Bazzi 2018:} \emph{Where} in phase space should the movement pass? --- Answer: through contraction regions so that passive dynamics handle perturbations.
+  \item \textbf{Razavian 2021:} \emph{What reference trajectory} should the controller plan, and how? --- Answer: an OFC with minimum-jerk objective, mediated by impedance, produces a zero-force reference that is smooth enough to keep interaction forces small---a feedback-generated trajectory, not a pre-planned kinematics polynomial.
+  \item \textbf{Razavian 2023:} \emph{What does the body contribute?} --- Answer: mechanical impedance subsumes both the contraction role and the choice of cost function; OFC with impedance requires neither a carefully chosen cost nor continuous feedback to replicate human behaviour.
+\end{enumerate}
+
+Taken together, these papers build a case that \emph{embodiment}---the coupling of the neural controller to a body with impedance---is not incidental but constitutive of skilled motor behaviour.  Contraction theory (Bazzi 2018) reveals the geometric structure that enables this; dynamic primitives (Razavian 2021) provide a computational mechanism; and OFC with impedance (Razavian 2023) gives a quantitative, fitted account of how the three elements---body mechanics, optimality, and feedback---interact and partially substitute for one another.
+
+% filepath: /Volumes/Data/Isaac_sim_robotics/notes_control/paper_review.tex
+% ...existing code...
+
+% ── Add this before \end{document} ──────────────────────────────────────────
+
+\section{Discussion: Contraction Theory vs.\ Impedance Control --- What Does This Project Need?}
+
+\subsection*{Two Different Roles}
+
+The three reviewed papers use two fundamentally different mathematical tools.
+It is important to distinguish them clearly before deciding what to implement.
+
+\begin{itemize}
+    \item \textbf{Contraction theory} (Bazzi et al., 2018) is a \emph{stability analysis tool}.
+          It identifies regions of state space where nearby trajectories converge
+          exponentially, and uses this to \emph{explain} why humans adopt certain
+          movement strategies.  It is a post-hoc diagnostic, not a controller.
+
+    \item \textbf{Impedance control with OFC} (Razavian et al., 2021, 2023) is a
+          \emph{generative control architecture}.  It produces forces that drive the
+          system toward a target while absorbing perturbations through passive
+          spring--damper mechanics.  This is what is implemented in a robot or simulation.
+\end{itemize}
+
+\subsection*{Contraction Theory --- When Is It Needed?}
+
+Contraction theory is relevant only if the project goal is \emph{one} of the following:
+
+\begin{itemize}
+    \item Analysing human kinematic data to test whether subjects exploit contraction
+          regions (as in Bazzi 2018).
+    \item Providing a formal mathematical proof that the designed controller is
+          globally stable, without requiring proximity to an equilibrium.
+    \item Extending the work to a publication that benchmarks the controller against
+          Bazzi's stability criteria.
+\end{itemize}
+
+For the present implementation --- LQR with muscle dynamics, ZFT reference mass,
+and impedance force applied to a 2D cart-pendulum with a manipulator --- contraction
+theory is \textbf{not required}.  The LQR already guarantees local exponential
+stability of the linearised system via the Riccati equation, which is sufficient
+for the simulation objectives.
+
+\subsection*{Impedance Control --- Why It Is Critical}
+
+The findings of Razavian et al.\ (2021, 2023) make a strong case that impedance
+is the \emph{indispensable} element of the controller, not an optional add-on:
+
+\begin{itemize}
+    \item \textbf{Fast disturbance rejection ($<20$\,ms):}
+          The damping term $F_\text{imp} = K(p_\text{ref}-p) + D(\dot{p}_\text{ref}-\dot{p})$
+          responds instantaneously to velocity changes caused by a perturbation,
+          well before any neural feedback loop ($\geq 20$\,ms) could act.
+
+    \item \textbf{Cost-function ambiguity:}
+          Without impedance, minimum-effort and minimum-jerk OFC produce measurably
+          different trajectories.  With impedance, both fit equally well.  This means
+          the impedance acts as a mechanical low-pass filter that masks the details
+          of the optimisation objective --- a desirable robustness property.
+
+    \item \textbf{Feedback vs.\ feedforward ambiguity:}
+          Without impedance, a feedforward replay of the OFC command fails under
+          unexpected perturbations.  With impedance, even a feedforward scheme
+          handles moderate disturbances, because the spring--damper passively buffers
+          energy.  This reduces the dependence on sensory delay.
+
+    \item \textbf{Embodied computation:}
+          Impedance distributes control authority between the high-level LQR and the
+          low-level passive mechanics.  The brain (LQR) specifies the reference
+          trajectory; the body (impedance) handles fast corrections autonomously.
+          This is the ``brain and body work together'' perspective of \S4.4 in
+          Razavian et al.\ (2023).
+\end{itemize}
+
+% ────────────────────────────────────────────────────────────────────────────
+\section{Discussion: Contraction Theory vs.\ Impedance Control --- What Does This Project Need?}
+
+\subsection*{Two Different Roles}
+
+The three reviewed papers use two fundamentally different mathematical tools.
+It is important to distinguish them clearly before deciding what to implement.
+
+\begin{itemize}
+    \item \textbf{Contraction theory} (Bazzi et al., 2018) is a \emph{stability analysis tool}.
+          It identifies regions of state space where nearby trajectories converge
+          exponentially, and uses this to \emph{explain} why humans adopt certain
+          movement strategies.  It is a post-hoc diagnostic, not a controller.
+
+    \item \textbf{Impedance control with OFC} (Razavian et al., 2021, 2023) is a
+          \emph{generative control architecture}.  It produces forces that drive the
+          system toward a target while absorbing perturbations through passive
+          spring--damper mechanics.  This is what is implemented in a robot or simulation.
+\end{itemize}
+
+\subsection*{Contraction Theory --- When Is It Needed?}
+
+Contraction theory is relevant only if the project goal is \emph{one} of the following:
+
+\begin{itemize}
+    \item Analysing human kinematic data to test whether subjects exploit contraction
+          regions (as in Bazzi 2018).
+    \item Providing a formal mathematical proof that the designed controller is
+          globally stable, without requiring proximity to an equilibrium.
+    \item Extending the work to a publication that benchmarks the controller against
+          Bazzi's stability criteria.
+\end{itemize}
+
+For the present implementation --- LQR with muscle dynamics, ZFT reference mass,
+and impedance force applied to a 2D cart-pendulum with a manipulator --- contraction
+theory is \textbf{not required}.  The LQR already guarantees local exponential
+stability of the linearised system via the Riccati equation, which is sufficient
+for the simulation objectives.
+
+\subsection*{Impedance Control --- Why It Is Critical}
+
+The findings of Razavian et al.\ (2021, 2023) make a strong case that impedance
+is the \emph{indispensable} element of the controller, not an optional add-on:
+
+\begin{itemize}
+    \item \textbf{Fast disturbance rejection ($<20$\,ms):}
+          The damping term $F_\text{imp} = K(p_\text{ref}-p) + D(\dot{p}_\text{ref}-\dot{p})$
+          responds instantaneously to velocity changes caused by a perturbation,
+          well before any neural feedback loop ($\geq 20$\,ms) could act.
+
+    \item \textbf{Cost-function ambiguity:}
+          Without impedance, minimum-effort and minimum-jerk OFC produce measurably
+          different trajectories.  With impedance, both fit equally well.  This means
+          the impedance acts as a mechanical low-pass filter that masks the details
+          of the optimisation objective --- a desirable robustness property.
+
+    \item \textbf{Feedback vs.\ feedforward ambiguity:}
+          Without impedance, a feedforward replay of the OFC command fails under
+          unexpected perturbations.  With impedance, even a feedforward scheme
+          handles moderate disturbances, because the spring--damper passively buffers
+          energy.  This reduces the dependence on sensory delay.
+
+    \item \textbf{Embodied computation:}
+          Impedance distributes control authority between the high-level LQR and the
+          low-level passive mechanics.  The brain (LQR) specifies the reference
+          trajectory; the body (impedance) handles fast corrections autonomously.
+          This is the ``brain and body work together'' perspective of \S4.4 in
+          Razavian et al.\ (2023).
+\end{itemize}
+
+\subsection*{Implementation Status in This Project}
+
+The impedance controller is \textbf{already implemented} in the codebase:
+
+\begin{equation}
+    \bm{F}_\text{imp} = K(\bm{p}_\text{ref} - \bm{p}) + D(\dot{\bm{p}}_\text{ref} - \dot{\bm{p}})
+\end{equation}
+
+\noindent where $\bm{p}_\text{ref},\dot{\bm{p}}_\text{ref}$ are the outputs of the
+ZFT reference mass block and $\bm{p},\dot{\bm{p}}$ are the cart states from the
+plant.  The complete signal chain is:
+
+\begin{equation}
+    \underbrace{u}_{\text{LQR}}
+    \xrightarrow{\tau_m}
+    \underbrace{F}_{\text{Muscle}}
+    \xrightarrow{M_\text{ref}}
+    \underbrace{\bm{p}_\text{ref}}_{\text{ZFT}}
+    \xrightarrow{K,D}
+    \underbrace{\bm{F}_\text{imp}}_{\text{Impedance}}
+    \longrightarrow
+    \text{Cart-Pendulum Plant}
+\end{equation}
+
+\subsection*{Priority Recommendation}
+
+\begin{center}
+\begin{tabular}{clcc}
+\toprule
+\textbf{Priority} & \textbf{Component} & \textbf{Needed?} & \textbf{Status} \\
+\midrule
+1 & Impedance controller                  & \textbf{Yes} & \textcolor{green!60!black}{Done} \\
+2 & ZFT reference mass                    & \textbf{Yes} & \textcolor{green!60!black}{Done} \\
+3 & LQR + muscle dynamics (14D state)     & \textbf{Yes} & \textcolor{green!60!black}{Done} \\
+4 & \texttt{lqr-applied-to-both-cart-manip} mode & \textbf{Yes} & \textcolor{orange}{In progress} \\
+5 & Contraction theory analysis           & Optional     & \textcolor{gray}{Not required} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\medskip
+\noindent\textbf{Conclusion:}
+Contraction theory is a valuable lens for \emph{understanding} human strategies,
+but it is not a prerequisite for \emph{building} the controller.
+The impedance element is the critical architectural choice, and it is already
+present and functional.  The next implementation priority is completing and
+validating the \texttt{lqr-applied-to-both-cart-manip} mode.
 \end{document}

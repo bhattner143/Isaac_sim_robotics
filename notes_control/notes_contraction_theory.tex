@@ -1,0 +1,199 @@
+\documentclass[11pt,a4paper]{article}
+
+% ── Packages ─────────────────────────────────────────────────────────────────
+\usepackage{amsmath,amssymb,amsthm,bm}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+\usepackage{parskip}
+\usepackage{booktabs}
+
+\newtheorem{theorem}{Theorem}
+
+% ── Title ─────────────────────────────────────────────────────────────────────
+\title{\textbf{Contraction Theory --- Derivation Notes}\\
+       \large (Note 20 Feb 2026)}
+\author{Dipankar Bhattacharya}
+\date{March 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Setup}
+
+Consider a smooth nonlinear system
+\begin{equation}
+  \dot{\bm{x}} = \bm{f}(\bm{x}, t), \qquad \bm{x}\in\mathbb{R}^n.
+  \label{eq:sys}
+\end{equation}
+Let $\bm{x}_1(t)$ and $\bm{x}_2(t)$ be \emph{two solutions} of \eqref{eq:sys}
+starting from different initial conditions (ICs).
+Define the \textbf{virtual displacement}
+\[
+  \delta\bm{x} = \bm{x}_1 - \bm{x}_2 \in \mathbb{R}^n,
+\]
+which satisfies the \textbf{variational dynamics} (linearised along any
+trajectory):
+\begin{equation}
+  \delta\dot{\bm{x}} = \bm{F}(\bm{x},t)\,\delta\bm{x},
+  \qquad
+  \bm{F} = \frac{\partial \bm{f}}{\partial \bm{x}}.
+  \label{eq:var}
+\end{equation}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Metric and Transformed Displacement}
+
+Introduce a uniformly positive-definite \textbf{metric} (coordinate
+transformation)
+\[
+  \bm{\Theta}(\bm{x},t) \in \mathbb{R}^{n\times n}, 
+  \qquad \bm{\Theta}^\top\bm{\Theta} = \bm{M}(\bm{x},t) \succ 0,
+\]
+and define the \textbf{transformed virtual displacement}
+\begin{equation}
+  \delta\bm{y} = \bm{\Theta}\,\delta\bm{x}.
+  \label{eq:dy}
+\end{equation}
+
+The \textbf{squared length} (Lyapunov-like measure) is
+\begin{equation}
+  V = \delta\bm{y}^\top\delta\bm{y}
+    = \delta\bm{x}^\top \bm{M}\,\delta\bm{x} \geq 0.
+  \label{eq:V}
+\end{equation}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Time Derivative of Squared Length}
+
+Differentiating \eqref{eq:V} along \eqref{eq:var}:
+\begin{align}
+  \dot V
+  &= \delta\dot{\bm{y}}^\top\delta\bm{y}
+   + \delta\bm{y}^\top\delta\dot{\bm{y}} \notag\\
+  &= 2\,\delta\bm{y}^\top\delta\dot{\bm{y}}. \label{eq:Vdot1}
+\end{align}
+
+From \eqref{eq:dy}: $\delta\dot{\bm{y}} = \dot{\bm{\Theta}}\,\delta\bm{x}
++ \bm{\Theta}\,\delta\dot{\bm{x}}
+= \bigl(\dot{\bm{\Theta}} + \bm{\Theta}\bm{F}\bigr)\delta\bm{x}
+= \bigl(\dot{\bm{\Theta}} + \bm{\Theta}\bm{F}\bigr)\bm{\Theta}^{-1}\delta\bm{y}.$
+
+Define the \textbf{generalised Jacobian}
+\begin{equation}
+  \bm{K}(\bm{x},t)
+  = \bigl(\dot{\bm{\Theta}} + \bm{\Theta}\bm{F}\bigr)\bm{\Theta}^{-1},
+  \label{eq:K}
+\end{equation}
+so that $\delta\dot{\bm{y}} = \bm{K}\,\delta\bm{y}$, and \eqref{eq:Vdot1}
+becomes
+\begin{equation}
+  \boxed{
+  \dot V = 2\,\delta\bm{y}^\top \bm{K}\,\delta\bm{y}
+         = \delta\bm{y}^\top\bigl(\bm{K} + \bm{K}^\top\bigr)\delta\bm{y}.
+  }
+  \label{eq:Vdot}
+\end{equation}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Contraction Condition}
+
+\begin{theorem}[Contraction]
+The system \eqref{eq:sys} is \textbf{contracting} with respect to the metric
+$\bm{\Theta}$ if there exists a constant $\lambda > 0$ such that
+\begin{equation}
+  \bm{K}_s \triangleq \frac{1}{2}\bigl(\bm{K} + \bm{K}^\top\bigr)
+  \preceq -\lambda\,\bm{I}, \quad \forall\,\bm{x},\,t.
+  \label{eq:cond}
+\end{equation}
+That is, the \emph{symmetric part} of $\bm{K}$ is uniformly negative definite.
+\end{theorem}
+
+\begin{proof}
+From \eqref{eq:Vdot} and \eqref{eq:cond}:
+\[
+  \dot V \leq -2\lambda\,V.
+\]
+By Gr\"{o}nwall's lemma:
+\[
+  V(t) \leq V(0)\,e^{-2\lambda t},
+\]
+i.e.\
+\begin{equation}
+  \|\delta\bm{y}(t)\| \leq \|\delta\bm{y}(0)\|\,e^{-\lambda t}.
+\end{equation}
+Since $\bm{\Theta}$ is uniformly bounded and invertible, this gives
+\textbf{exponential convergence} of all trajectories to each other:
+\[
+  \|\bm{x}_1(t) - \bm{x}_2(t)\| \to 0 \quad \text{exponentially}.
+\]
+\end{proof}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Special Case: Identity Metric}
+
+With $\bm{\Theta} = \bm{I}$ the generalised Jacobian reduces to the ordinary
+Jacobian $\bm{K} = \bm{F}$, and the contraction condition becomes:
+\begin{equation}
+  \bm{F}_s = \frac{1}{2}\bigl(\bm{F} + \bm{F}^\top\bigr) \preceq -\lambda\bm{I}.
+  \label{eq:euclidean}
+\end{equation}
+This is the \emph{Euclidean} contraction condition.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Examples}
+
+\subsection*{Example (a) --- Linear time-invariant system}
+
+Let $\dot{\bm{x}} = A\bm{x}$, $A\in\mathbb{R}^{n\times n}$ constant.
+With $\bm{\Theta} = \bm{S}$ (constant), $\bm{K} = \bm{S}A\bm{S}^{-1}$.\\
+Choose $\bm{S}^\top\bm{S} = \bm{M}$ such that $\bm{K}+\bm{K}^\top \prec 0$:
+\[
+  \bm{S}A\bm{S}^{-1} + \bm{S}^{-\top}A^\top\bm{S}^\top \prec 0
+  \;\Longleftrightarrow\;
+  A^\top\bm{M} + \bm{M}A \prec 0 \quad (M = S^\top S).
+\]
+This is the standard Lyapunov stability condition — contraction subsumes it.
+
+\subsection*{Example (b) --- Scalar nonlinear system}
+
+Let $\dot x = f(x) = -x - x^3$.  Then $F = \partial f/\partial x = -1 - 3x^2$.
+For all $x$, with $\bm{\Theta}=1$:
+\[
+  K_s = F = -1 - 3x^2 \leq -1 < 0.
+\]
+So $\lambda = 1$; the system is globally contracting and all trajectories
+converge exponentially.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Summary}
+
+\begin{center}
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Quantity} & \textbf{Definition / Role} \\
+\midrule
+$\delta\bm{x}$ & Virtual displacement between two trajectories \\
+$\bm{\Theta}$ & Uniformly invertible coordinate transformation (metric) \\
+$\delta\bm{y} = \bm{\Theta}\,\delta\bm{x}$ & Transformed displacement \\
+$V = \|\delta\bm{y}\|^2$ & Squared length (Lyapunov measure) \\
+$\bm{K} = (\dot{\bm{\Theta}}+\bm{\Theta}\bm{F})\bm{\Theta}^{-1}$ & Generalised Jacobian \\
+$\bm{K}_s \preceq -\lambda\bm{I}$ & Contraction condition ($\lambda>0$) \\
+$\|\delta\bm{x}\|\to0$ exponentially & Conclusion (all-to-all convergence) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{6pt}
+\noindent
+\textbf{Key insight:} A system is contracting if a metric $\bm{\Theta}$ can be
+found such that the symmetric part of the generalised Jacobian $\bm{K}$ is
+uniformly negative definite.  Unlike Lyapunov methods, this gives
+\emph{any-to-any} trajectory convergence, not just stability of a single
+equilibrium --- making it directly applicable to the cup-and-ball transport task
+studied in Bazzi et al.\ (2018).
+
+\end{document}

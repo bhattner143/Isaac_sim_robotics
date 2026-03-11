@@ -1,0 +1,1278 @@
+% =============================================================================
+%  Jacobian Derivation for a Hybrid 2-DoF Planar Cable-Driven Manipulator
+%  -----------------------------------------------------------------------------
+%  System: CupManipulatorTendon
+%    - Joint 1 (link1_base,   q1): directly actuated revolute joint
+%    - Joint 2 (link2_link1,  q2): cable-driven via HTD 5M 60T belt/pulley
+%  Robot moves in the horizontal XY plane (world Z = constant).
+%  Link lengths (from FK at q = 0):
+%    L1 = 342.47 mm   (joint-1 origin → joint-2 origin)
+%    L2 = 190.00 mm   (joint-2 origin → end-effector)
+%  Pulley parameters (HTD 5M 60T):
+%    Pitch = 5 mm,  Teeth = 60  =>  r_p = 60 x 5 / (2 pi) ≈ 47.75 mm
+% =============================================================================
+
+\documentclass[12pt, a4paper]{article}
+
+% ── Packages ─────────────────────────────────────────────────────────────────
+\usepackage{amsmath, amssymb, bm}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{array, booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{mathtools}
+\usepackage{cleveref}
+\usepackage{enumitem}
+\usepackage{amsthm}
+\usepackage[backgroundcolor=blue!5, linecolor=blue!40, linewidth=1pt,
+            innertopmargin=7pt, innerbottommargin=7pt,
+            innerleftmargin=8pt, innerrightmargin=8pt]{mdframed}
+
+\theoremstyle{definition}
+\newtheorem{corollary}{Corollary}[section]
+
+\geometry{margin=2.5cm}
+
+% ── Macros ───────────────────────────────────────────────────────────────────
+% Bold roman vectors / matrices
+\newcommand{\bq}{\bm{q}}
+\newcommand{\bp}{\bm{p}}
+\newcommand{\bu}{\bm{u}}
+\newcommand{\btau}{\bm{\tau}}
+\newcommand{\bF}{\bm{F}}
+\newcommand{\bJ}{\bm{J}}
+\newcommand{\bA}{\bm{A}}
+\newcommand{\bM}{\bm{M}}
+\newcommand{\bC}{\bm{C}}
+\newcommand{\bG}{\bm{G}}
+\newcommand{\bl}{\bm{l}}
+\newcommand{\bomega}{\bm{\omega}}
+
+% Short-hand trig
+\newcommand{\cq}[1]{c_{#1}}   % cos(q_#1)
+\newcommand{\sq}[1]{s_{#1}}   % sin(q_#1)
+\newcommand{\cqq}[2]{c_{{#1}{#2}}}  % cos(q_#1 + q_#2)
+\newcommand{\sqq}[2]{s_{{#1}{#2}}}  % sin(q_#1 + q_#2)
+
+% Frames
+\newcommand{\FO}{\{F_O\}}      % inertial / world frame
+\newcommand{\FE}{\{F_\varepsilon\}} % EE frame
+
+% =============================================================================
+\begin{document}
+
+\title{%
+  Jacobian Derivation for a Hybrid 2-DoF\\
+  Planar Cable-Driven Manipulator%
+}
+\author{CupManipulatorTendon --- Kinematic \& Dynamic Analysis}
+\date{March 2026}
+\maketitle
+\tableofcontents
+\newpage
+
+% =============================================================================
+\section{System Description}
+\label{sec:system}
+% =============================================================================
+
+The manipulator under consideration is a \textbf{hybrid 2-DoF planar serial arm}
+whose end-effector (EE) moves in a fixed horizontal plane (world $Z = z_0$).  The
+two degrees of freedom are:
+
+\begin{itemize}[leftmargin=2em]
+  \item $q_1$ (\texttt{link1\_base}): revolute joint, \emph{directly actuated} by
+        motor torque $\tau_1$.
+  \item $q_2$ (\texttt{link2\_link1}): revolute joint, \emph{cable-driven} via a
+        HTD 5M belt wound on a 60-tooth pulley.  The controlled input is the cable
+        tension $f_c \ge 0$.
+\end{itemize}
+
+\noindent
+This hybrid actuation is analogous to the Cable-Driven Parallel Manipulator (CDPM)
+framework presented in \cite{pott2018cable}, where a structure matrix maps cable
+forces to generalised joint torques.  Here, only joint~2 is governed by cable
+mechanics; joint~1 retains the classical direct-drive model.
+
+\paragraph{Geometric parameters.}
+\begin{center}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{lll}
+    \toprule
+    Symbol & Value & Description \\
+    \midrule
+    $L_1$ & 342.47 mm & Distance from joint-1 axis to joint-2 axis (horizontal) \\
+    $L_2$ & 190.00 mm & Distance from joint-2 axis to EE origin (horizontal) \\
+    $r_p$ & 47.75 mm  & HTD 5M 60T pulley pitch radius ($= 60 \times 5\,\text{mm} / (2\pi)$) \\
+    $z_0$ & 321.55 mm & Constant world-Z of the EE (set at home pose) \\
+    \bottomrule
+  \end{tabular}
+\end{center}
+
+% =============================================================================
+\section{Coordinate Frames and Notation}
+\label{sec:frames}
+% =============================================================================
+
+Following the CDPM convention in the attached reference:
+
+\begin{itemize}
+  \item $\FO$ --- inertial (world) frame; origin at joint-1 axis.
+  \item $\FE$ --- end-effector body frame; rigidly attached to link~2, origin at
+        the EE point.
+  \item Cable attachment on the \emph{base} (drive pulley centre):
+        ${}^O\bm{r}_{OA}$ --- fixed in $\FO$.
+  \item Cable attachment on the \emph{EE link} (driven pulley winding point):
+        ${}^\varepsilon\bm{r}_{OB}$ --- fixed in $\FE$.
+\end{itemize}
+
+\noindent
+Notation conventions:
+$c_i \triangleq \cos q_i$,\;
+$s_i \triangleq \sin q_i$,\;
+$c_{12} \triangleq \cos(q_1 + q_2)$,\;
+$s_{12} \triangleq \sin(q_1 + q_2)$.
+
+% =============================================================================
+\section{Forward Kinematics}
+\label{sec:fk}
+% =============================================================================
+
+The EE position in world frame $\FO$ is:
+
+\begin{equation}
+  \label{eq:fk}
+  \bp(q_1, q_2) =
+  \begin{bmatrix}
+    p_x \\ p_y
+  \end{bmatrix}
+  =
+  \begin{bmatrix}
+    L_1 \cq{1} + L_2 \cqq{1}{2} \\
+    L_1 \sq{1} + L_2 \sqq{1}{2}
+  \end{bmatrix},
+\end{equation}
+
+where only the horizontal components are shown; $p_z = z_0 = \text{const}$.
+
+% =============================================================================
+\section{Geometric (Translational) Jacobian}
+\label{sec:geo_jacobian}
+% =============================================================================
+
+Differentiating \cref{eq:fk} with respect to $\bq = [q_1, q_2]^\top$ gives the
+standard geometric Jacobian $\bJ \in \mathbb{R}^{2 \times 2}$:
+
+\begin{equation}
+  \label{eq:Jgeo}
+  \bJ(\bq)
+  = \frac{\partial \bp}{\partial \bq}
+  = \begin{bmatrix}
+      -L_1 \sq{1} - L_2 \sqq{1}{2} & -L_2 \sqq{1}{2} \\[4pt]
+       L_1 \cq{1} + L_2 \cqq{1}{2} &  L_2 \cqq{1}{2}
+    \end{bmatrix}.
+\end{equation}
+
+\noindent
+Velocity-level kinematics:
+\begin{equation}
+  \label{eq:vel_fk}
+  \dot{\bp} = \bJ(\bq)\,\dot{\bq}.
+\end{equation}
+
+\paragraph{Singularity analysis.}
+The determinant of $\bJ$ is:
+\begin{equation}
+  \det\bJ = L_1 L_2 \sin q_2 .
+\end{equation}
+A kinematic singularity occurs whenever $q_2 = 0$ or $q_2 = \pm\pi$
+(fully-extended or folded configurations).  This is the fundamental reason that
+Jacobian-based (velocity) IK is unreliable near $q_2 = 0$ and analytical 2R IK
+must be used as a fallback.
+
+% =============================================================================
+\section{Actuation Models}
+\label{sec:actuation}
+% =============================================================================
+
+\subsection{Joint 1 --- Direct Actuation}
+\label{sec:act_j1}
+
+Joint~1 is driven directly: the motor output torque $\tau_1$ appears
+unmodified as the generalised force for $q_1$.  There is no cable loop;
+the actuation ratio is unity.
+
+\subsection{Joint 2 --- Cable (Belt/Pulley) Actuation}
+\label{sec:act_j2}
+
+Following the CDPM cable-vector formulation \cite{pott2018cable}, a single cable
+wraps around a drive pulley (radius $r_p$) mounted on the base and is anchored to
+a driven pulley fixed to link~2.  The cable vector ${}^\varepsilon\bm{l}$ expressed
+in frame $\FE$ is (cf.\ equation~3.7 in the reference):
+
+\begin{equation}
+  \label{eq:cable_vec}
+  {}^\varepsilon\bm{l}
+  = -\,{}_O^\varepsilon R\,{}^O\bm{r}_{OA} + {}^\varepsilon\bm{r}_{OB},
+\end{equation}
+
+where ${}_O^\varepsilon R$ is the rotation from $\FO$ to $\FE$ and ${}^O\bm{r}_{OA}$
+is the fixed world-frame position of the cable's base-side anchor.  The cable
+length is $l = \|{}^\varepsilon\bm{l}\|$.
+
+\paragraph{Belt--pulley simplification.}
+Because both the drive and driven pulleys are of the same HTD-5M tooth profile and
+the belt is inextensible, the cable wraps without slip.  The arc-length constraint
+gives a \emph{linear} relationship between cable displacement $\Delta l$ and joint
+angle increment $\Delta q_2$:
+
+\begin{equation}
+  \label{eq:cable_kin}
+  \dot{l} = r_p\,\dot{q}_2 ,
+  \qquad
+  \Delta l = r_p\,\Delta q_2 .
+\end{equation}
+
+This replaces the full CDPM cable-length formula: the wrapped geometry reduces to a
+scalar transmission ratio $r_p$.
+
+\paragraph{Cable tension and joint torque.}
+The cable tension $f_c \ge 0$ produces a torque about joint~2's axis via the moment
+arm $r_p$:
+\begin{equation}
+  \label{eq:cable_torque}
+  \tau_2 = r_p\,f_c .
+\end{equation}
+
+% =============================================================================
+\section{Actuation Mapping Matrix}
+\label{sec:act_map}
+% =============================================================================
+
+Collect the actuator inputs into the vector
+$\bu = [\tau_1,\; f_c]^\top \in \mathbb{R}^2$ and the joint torques into
+$\btau = [\tau_1,\; \tau_2]^\top$.  From \cref{eq:cable_torque}:
+
+\begin{equation}
+  \label{eq:act_map}
+  \btau = \bA\,\bu,
+  \qquad
+  \bA =
+  \begin{bmatrix}
+    1 & 0 \\
+    0 & r_p
+  \end{bmatrix},
+\end{equation}
+
+where $\bA \in \mathbb{R}^{2 \times 2}$ is the \emph{actuation matrix}.
+Because $\bA$ is diagonal and invertible (for $r_p > 0$), the system is
+fully actuated.
+
+The inverse --- mapping joint torques to actuator inputs --- is:
+\begin{equation}
+  \bA^{-1} =
+  \begin{bmatrix}
+    1 & 0 \\
+    0 & 1/r_p
+  \end{bmatrix}.
+\end{equation}
+
+% =============================================================================
+\section{Hybrid Jacobian Derivation}
+\label{sec:hybrid_jac}
+% =============================================================================
+
+\subsection{Task-Space Jacobian (Velocity Level)}
+\label{sec:task_vel}
+
+From \cref{eq:vel_fk,eq:cable_kin}, the joint velocities $\dot{\bq}$ relate to
+both the Cartesian EE velocity $\dot{\bp}$ and the cable rate $\dot{l}$:
+
+\begin{equation}
+  \label{eq:augmented}
+  \begin{bmatrix}
+    \dot{\bp} \\ \dot{l}
+  \end{bmatrix}
+  =
+  \underbrace{%
+    \begin{bmatrix}
+      \bJ(\bq) \\[2pt]
+      \bm{0}^\top & r_p
+    \end{bmatrix}
+  }_{J_{\text{aug}} \;\in\; \mathbb{R}^{3 \times 2}}
+  \dot{\bq},
+\end{equation}
+
+where $\bm{0}^\top = [0,\,0]$ pads $\bJ$ to accommodate the cable row.
+
+\noindent
+Explicitly:
+\begin{equation}
+  \label{eq:Jaug_explicit}
+  J_{\text{aug}} =
+  \begin{bmatrix}
+    -L_1 \sq{1} - L_2 \sqq{1}{2} & -L_2 \sqq{1}{2} \\[4pt]
+     L_1 \cq{1} + L_2 \cqq{1}{2} &  L_2 \cqq{1}{2} \\[4pt]
+     0 & r_p
+  \end{bmatrix}.
+\end{equation}
+
+\subsection{Actuator-Space Jacobian}
+\label{sec:act_jac}
+
+Define the \emph{actuator velocity vector}
+$\dot{\bu}_{v} = [\dot{q}_1,\; \dot{l}]^\top$ (motor angular rate and cable
+linear rate).  The joint velocities are recovered via $\bA^{-1}$:
+
+\begin{equation}
+  \label{eq:q_from_uv}
+  \dot{\bq}
+  = \bA^{-1}\,\dot{\bu}_v
+  =
+  \begin{bmatrix}
+    1 & 0 \\ 0 & 1/r_p
+  \end{bmatrix}
+  \begin{bmatrix}
+    \dot{q}_1 \\ \dot{l}
+  \end{bmatrix}.
+\end{equation}
+
+Substituting into \cref{eq:vel_fk}:
+\begin{equation}
+  \label{eq:hybrid_vel}
+  \dot{\bp}
+  = \bJ(\bq)\,\bA^{-1}\,\dot{\bu}_v
+  = \underbrace{\bJ(\bq)\,\bA^{-1}}_{\bJ_h(\bq)}\,\dot{\bu}_v,
+\end{equation}
+
+\begin{equation}
+  \label{eq:Jh}
+  \boxed{
+  \bJ_h(\bq)
+  \;=\;
+  \bJ(\bq)\,\bA^{-1}
+  \;=\;
+  \begin{bmatrix}
+    -(L_1 \sq{1} + L_2 \sqq{1}{2}) & -\dfrac{L_2 \sqq{1}{2}}{r_p} \\[8pt]
+     L_1 \cq{1} + L_2 \cqq{1}{2}  &  \dfrac{L_2 \cqq{1}{2}}{r_p}
+  \end{bmatrix}
+  }
+\end{equation}
+
+$\bJ_h \in \mathbb{R}^{2 \times 2}$ is the \textbf{hybrid Jacobian}: it maps the
+\emph{physical actuator rates} (joint-1 angular velocity, cable linear velocity)
+to the Cartesian EE velocity.
+
+\paragraph{Interpretation.}
+The first column of $\bJ_h$ is identical to the first column of $\bJ$: rotating
+joint~1 at rate $\dot{q}_1$ sweeps the EE through the same arc regardless of the
+drive type.  The second column is the standard cable column scaled by $1/r_p$,
+converting from cable linear speed to the equivalent joint angular speed.
+
+\subsection{Singularity of the Hybrid Jacobian}
+\label{sec:sing}
+
+\begin{equation}
+  \det \bJ_h = \frac{1}{r_p}\det\bJ = \frac{L_1 L_2}{r_p}\sin q_2 .
+\end{equation}
+
+Since $r_p > 0$, $\bJ_h$ shares the same singularity locus as the geometric
+Jacobian: $q_2 = 0\pmod{\pi}$.
+
+% =============================================================================
+\section{Cable-Force Jacobian and Statics}
+\label{sec:cable_force_jac}
+% =============================================================================
+
+Following the CDPM structure-matrix formulation (equation~3.15 in the reference),
+the transpose of the Jacobian maps Cartesian EE forces to actuator inputs via
+virtual work:
+
+\begin{equation}
+  \delta W
+  = \bF_{EE}^\top \delta\bp
+  = \btau^\top \delta\bq
+  = \bu^\top \bA^\top \delta\bq .
+\end{equation}
+
+Since $\delta\bp = \bJ\,\delta\bq$:
+\begin{equation}
+  \bF_{EE}^\top \bJ\,\delta\bq
+  = \bu^\top \bA^\top \delta\bq
+  \;\implies\;
+  \bJ^\top \bF_{EE} = \bA^\top \bu,
+\end{equation}
+
+\begin{equation}
+  \label{eq:force_map}
+  \bu = (\bA^\top)^{-1} \bJ^\top \bF_{EE}
+      = \bJ_h^\top \bF_{EE}.
+\end{equation}
+
+\noindent
+Explicitly:
+\begin{equation}
+  \label{eq:Jh_T}
+  \bJ_h^\top =
+  \begin{bmatrix}
+    -(L_1 \sq{1} + L_2 \sqq{1}{2}) & L_1 \cq{1} + L_2 \cqq{1}{2} \\[6pt]
+    -\dfrac{L_2 \sqq{1}{2}}{r_p}   & \dfrac{L_2 \cqq{1}{2}}{r_p}
+  \end{bmatrix}.
+\end{equation}
+
+The first row gives the required motor torque $\tau_1$; the second row gives the
+required cable tension $f_c$ to produce the desired EE wrench $\bF_{EE}$.
+
+% =============================================================================
+\section{Velocity-Level Inverse Kinematics}
+\label{sec:vel_ik}
+% =============================================================================
+
+\subsection{Standard Damped Pseudo-Inverse on \texorpdfstring{$\bJ$}{J}}
+
+Given a desired EE velocity $\dot{\bp}_{\text{des}}$, the joint velocity is:
+\begin{equation}
+  \label{eq:q_dot_ik}
+  \dot{\bq}
+  = \bJ^\dag\,\dot{\bp}_{\text{des}}
+  = \bJ^\top\!\left(\bJ \bJ^\top + \lambda \bm{I}_2\right)^{-1}\dot{\bp}_{\text{des}},
+\end{equation}
+
+where $\lambda > 0$ is the damping factor (Levenberg--Marquardt regularisation).
+This is the method implemented in \texttt{compute\_velocity\_ik}.
+
+\subsection{Hybrid-Jacobian Velocity IK}
+
+To work directly in actuator space (i.e., command motor velocity $\dot{q}_1$ and
+cable rate $\dot{l}$):
+
+\begin{equation}
+  \label{eq:uv_ik}
+  \dot{\bu}_v
+  = \bJ_h^\dag\,\dot{\bp}_{\text{des}}
+  = \bJ_h^\top\!\left(\bJ_h \bJ_h^\top + \lambda \bm{I}_2\right)^{-1}
+    \dot{\bp}_{\text{des}}.
+\end{equation}
+
+Then the cable command is $\dot{l}$ and the motor-1 command is $\dot{q}_1 =
+[\dot{\bu}_v]_1$.
+
+\subsection{Equivalence}
+
+Because $\bA^{-1}$ is invertible:
+\begin{equation}
+  \bJ_h^\dag = \bA^{-1} \bJ^\dag \quad (\text{when }\bA \text{ is invertible}).
+\end{equation}
+The two velocity-IK expressions \cref{eq:q_dot_ik,eq:uv_ik} yield the same EE
+motion; they differ only in which actuator space the solution is expressed.
+
+% =============================================================================
+\section{Equations of Motion}
+\label{sec:eom}
+% =============================================================================
+
+The standard manipulator dynamics in joint space:
+\begin{equation}
+  \label{eq:eom}
+  \bM(\bq)\ddot{\bq} + \bC(\bq, \dot{\bq})\dot{\bq} + \bG(\bq)
+  = \btau + \bJ^\top \bF_{\text{ext}},
+\end{equation}
+
+where $\bM$ is the mass-inertia matrix, $\bC$ the Coriolis/centrifugal matrix, and
+$\bG$ the gravitational vector.  Substituting $\btau = \bA\,\bu$ from
+\cref{eq:act_map}:
+
+\begin{equation}
+  \boxed{
+  \bM(\bq)\ddot{\bq} + \bC(\bq, \dot{\bq})\dot{\bq} + \bG(\bq)
+  = \bA\,\bu + \bJ^\top \bF_{\text{ext}} .
+  }
+\end{equation}
+
+For torque control, the desired actuator inputs are computed as:
+\begin{equation}
+  \bu = \bA^{-1}
+        \bigl(\bM(\bq)\ddot{\bq}_{\text{ref}}
+              + \bC(\bq,\dot{\bq})\dot{\bq}_{\text{ref}}
+              + \bG(\bq)
+              - \bJ^\top \bF_{\text{ext}}\bigr).
+\end{equation}
+
+% =============================================================================
+\section{Summary}
+\label{sec:summary}
+% =============================================================================
+
+\begin{center}
+  \renewcommand{\arraystretch}{1.5}
+  \begin{tabular}{lll}
+    \toprule
+    Symbol & Expression & Role \\
+    \midrule
+    $\bJ(\bq)$       & \cref{eq:Jgeo} & Geometric Jacobian ($2\times 2$)\\
+    $\bA$            & \cref{eq:act_map} & Actuation matrix (diagonal, $2\times 2$)\\
+    $\bJ_h = \bJ\bA^{-1}$ & \cref{eq:Jh} & Hybrid Jacobian (actuator $\to$ task) \\
+    $\bJ_h^\top$     & \cref{eq:Jh_T} & Maps EE wrench $\to$ actuator inputs \\
+    $J_{\text{aug}}$ & \cref{eq:Jaug_explicit} & Augmented Jacobian (task + cable, $3\times 2$) \\
+    $\dot{\bu}_v = \bJ_h^\dag\,\dot{\bp}$ & \cref{eq:uv_ik} & Hybrid velocity IK \\
+    \bottomrule
+  \end{tabular}
+\end{center}
+
+\noindent
+Key relationships at a glance:
+\begin{align*}
+  \dot{\bp}  &= \bJ_h\,\dot{\bu}_v
+               &&\text{(actuator velocity $\to$ EE velocity)} \\
+  \bu        &= \bJ_h^\top \bF_{EE}
+               &&\text{(EE force $\to$ actuator inputs, static)} \\
+  \dot{l}    &= r_p\,\dot{q}_2
+               &&\text{(cable rate from joint-2 rate)} \\
+  \det\bJ_h  &= (L_1 L_2 / r_p)\sin q_2
+               &&\text{(singular at } q_2 = 0, \pm\pi) \\
+\end{align*}
+
+% =============================================================================
+\section{Cable Kinematics via Tangency Cancellation}
+\label{sec:cable_kin_tangency}
+% =============================================================================
+
+This section derives the cable length rate $\dot{l}$ rigorously for a cable path
+that wraps around the driven-pulley body before attaching to the load point.  The
+key result is that the velocity of the intermediate tangency points cancels,
+leaving a single clean expression involving only the load-attachment point.
+
+\subsection{Assumptions and Setup}
+\label{sec:cable_setup}
+
+Assume the driven-pulley centre $O_2$ is \emph{fixed in the world}:
+\begin{equation}
+  {}^{W}\mathbf{r}_{WO_2} = \text{constant}
+  \;\implies\;
+  {}^{W}\mathbf{v}_{O_2} = {}^{W}\dot{\mathbf{r}}_{WO_2} = \mathbf{0}.
+\end{equation}
+
+The variable cable path is
+\[
+  B_{0,L} \;\to\; A_{1,L} \;\leadsto\; B_{1,L} \;\to\; A_{2,R},
+\]
+where:
+\begin{itemize}
+  \item $B_{0,L}$ --- fixed anchor point in the world frame.
+  \item $A_{1,L}$ --- tangency point where the cable \emph{leaves} the straight
+        segment and begins wrapping on the pulley.
+  \item $B_{1,L}$ --- tangency point where the cable \emph{leaves} the pulley
+        and begins the final straight segment.
+  \item $A_{2,R}$ --- load-attachment point, rigidly fixed to the rotating body.
+\end{itemize}
+
+\subsection{Decomposition of Total Cable Length}
+\label{sec:cable_decompose}
+
+The total cable length is:
+\begin{equation}
+  l = l_{B_{0,L}A_{1,L}} + l_{A_{1,L}B_{1,L}} + l_{B_{1,L}A_{2,R}}.
+\end{equation}
+
+Differentiating:
+\begin{equation}
+  \dot{l}
+  = \dot{l}_{B_{0,L}A_{1,L}}
+  + \dot{l}_{A_{1,L}B_{1,L}}
+  + \dot{l}_{B_{1,L}A_{2,R}}.
+\end{equation}
+
+\subsection{First Straight Segment}
+\label{sec:seg1}
+
+Define ${}^{W}\mathbf{s}_1 = {}^{W}\mathbf{r}_{WA_{1,L}} - {}^{W}\mathbf{r}_{WB_{0,L}}$.
+Using $\frac{d}{dt}\|\mathbf{x}\| = \frac{\mathbf{x}^\top\dot{\mathbf{x}}}{\|\mathbf{x}\|}$
+and noting that $B_{0,L}$ is fixed:
+\begin{equation}
+  \dot{l}_{B_{0,L}A_{1,L}}
+  = {}^{W}\hat{\mathbf{u}}_{B_{0,L}A_{1,L}}^\top\,{}^{W}\dot{\mathbf{r}}_{WA_{1,L}},
+  \qquad
+  {}^{W}\hat{\mathbf{u}}_{B_{0,L}A_{1,L}}
+  = \frac{{}^{W}\mathbf{r}_{WA_{1,L}} - {}^{W}\mathbf{r}_{WB_{0,L}}}
+         {\left\|{}^{W}\mathbf{r}_{WA_{1,L}} - {}^{W}\mathbf{r}_{WB_{0,L}}\right\|}.
+\end{equation}
+
+\subsection{Wrapped Arc}
+\label{sec:arc}
+
+For the arc $A_{1,L} \to B_{1,L}$, define unit tangents ${}^{W}\mathbf{t}_{A_{1,L}}$
+and ${}^{W}\mathbf{t}_{B_{1,L}}$ pointing \emph{outward from the arc} at each
+endpoint (i.e.\ opposite to the direction of cable travel).  Then:
+\begin{equation}
+  \dot{l}_{A_{1,L}B_{1,L}}
+  = +{}^{W}\mathbf{t}_{A_{1,L}}^\top\,{}^{W}\dot{\mathbf{r}}_{WA_{1,L}}
+    - {}^{W}\mathbf{t}_{B_{1,L}}^\top\,{}^{W}\dot{\mathbf{r}}_{WB_{1,L}}.
+\end{equation}
+
+\noindent
+\textit{Note on sign convention.} With the standard incoming-tangent convention
+($\mathbf{t}$ pointing in the direction of travel), the signs would be reversed.
+The outward convention used here ensures the tangency cancellation in
+\cref{sec:tangency_cancel} follows with the same sign as the straight-segment
+formula.
+
+\subsection{Last Straight Segment}
+\label{sec:seg2}
+
+Define ${}^{W}\mathbf{s}_2 = {}^{W}\mathbf{r}_{WA_{2,R}} - {}^{W}\mathbf{r}_{WB_{1,L}}$:
+\begin{equation}
+  \dot{l}_{B_{1,L}A_{2,R}}
+  = {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}^\top
+    \!\left({}^{W}\dot{\mathbf{r}}_{WA_{2,R}} - {}^{W}\dot{\mathbf{r}}_{WB_{1,L}}\right),
+  \quad
+  {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}
+  = \frac{{}^{W}\mathbf{r}_{WA_{2,R}} - {}^{W}\mathbf{r}_{WB_{1,L}}}
+         {\left\|{}^{W}\mathbf{r}_{WA_{2,R}} - {}^{W}\mathbf{r}_{WB_{1,L}}\right\|}.
+\end{equation}
+
+\subsection{Summing All Three Contributions}
+\label{sec:sum}
+
+Adding the three parts:
+\begin{align}
+  \dot{l}
+  &=
+  \underbrace{\left(
+    {}^{W}\hat{\mathbf{u}}_{B_{0,L}A_{1,L}}
+    + {}^{W}\mathbf{t}_{A_{1,L}}
+  \right)^\top}_{\text{coefficient of }\dot{\mathbf{r}}_{WA_{1,L}}}
+  {}^{W}\dot{\mathbf{r}}_{WA_{1,L}}
+  +\;
+  {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}^\top\,{}^{W}\dot{\mathbf{r}}_{WA_{2,R}}
+  \nonumber\\[4pt]
+  &\quad
+  -\underbrace{\left(
+    {}^{W}\mathbf{t}_{B_{1,L}}
+    + {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}
+  \right)^\top}_{\text{coefficient of }{}^{W}\dot{\mathbf{r}}_{WB_{1,L}}}
+  {}^{W}\dot{\mathbf{r}}_{WB_{1,L}}.
+\end{align}
+
+\subsection{Tangency Cancellation}
+\label{sec:tangency_cancel}
+
+At each tangency point the cable direction (straight segment unit vector) must
+equal the outward arc tangent for the cable to be smooth (no kink).  Therefore:
+\begin{equation}
+  {}^{W}\mathbf{t}_{A_{1,L}} = -{}^{W}\hat{\mathbf{u}}_{B_{0,L}A_{1,L}},
+  \qquad
+  {}^{W}\mathbf{t}_{B_{1,L}} = -{}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}.
+\end{equation}
+
+Both bracket terms vanish identically:
+\begin{equation}
+  {}^{W}\hat{\mathbf{u}}_{B_{0,L}A_{1,L}} + {}^{W}\mathbf{t}_{A_{1,L}} = \mathbf{0},
+  \qquad
+  {}^{W}\mathbf{t}_{B_{1,L}} + {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}} = \mathbf{0}.
+\end{equation}
+
+The velocities of the two tangency points $A_{1,L}$ and $B_{1,L}$ drop out completely,
+yielding:
+\begin{equation}
+  \label{eq:ldot_key}
+  \boxed{
+    \dot{l}
+    = {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}^\top\;{}^{W}\dot{\mathbf{r}}_{WA_{2,R}}
+  }
+\end{equation}
+
+\subsection{Rigid-Body Velocity of the Load-Attachment Point}
+\label{sec:rigid_body}
+
+Because $A_{2,R}$ is fixed to the body rotating about the fixed point $O_2$, and
+${}^{W}\dot{\mathbf{r}}_{WO_2} = \mathbf{0}$:
+\begin{equation}
+  {}^{W}\dot{\mathbf{r}}_{WA_{2,R}}
+  = {}^{W}\boldsymbol{\omega}_2 \times {}^{W}\mathbf{r}_{O_2 A_{2,R}}.
+\end{equation}
+
+Substituting into \cref{eq:ldot_key}:
+\begin{equation}
+  \label{eq:ldot_omega}
+  \boxed{
+    \dot{l}
+    = {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}^\top
+      \left(
+        {}^{W}\boldsymbol{\omega}_2
+        \times
+        {}^{W}\mathbf{r}_{O_2 A_{2,R}}
+      \right)
+  }
+\end{equation}
+
+\subsection{Planar Reduction}
+\label{sec:planar}
+
+For planar motion, ${}^{W}\boldsymbol{\omega}_2 = [0,\;0,\;\dot{\theta}_2]^\top$,
+giving:
+\begin{equation}
+  \label{eq:ldot_planar}
+  \boxed{
+    \dot{l}
+    = {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}^\top
+      \left(
+        \begin{bmatrix} 0 \\ 0 \\ \dot{\theta}_2 \end{bmatrix}
+        \times
+        {}^{W}\mathbf{r}_{O_2 A_{2,R}}
+      \right)
+    \;=\;
+    J_l(\theta_2)\,\dot{\theta}_2 .
+  }
+\end{equation}
+
+The scalar Jacobian entry $J_l(\theta_2)$ depends only on the current geometry of
+the cable's last straight segment and the lever arm ${}^{W}\mathbf{r}_{O_2 A_{2,R}}$;
+it replaces the constant $r_p$ approximation used in the simplified model of
+\cref{sec:act_j2}.  When the cable wrapping is symmetric and $A_{2,R}$ lies on
+the pitch circle, $J_l = r_p$, recovering the belt formula \cref{eq:cable_kin}.
+
+\subsection{Spatial-Velocity Row Jacobian Form}
+\label{sec:spatial_jac}
+
+The result \cref{eq:ldot_omega} can be rewritten in the compact \emph{spatial velocity}
+form that appears in cable-robot literature, making the translational and rotational
+contributions explicit side-by-side.
+
+\paragraph{Triple-product identity.}
+For any vectors $\mathbf{u}$, $\boldsymbol{\omega}$, $\mathbf{r}$:
+\begin{equation}
+  \label{eq:triple}
+  \mathbf{u}^\top(\boldsymbol{\omega} \times \mathbf{r})
+  = (\mathbf{r} \times \mathbf{u})^\top \boldsymbol{\omega}.
+\end{equation}
+
+Apply this to \cref{eq:ldot_omega} with
+$\mathbf{u} \triangleq {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}$ and
+$\mathbf{r} \triangleq {}^{W}\mathbf{r}_{O_2 A_{2,R}}$:
+
+\begin{equation}
+  \dot{l}
+  = \mathbf{u}^\top \underbrace{{}^{W}\mathbf{v}_{O_2}}_{\mathbf{0}}
+  + \mathbf{u}^\top({}^{W}\boldsymbol{\omega}_2 \times \mathbf{r})
+  = \mathbf{u}^\top\,{}^{W}\mathbf{v}_{O_2}
+  + (\mathbf{r} \times \mathbf{u})^\top\,{}^{W}\boldsymbol{\omega}_2 .
+\end{equation}
+
+Writing this as a single row times a spatial velocity vector:
+
+\begin{equation}
+  \label{eq:spatial_row}
+  \boxed{
+  \dot{l}
+  =
+  \underbrace{%
+    \begin{bmatrix}
+      {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}^\top &
+      \bigl({}^{W}\mathbf{r}_{O_2 A_{2,R}}
+            \times {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}\bigr)^\top
+    \end{bmatrix}
+  }_{V \;\in\;\mathbb{R}^{1\times 6}}
+  \begin{bmatrix}
+    {}^{W}\mathbf{v}_{O_2} \\[3pt] {}^{W}\boldsymbol{\omega}_2
+  \end{bmatrix}
+  }
+\end{equation}
+
+The first block ${}^{W}\hat{\mathbf{u}}^\top \in \mathbb{R}^{1\times 3}$ captures the
+\emph{translational} contribution; the second block
+$(\mathbf{r}\times\mathbf{u})^\top \in \mathbb{R}^{1\times 3}$ captures the
+\emph{rotational} (moment-arm) contribution.  This is structurally identical to the
+structure matrix row in cable-driven parallel robot formulations.
+
+\paragraph{Fixed-pivot reduction.}
+Since $O_2$ is fixed, ${}^{W}\mathbf{v}_{O_2} = \mathbf{0}$, and \cref{eq:spatial_row}
+reduces to:
+
+\begin{equation}
+  \label{eq:rot_only}
+  \boxed{
+  \dot{l}
+  =
+  \bigl({}^{W}\mathbf{r}_{O_2 A_{2,R}}
+        \times {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}\bigr)^\top
+  {}^{W}\boldsymbol{\omega}_2
+  }
+\end{equation}
+
+\noindent
+This is the rotational-only form: the cable rate equals the moment-arm vector
+(lever arm crossed with cable unit vector) dotted with the angular velocity of the
+driven link.
+
+\subsection{Multi-Cable Structure Matrix}
+\label{sec:structure_matrix}
+
+For a system with $m$ cables, each cable $i$ contributes one row.  Stack all rows
+to obtain the \emph{structure matrix} $V \in \mathbb{R}^{m \times 6}$:
+
+\begin{equation}
+  \label{eq:structure_matrix}
+  \boxed{
+  V
+  =
+  \begin{bmatrix}
+    {}^{W}\hat{\mathbf{u}}_1^\top &
+    \bigl({}^{W}\mathbf{r}_1 \times {}^{W}\hat{\mathbf{u}}_1\bigr)^\top \\[4pt]
+    {}^{W}\hat{\mathbf{u}}_2^\top &
+    \bigl({}^{W}\mathbf{r}_2 \times {}^{W}\hat{\mathbf{u}}_2\bigr)^\top \\[2pt]
+    \vdots & \vdots \\[2pt]
+    {}^{W}\hat{\mathbf{u}}_m^\top &
+    \bigl({}^{W}\mathbf{r}_m \times {}^{W}\hat{\mathbf{u}}_m\bigr)^\top
+  \end{bmatrix},
+  \qquad
+  \dot{\mathbf{l}}
+  = V
+  \begin{bmatrix}
+    {}^{W}\mathbf{v} \\ {}^{W}\boldsymbol{\omega}
+  \end{bmatrix},
+  }
+\end{equation}
+
+\noindent
+where ${}^{W}\hat{\mathbf{u}}_i \triangleq {}^{W}\hat{\mathbf{u}}_{B_{1,L}^{(i)}A_{2,R}^{(i)}}$
+and ${}^{W}\mathbf{r}_i \triangleq {}^{W}\mathbf{r}_{O_2 A_{2,R}^{(i)}}$ for the $i$-th
+cable, and the spatial velocity $[{}^{W}\mathbf{v}^\top,\;{}^{W}\boldsymbol{\omega}^\top]^\top$
+is evaluated at the pivot point $O_2$.
+
+\paragraph{Connection to the hybrid Jacobian.}
+For the single cable driving joint~2 of the planar arm the angular velocity is
+${}^{W}\boldsymbol{\omega}_2 = \dot{q}_2\,\hat{\mathbf{k}}$ with
+$\hat{\mathbf{k}} = [0,0,1]^\top$.
+Substituting into \cref{eq:rot_only}:
+
+\begin{equation}
+  \dot{l}
+  = \bigl({}^{W}\mathbf{r}_{O_2 A_{2,R}}
+          \times {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}\bigr)^\top
+    \hat{\mathbf{k}}\;\dot{q}_2
+  = J_l(q_2)\,\dot{q}_2 ,
+\end{equation}
+
+recovering precisely the scalar Jacobian entry from \cref{eq:ldot_planar}.
+
+\paragraph{Derivation of the belt formula $J_l = r_p$.}
+We now show explicitly that the tangency geometry forces $J_l = r_p$.
+
+\medskip\noindent
+\textit{Setup.}
+Let $\phi$ be the angle that the lever arm makes with the world $x$-axis at an
+arbitrary cable configuration.  With $A_{2,R}$ on the pitch circle of radius $r_p$:
+\begin{equation*}
+  {}^{W}\mathbf{r}_{O_2 A_{2,R}}
+  = r_p
+    \begin{bmatrix} \cos\phi \\ \sin\phi \\ 0 \end{bmatrix}.
+\end{equation*}
+
+\textit{Tangency condition.}
+Because the cable departs the pulley tangentially, the cable direction must be
+perpendicular to the lever arm:
+${}^{W}\hat{\mathbf{u}} \perp {}^{W}\mathbf{r}_{O_2 A_{2,R}}$, i.e.\ the angle
+between them is $90°$.  The unique planar unit tangent is:
+\begin{equation*}
+  {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}
+  = \begin{bmatrix} -\sin\phi \\ \cos\phi \\ 0 \end{bmatrix}
+  \qquad\text{(or its negation, depending on winding direction)}.
+\end{equation*}
+
+\textit{Cross product.}
+\begin{equation}
+  \label{eq:cross_belt}
+  {}^{W}\mathbf{r}_{O_2 A_{2,R}} \times {}^{W}\hat{\mathbf{u}}_{B_{1,L}A_{2,R}}
+  =
+  r_p
+  \begin{bmatrix} \cos\phi \\ \sin\phi \\ 0 \end{bmatrix}
+  \times
+  \begin{bmatrix} -\sin\phi \\ \cos\phi \\ 0 \end{bmatrix}
+  =
+  r_p
+  \begin{bmatrix} 0 \\ 0 \\ \cos^2\!\phi + \sin^2\!\phi \end{bmatrix}
+  =
+  r_p\,\hat{\mathbf{k}}.
+\end{equation}
+
+The $\hat{\mathbf{k}}$ component collapses to $1$ by the Pythagorean identity regardless
+of $\phi$.
+
+\textit{Projecting onto $\hat{\mathbf{k}}$.}
+\begin{equation}
+  \label{eq:belt_derivation}
+  J_l
+  = \bigl({}^{W}\mathbf{r}_{O_2 A_{2,R}} \times {}^{W}\hat{\mathbf{u}}\bigr)^\top\hat{\mathbf{k}}
+  = \bigl(r_p\,\hat{\mathbf{k}}\bigr)^\top\hat{\mathbf{k}}
+  = r_p\,\underbrace{\hat{\mathbf{k}}^\top\hat{\mathbf{k}}}_{=\,1}
+  = r_p .
+\end{equation}
+
+\begin{equation}
+  \label{eq:belt_final}
+  \boxed{J_l = r_p}
+\end{equation}
+
+This is the belt (pitch-circle) formula: the effective moment arm of a cable
+tangent to a pulley of pitch radius $r_p$ equals $r_p$ for every cable angle
+$\phi$, which is exactly the constant mapping encoded in the actuation matrix
+$\bA = \operatorname{diag}(1, r_p)$ from \cref{eq:act_map}.
+
+\medskip\noindent
+\textit{Geometric intuition.}
+The cross-product magnitude $|\mathbf{r}\times\hat{\mathbf{u}}| = |\mathbf{r}||\hat{\mathbf{u}}|\sin\alpha$,
+where $\alpha$ is the angle between the lever arm and cable direction.
+Tangency forces $\alpha = 90°$; hence $\sin\alpha = 1$ and the magnitude locks
+to $|\mathbf{r}| = r_p$ regardless of joint angle $q_2$.  The spatial-velocity
+framework makes this structure manifest: it is built into the cross-product term
+of every row of the structure matrix $V$.
+
+\begin{mdframed}
+\begin{corollary}[Attachment-point invariance]
+\label{cor:attachment_invariance}
+Moving the cable attachment point $A_{2,R}$ to any other location on the
+same pitch circle — i.e.\ changing the angle $\phi$ while keeping
+$|{}^W\mathbf{r}_{O_2 A_{2,R}}| = r_p$ — does \textbf{not} change $J_l$.
+Equivalently, $J_l = r_p$ is independent of
+(i) the joint angle $q_2$, and
+(ii) the circumferential position of $A_{2,R}$ on the pulley.
+\end{corollary}
+\end{mdframed}
+
+\begin{proof}
+By \cref{eq:cross_belt}, the cross product evaluates to
+$r_p(\cos^2\phi + \sin^2\phi)\,\hat{\mathbf{k}} = r_p\,\hat{\mathbf{k}}$.
+The Pythagorean identity eliminates $\phi$ completely, so the projection
+onto $\hat{\mathbf{k}}$ in \cref{eq:belt_derivation} gives $J_l = r_p$
+for all $\phi$.
+\end{proof}
+
+\noindent
+\textbf{Consequence for re-design.}
+The three cases below follow directly from the corollary:
+\begin{itemize}[leftmargin=2em, topsep=2pt, itemsep=2pt]
+  \item \emph{Different $\phi$, same $r_p$}: rotating or repositioning $A_{2,R}$ around the
+        pulley centre leaves $J_l$ unchanged.  Only the cable path geometry
+        (tangent angle, wrap arc) changes.
+  \item \emph{Different $q_2$}: as the link rotates, $A_{2,R}$ moves in world
+        frame but remains on the pitch circle.  $J_l$ stays constant — this
+        is why the actuation matrix $\bA = \operatorname{diag}(1,r_p)$ is
+        pose-independent.
+  \item \emph{Different $r_p$}: swapping to a pulley of radius $r_p'$ scales
+        $J_l \to r_p'$ and proportionally rescales the entire hybrid-Jacobian
+        column $\bJ_h^{(2)} = \bJ^{(2)}/r_p$.
+\end{itemize}
+
+% =============================================================================
+\section{Concrete Velocity Mappings for the CupManipulatorTendon}
+\label{sec:vel_mappings}
+% =============================================================================
+
+This section collects, in one place, all three velocity-level mappings that are
+used in the Python implementation:
+\begin{enumerate}
+  \item $\dot{\bq} \;\to\; \dot{l}$ \quad (cable length rate, single cable to joint 2)
+  \item $\dot{\bq} \;\to\; \dot{\bp}$ \quad (end-effector Cartesian velocity)
+  \item $\dot{l},\;\dot{q}_1 \;\to\; \dot{\bp}$ \quad (actuation-space to EE velocity)
+\end{enumerate}
+
+Numerical values used throughout:
+\[
+  L_1 = 0.34247\;\text{m}, \quad
+  L_2 = 0.19000\;\text{m}, \quad
+  r_p = 0.04775\;\text{m}.
+\]
+
+% ---------------------------------------------------------------------------
+\subsection{Joint-Velocity to Cable-Length Rates}
+\label{sec:qdot2ldot}
+% ---------------------------------------------------------------------------
+
+Joint~2 is driven by \textbf{two cables}, green ($G$) and red ($R$), which wrap
+on the big pulley from \emph{opposite sides} (see \cref{sec:antagonistic}).
+A positive $\dot{q}_2$ simultaneously \emph{pays out} the green cable and
+\emph{takes up} the red cable.  From the belt formula \cref{eq:belt_final}
+applied to each cable:
+
+\begin{equation}
+  \label{eq:ldot_q}
+  \boxed{
+    \dot{l}_G = +r_p\,\dot{q}_2,
+    \qquad
+    \dot{l}_R = -r_p\,\dot{q}_2 .
+  }
+\end{equation}
+
+The two rates are not independent: they satisfy the
+\emph{antagonistic constraint} $\dot{l}_G + \dot{l}_R = 0$ at all times
+(\cref{eq:antag_constraint}).  Therefore only \textbf{one scalar}
+$\dot{l} \triangleq \dot{l}_G = -\dot{l}_R$ is needed to fully describe the
+cable kinematics of joint~2.
+
+\noindent
+\textbf{Dependencies:} $\dot{l}_G$ and $\dot{l}_R$ depend \emph{only} on
+$\dot{q}_2$; they are independent of $q_1$, $q_2$, and $\dot{q}_1$.
+
+In vector form for the full joint-velocity vector
+$\dot{\bq} = [\dot{q}_1,\,\dot{q}_2]^\top$:
+
+\begin{equation}
+  \label{eq:ldot_row}
+  \bl{\dot{l}_G \choose \dot{l}_R}
+  =
+  \underbrace{r_p\begin{bmatrix} 0 & +1 \\ 0 & -1 \end{bmatrix}}_{\bm{J}_l \;\in\;\mathbb{R}^{2\times 2}}
+  \begin{bmatrix} \dot{q}_1 \\ \dot{q}_2 \end{bmatrix}.
+\end{equation}
+
+Because the rows are linearly dependent (rank~1), the equivalent
+\emph{scalar} row Jacobian using only $\dot{l} \triangleq \dot{l}_G$ is:
+\begin{equation}
+  \label{eq:ldot_scalar}
+  \dot{l}_G
+  = \underbrace{\begin{bmatrix} 0 & r_p \end{bmatrix}}_{\bm{J}_{l,G} \;\in\;\mathbb{R}^{1\times 2}}
+  \begin{bmatrix} \dot{q}_1 \\ \dot{q}_2 \end{bmatrix}
+  = 0.04775\;\dot{q}_2 \quad [\text{m/s per rad/s}].
+\end{equation}
+
+\noindent
+The hybrid Jacobian (\cref{sec:actspc2ee}) uses $\dot{l} \equiv \dot{l}_G$ as
+the second actuation-space coordinate; $\dot{l}_R$ is then implicit via
+$\dot{l}_R = -\dot{l}_G$.
+
+% ---------------------------------------------------------------------------
+\subsection{Joint-Velocity to End-Effector Velocity}
+\label{sec:qdot2ee}
+% ---------------------------------------------------------------------------
+
+From the geometric Jacobian \cref{eq:Jgeo}:
+
+\begin{equation}
+  \label{eq:ee_vel}
+  \boxed{
+  \begin{bmatrix} \dot{p}_x \\ \dot{p}_y \end{bmatrix}
+  =
+  \begin{bmatrix}
+    -L_1 s_1 - L_2 s_{12} & -L_2 s_{12} \\[4pt]
+     L_1 c_1 + L_2 c_{12} &  L_2 c_{12}
+  \end{bmatrix}
+  \begin{bmatrix} \dot{q}_1 \\ \dot{q}_2 \end{bmatrix}
+  }
+\end{equation}
+
+\noindent
+Expanding the two rows explicitly:
+
+\begin{align}
+  \dot{p}_x &= -(L_1 s_1 + L_2 s_{12})\,\dot{q}_1 \;-\; L_2 s_{12}\,\dot{q}_2 ,
+  \label{eq:px_dot}\\
+  \dot{p}_y &= \phantom{-}(L_1 c_1 + L_2 c_{12})\,\dot{q}_1 \;+\; L_2 c_{12}\,\dot{q}_2 .
+  \label{eq:py_dot}
+\end{align}
+
+\paragraph{Observation.}
+$\dot{q}_1$ controls both $\dot{p}_x$ and $\dot{p}_y$ via the full arm reach
+$(L_1 + L_2)$, whereas $\dot{q}_2$ controls them only via the distal link $L_2$.
+Near $q_2 = 0$ (arm straight), the second column of $\bJ$ becomes parallel to
+the first, causing $\det\bJ = L_1 L_2 \sin q_2 \to 0$.
+
+% ---------------------------------------------------------------------------
+\subsection{Actuation-Space to EE Velocity (Hybrid Form)}
+\label{sec:actspc2ee}
+% ---------------------------------------------------------------------------
+
+The hybrid Jacobian from \cref{eq:Jh} maps the \emph{actuation-space velocity}
+$\dot{\bu}_v = [\dot{q}_1,\,\dot{l}_G]^\top$ to EE velocity
+(recall $\dot{l}_G = -\dot{l}_R$ so $\dot{l}_R$ adds no new information):
+
+\begin{equation}
+  \label{eq:hybrid_vel_exp}
+  \dot{\bp} = \bJ_h\,\dot{\bu}_v
+  \quad\Longleftrightarrow\quad
+  \begin{bmatrix} \dot{p}_x \\ \dot{p}_y \end{bmatrix}
+  =
+  \underbrace{%
+  \begin{bmatrix}
+    -L_1 s_1 - L_2 s_{12} & -\dfrac{L_2 s_{12}}{r_p} \\[8pt]
+     L_1 c_1 + L_2 c_{12} &  \dfrac{L_2 c_{12}}{r_p}
+  \end{bmatrix}
+  }_{\bJ_h(\bq)}
+  \begin{bmatrix} \dot{q}_1 \\ \dot{l}_G \end{bmatrix}.
+\end{equation}
+
+Numerically, $L_2 / r_p = 0.190 / 0.04775 \approx 3.979$, so the cable column
+amplifies EE velocity by a factor of $\approx 4$ compared to a direct-drive
+joint of the same link length.
+
+% ---------------------------------------------------------------------------
+\subsection{Complete Mapping Summary}
+\label{sec:mapping_summary}
+% ---------------------------------------------------------------------------
+
+\begin{center}
+\renewcommand{\arraystretch}{1.6}
+\begin{tabular}{p{5.1cm}ll}
+  \toprule
+  Mapping & Equation & Notes \\
+  \midrule
+  $\dot{q}_2 \to \dot{l}_G,\,\dot{l}_R$
+    & $\dot{l}_G = +r_p\dot{q}_2,\;\dot{l}_R = -r_p\dot{q}_2$
+    & Antagonistic pair; $\dot{l}_G + \dot{l}_R = 0$ \\
+  $\dot{q}_2 \to \dot{l}_G$ (scalar)
+    & $\dot{l}_G = r_p\,\dot{q}_2$
+    & Used as the independent cable rate \\
+  $\dot{\bq} \to \dot{\bp}$ (joint space)
+    & $\dot{\bp} = \bJ(\bq)\,\dot{\bq}$
+    & Standard geometric Jacobian \cref{eq:Jgeo} \\
+  $\dot{\bq} \to \dot{\bp}$ (actuation space)
+    & $\dot{\bp} = \bJ_h(\bq)\,\dot{\bu}_v$
+    & $\dot{\bu}_v = [\dot{q}_1,\,\dot{l}_G]^\top$; $\dot{l}_R$ implicit \\
+  $\dot{\bp} \to \dot{\bq}$ (velocity IK)
+    & $\dot{\bq} = \bJ^{\dag}\dot{\bp}$
+    & Damped pseudo-inverse, singular near $q_2=0$ \\
+  $\dot{\bp} \to \dot{\bu}_v$ (hybrid vel IK)
+    & $\dot{\bu}_v = \bJ_h^{\dag}\dot{\bp}$
+    & Used in \texttt{compute\_velocity\_ik()} \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Python implementation.}
+In \texttt{robots/cup\_manipulator\_tendon.py}:
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{compute\_ik\_analytical(plant, target\_xy, ...)} solves
+        $\dot{\bq} \to \bp$ by the closed-form 2R formula (preferred).
+  \item \texttt{compute\_velocity\_ik(plant, context, ee\_velocity\_xy, damping)}
+        computes $\dot{\bu}_v = \bJ_h^\dag\,\dot{\bp}$ via the damped pseudo-inverse.
+        $\dot{l}_G$ is then recovered as $\dot{l}_G = (\dot{\bu}_v)_2$,
+        $\dot{q}_2 = \dot{l}_G/r_p$, and
+        $\dot{l}_R = -\dot{l}_G$ (antagonistic constraint).
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\subsection{Antagonistic Cable Pair}
+\label{sec:antagonistic}
+% ---------------------------------------------------------------------------
+
+Joint~2 is driven by \textbf{two cables that act in opposition} --- analogous to
+agonist/antagonist muscle pairs in biology.  Each cable can only \emph{pull}
+(tension $\ge 0$); the antagonistic arrangement allows bidirectional torque on a
+passive revolute joint.
+
+\paragraph{Physical routing (from \texttt{CableRig}).}
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lll}
+  \toprule
+  Cable & Colour & Route through pulleys \\
+  \midrule
+  Agonist   & \textbf{Green} &
+    Start$_R$ $\to$ Drive$_{B_R}$ $\xrightarrow{\text{wrap}}$ IdlerR
+    $\xrightarrow{\text{wrap}}$ BigPulley$_{A_L \to B_L}$ $\to$ EndL \\
+  Antagonist & \textbf{Red} &
+    Start$_L$ $\to$ Drive$_{B_L}$ $\xrightarrow{\text{wrap}}$ IdlerL
+    $\xrightarrow{\text{wrap}}$ BigPulley$_{A_R \to B_R}$ $\to$ EndR \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+The two cables enter the \emph{big pulley} (rigidly attached to link~2,
+body \texttt{link2\_tendon}) from \textbf{opposite sides}: green from the left
+($A_L$) and red from the right ($A_R$).  This means they wrap in opposing angular
+senses, producing opposite torques on joint~2.
+
+\paragraph{Cable-rate kinematics of the antagonistic pair.}
+Let $l_G$ and $l_R$ denote the \emph{free lengths} (drive-to-anchor lengths) of
+the green and red cables respectively.  Since the wrap arcs on the big pulley are
+complementary, a rotation $\dot{q}_2$ simultaneously pays out one cable and takes
+up the other:
+
+\begin{equation}
+  \label{eq:ldot_pair}
+  \dot{l}_G = +r_p\,\dot{q}_2,
+  \qquad
+  \dot{l}_R = -r_p\,\dot{q}_2.
+\end{equation}
+
+Summing the two rates gives the \emph{antagonistic constraint}:
+
+\begin{equation}
+  \label{eq:antag_constraint}
+  \boxed{\dot{l}_G + \dot{l}_R = 0}
+\end{equation}
+
+This is the cable equivalent of muscle incompressibility: whatever length the
+agonist gains, the antagonist gives up.
+
+In matrix form for $\dot{\bl} = [\dot{l}_G,\,\dot{l}_R]^\top$:
+
+\begin{equation}
+  \label{eq:Jl_pair}
+  \dot{\bl}
+  =
+  \underbrace{%
+    r_p
+    \begin{bmatrix} 0 & +1 \\ 0 & -1 \end{bmatrix}
+  }_{\bm{J}_l^{(2)} \;\in\;\mathbb{R}^{2\times 2}}
+  \begin{bmatrix} \dot{q}_1 \\ \dot{q}_2 \end{bmatrix}.
+\end{equation}
+
+\paragraph{Net torque on joint 2.}
+Each cable exerts a tension force on the big pulley with a moment arm of $r_p$.
+Because the cables wrap in opposite senses, green tension $f_G \ge 0$ produces
+positive torque and red tension $f_R \ge 0$ produces negative torque (or vice
+versa, depending on the positive-$q_2$ convention):
+
+\begin{equation}
+  \label{eq:tau2_pair}
+  \boxed{
+    \tau_2 = r_p\,(f_G - f_R),
+    \qquad f_G,\,f_R \ge 0 .
+  }
+\end{equation}
+
+This matches the structure-matrix transposition: the wrench on joint~2 from the
+cable-force vector $\bf_c = [f_G,\,f_R]^\top$ is $\btau = (\bm{J}_l^{(2)})^\top\!\bf_c$,
+giving $\tau_2 = r_p(f_G - f_R)$ and $\tau_1 = 0$ (cables do not act on joint~1).
+
+\paragraph{Drive-motor coupling.}
+The drive pulley (on the base, body \texttt{link1\_base}) rotates by
+$\theta_{\mathrm{drv}}$.  Its two exits feed the green and red cables with
+\emph{equal and opposite} length changes (the drive pulley is also symmetric):
+
+\begin{equation}
+  \label{eq:ldot_drive}
+  \dot{l}_G^{\mathrm{drv}} = -r_{\mathrm{drv}}\,\dot{\theta}_{\mathrm{drv}},
+  \qquad
+  \dot{l}_R^{\mathrm{drv}} = +r_{\mathrm{drv}}\,\dot{\theta}_{\mathrm{drv}},
+\end{equation}
+
+where $r_{\mathrm{drv}} = r_p$ (same HTD 5M tooth pitch).  The net free length
+of each cable is determined by the \emph{difference} of big-pulley and
+drive-pulley contributions.  In the implementation, the drive motor is the
+sole control input $u_2$ for joint~2; the antagonistic constraint ensures that
+setting $\dot{\theta}_{\mathrm{drv}}$ is sufficient to specify both $\dot{l}_G$
+and $\dot{l}_R$ simultaneously.
+
+\paragraph{Admissible-force cone.}
+Since both cable tensions must be non-negative, the net torque is bounded:
+
+\begin{equation}
+  \label{eq:torque_cone}
+  \tau_2 \in [-r_p f_{\max},\; +r_p f_{\max}],
+\end{equation}
+
+but the pair can also generate a \emph{controlled stiffness}: choosing
+$f_G = f_R = f_{\text{co}} > 0$ (co-contraction) produces $\tau_2 = 0$ while
+increasing the effective joint stiffness.  This is the cable analogue of
+muscle co-activation.
+
+% =============================================================================
+\begin{thebibliography}{9}
+\bibitem{pott2018cable}
+  A.~Pott and T.~Bruckmann,
+  \textit{Cable-Driven Parallel Robots: Theory and Application},
+  Springer Tracts in Advanced Robotics, 2018.
+\end{thebibliography}
+
+\end{document}

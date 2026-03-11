@@ -606,4 +606,152 @@ The cart-pendulum loop (top two lines) and the manipulator loop (bottom line)
 run concurrently inside the same Drake \texttt{Diagram} at every integration
 step.
 
+% ============================================================================
+\newpage
+\section{Simulation Results}
+% ============================================================================
+
+Figure~\ref{fig:results} shows the full result dashboard produced by a representative
+run with target $(x^*, y^*) = (-1.0,\; 0.5)\;\mathrm{m}$, duration $10\;\mathrm{s}$,
+and the default parameters from Table~2.
+The dashboard is divided into five rows, each capturing a different aspect of the
+closed-loop behaviour.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{lqr_manip_ee_traj_track_results.png}
+\caption{Full result dashboard for the
+         \texttt{lqr-applied-to-cart-manip-following-cart} mode.
+         Target: $(x^*, y^*) = (-1.0, 0.5)\;\mathrm{m}$,
+         horizon $T = 10\;\mathrm{s}$, duration $10\;\mathrm{s}$.}
+\label{fig:results}
+\end{figure}
+
+\subsection*{Row 1 — Cart Position and 2D Trajectory}
+
+\begin{description}
+  \item[Col 1 — Cart X Position]
+    Compares the actual cart $x(t)$ (blue solid), the ZFT reference $x_{\mathrm{ref}}(t)$
+    (red dashed), the trajectory sent to the manipulator (cyan dash-dot), and the
+    end-effector position $x_{\mathrm{EE}}(t)$ (green dotted).
+    The ZFT reference leads the cart slightly because the reference mass
+    responds to the muscle force before the cart does.
+    The magenta horizontal line is the target $x^*$.
+
+  \item[Col 2 — Cart Y Position]
+    Same legend as Col 1 but for the $y$-axis.
+    Convergence to $y^* = 0.5\;\mathrm{m}$ is visible
+    within the first few seconds.
+
+  \item[Col 3 — 2D Trajectory]
+    XY-plane view of all four trajectories.
+    The black circle marks the initial position; the magenta star is the target.
+    This subplot shows how closely the EE (green dotted) tracks the cart (blue solid)
+    while both converge toward the goal.
+
+  \item[Col 4 — Position Tracking Error]
+    Euclidean distance $\|\bm{p}(t) - \bm{p}_{\mathrm{ref}}(t)\|_2$ between
+    the cart and the ZFT reference.
+    A smaller error means the impedance spring-damper is keeping the cart
+    tightly coupled to the reference mass.
+\end{description}
+
+\subsection*{Row 2 — Cart Velocity}
+
+\begin{description}
+  \item[Col 1 — Cart X Velocity]
+    Actual cart velocity $\dot{x}$ vs.\ ZFT reference velocity $\dot{x}_{\mathrm{ref}}$
+    and the velocity sent to the manipulator IK.
+    Peak velocity occurs during the initial transient as the LQR
+    drives the system toward the goal.
+
+  \item[Col 2 — Cart Y Velocity]
+    Same as Col 1 for the $y$-direction.
+
+  \item[Col 3 — Velocity Magnitude]
+    $|\bm{v}|$ for cart, reference, and manipulator command.
+    The smooth peak-and-decay profile reflects the finite-horizon LQR
+    policy, which front-loads effort and then coasts to rest.
+
+  \item[Col 4 — Velocity Tracking Error]
+    $|\dot{\bm{p}}| - |\dot{\bm{p}}_{\mathrm{ref}}|$.
+    Small magnitude confirms that the impedance coupling keeps
+    the cart velocity well synchronised with the reference.
+\end{description}
+
+\subsection*{Row 3 — Pendulum Angles and Angular Velocities}
+
+\begin{description}
+  \item[Col 1 — Pendulum Pitch $\alpha$]
+    Pitch angle of the pendulum over time.
+    Deviations from zero indicate the pendulum is disturbed by cart acceleration;
+    the LQR's high pendulum weights ($Q_{33} = Q_{44} = 500$) work to
+    suppress these oscillations.
+
+  \item[Col 2 — Pendulum Roll $\beta$]
+    Roll angle.  Because the target has a non-zero $y$-component, the $y$-direction
+    acceleration excites roll momentarily before settling.
+
+  \item[Col 3 — Pitch Angular Velocity $\dot{\alpha}$]
+    Rate of change of pitch.  Rapid changes correspond to moments of high
+    cart acceleration; the system damps these through the CTC and impedance gains.
+
+  \item[Col 4 — Roll Angular Velocity $\dot{\beta}$]
+    Rate of change of roll.  Symmetric behaviour to $\dot{\alpha}$ but
+    driven by $y$-direction dynamics.
+\end{description}
+
+\subsection*{Row 4 — Forces}
+
+\begin{description}
+  \item[Col 1 — X-Direction Forces]
+    Muscle force $F_x$ (solid blue) and impedance force $F_{x,\mathrm{imp}}$
+    (dashed cyan).
+    The muscle force is the neural command after low-pass filtering ($\tau_m = 0.03\;\mathrm{s}$).
+    The impedance force is the spring-damper output that actually actuates the cart;
+    it closely follows the muscle force with a small lag caused by the ZFT ODE.
+
+  \item[Col 2 — Y-Direction Forces]
+    Same as Col 1 for $F_y$ (red solid) and $F_{y,\mathrm{imp}}$ (magenta dashed).
+
+  \item[Col 3 — Force Magnitude]
+    $\|\bm{F}\|$ for both muscle and impedance.
+    The peak at $t \approx 0$ is the initial burst from the LQR; the
+    gradually decreasing envelope reflects the finite-horizon policy
+    reducing effort as the horizon shortens.
+
+  \item[Col 4 — Cart Kinetic Energy]
+    Proxy metric $\frac{1}{2}(\dot{x}^2 + \dot{y}^2)$ (unnormalised by mass).
+    This peaks during the transient and decays to near-zero at the target,
+    confirming the cart comes to rest.
+\end{description}
+
+\subsection*{Row 5 — Manipulator State}
+
+\begin{description}
+  \item[Col 1 — Joint Angles: Actual vs.\ Desired]
+    $q_1$ and $q_2$ (solid) plotted against IK-desired angles
+    $q_{d,1}$ and $q_{d,2}$ (dashed).
+    Close tracking here indicates the CTC is successfully following the IK output;
+    residual error is kept small by the high PD gains
+    ($K_p = 200\;\mathrm{N\cdot m/rad}$).
+
+  \item[Col 2 — Joint Velocities: Actual vs.\ Desired]
+    $\dot{q}_1, \dot{q}_2$ vs.\ IK-desired $\dot{q}_{d,1}, \dot{q}_{d,2}$.
+    Velocity tracking is inherently noisier than position tracking
+    because $\dot{q}_d$ is computed by finite differencing consecutive IK solutions.
+
+  \item[Col 3 — EE Position vs.\ Cart]
+    Manipulator end-effector coordinates $x_{\mathrm{EE}}, y_{\mathrm{EE}}$ (solid)
+    vs.\ actual cart coordinates $x, y$ (dotted).
+    Good overlap throughout the simulation confirms the EE successfully
+    follows the cart, which is the objective of the manipulator control loop.
+
+  \item[Col 4 — EE Velocity vs.\ Cart Velocity]
+    $\dot{x}_{\mathrm{EE}}, \dot{y}_{\mathrm{EE}}$ vs.\ $\dot{x}, \dot{y}$.
+    Velocity tracking is slightly lagged because the IK and CTC introduce
+    a one-step delay; this is visible as a small phase offset during the
+    transient peak.
+\end{description}
+
 \end{document}

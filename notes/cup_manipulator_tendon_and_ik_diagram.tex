@@ -1,0 +1,324 @@
+% =============================================================================
+%  Cup Manipulator Tendon: Architecture, PD Controller & ik-diagram Mode
+%  Files: robots/cup_manipulator_tendon.py
+%         script_cup_manipulator_pendulam_with_spring_damper.py  (ik-diagram)
+% =============================================================================
+
+\documentclass[11pt, a4paper]{article}
+
+\usepackage{amsmath, amssymb, bm}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, fit, shapes.geometric}
+\usepackage[backgroundcolor=blue!5, linecolor=blue!40, linewidth=1pt,
+            innertopmargin=6pt, innerbottommargin=6pt,
+            innerleftmargin=7pt, innerrightmargin=7pt]{mdframed}
+\usepackage[backgroundcolor=orange!7, linecolor=orange!50, linewidth=1pt,
+            innertopmargin=4pt, innerbottommargin=4pt,
+            innerleftmargin=6pt, innerrightmargin=6pt]{mdframed}
+
+\geometry{margin=2.2cm}
+
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue!70!black},
+  commentstyle=\color{gray},
+  stringstyle=\color{orange!80!black},
+  frame=single,
+  breaklines=true,
+  columns=fullflexible,
+  backgroundcolor=\color{gray!8},
+  xleftmargin=6pt, xrightmargin=6pt,
+  aboveskip=4pt, belowskip=4pt,
+}
+
+\newcommand{\rp}{r_p}
+\newcommand{\bq}{\bm{q}}
+
+\title{\textbf{Cup Manipulator Tendon: Architecture, PD Control \& \texttt{ik-diagram} Mode}}
+\date{March 2026}
+\author{Isaac-sim robotics notes}
+
+\begin{document}
+\maketitle
+
+% ---------------------------------------------------------------------------
+\section{File Map}
+% ---------------------------------------------------------------------------
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{File} & \textbf{Role} \\
+\midrule
+\texttt{robots/cup\_manipulator\_tendon.py} & \texttt{CupManipulatorTendon}, \texttt{CupManipulatorIK},
+                                               \texttt{CupManipulatorIKSystem} (PD controller) \\
+\texttt{script\_cup\_manipulator\_pendulam\_with\_spring\_damper.py}
+                                            & \texttt{IKDiagramSimulation} — wires Drake diagram,
+                                              runs sim, plots \\
+\texttt{test\_drive\_pulley.py}             & \texttt{PulleyBase}, \texttt{CableRig} (cable geometry) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ---------------------------------------------------------------------------
+\section{\texttt{CupManipulatorTendon} Class}
+% ---------------------------------------------------------------------------
+
+\texttt{CupManipulatorTendon} inherits from \texttt{RobotBase} and manages
+one \texttt{manipulator\_cable.urdf} model (2 revolute DOF).
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Constant} & \textbf{Value} \\
+\midrule
+\texttt{JT1\_NAME}      & \texttt{"link1\_base"} ($q_1$ — direct drive) \\
+\texttt{JT2\_NAME}      & \texttt{"link2\_link1"} ($q_2$ — cable driven) \\
+\texttt{EE\_OFFSET}     & $[0.19,\ 0,\ 0.0515]$\,m from \texttt{link2\_tendon} \\
+\texttt{PULLEY\_RADIUS} & $r_p = 60\times5\,\text{mm}/(2\pi) \approx 47.75\,\text{mm}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Setup sequence (before finalize):}
+\begin{lstlisting}
+manipulator.load_urdf_to_plant(plant, parser)   # adds model instance
+manipulator.weld_base_to_world(plant)           # fixes base_mate to world frame
+manipulator.add_joint_actuators(plant)          # registers tau_link1_base, tau_link2_link1
+manipulator.add_end_effector_frame(plant)       # adds FixedOffsetFrame "tendon_ee"
+plant.Finalize()
+\end{lstlisting}
+
+\paragraph{Key helper methods:}
+\begin{lstlisting}
+q = manipulator.get_positions_user_order(plant, ctx)       # [q1, q2], rad
+manipulator.set_positions_user_order(plant, ctx, [q1, q2])
+p_ee = manipulator.get_end_effector_position(plant, ctx)   # [x, y, z] world frame
+\end{lstlisting}
+
+% ---------------------------------------------------------------------------
+\section{Inverse Kinematics: \texttt{CupManipulatorIK}}
+% ---------------------------------------------------------------------------
+
+\texttt{manipulator.ik} is a \texttt{CupManipulatorIK} instance.
+
+\subsection{Closed-form 2-R IK}
+
+Given target $(t_x, t_y)$ and link lengths $L_1, L_2$:
+
+\begin{equation}
+  D = \frac{t_x^2 + t_y^2 - L_1^2 - L_2^2}{2 L_1 L_2}, \qquad |D| \le 1
+\end{equation}
+
+\begin{equation}
+  q_2 = \arctan2\!\left(\pm\sqrt{1-D^2},\ D\right)
+\end{equation}
+
+\begin{equation}
+  q_1 = \arctan2(t_y, t_x) - \arctan2(L_2 \sin q_2,\ L_1 + L_2 \cos q_2)
+\end{equation}
+
+The sign $\pm$ selects elbow-up/down; the branch closest to \texttt{q\_seed}
+is kept.
+
+\begin{lstlisting}
+q_sol, ok = manipulator.ik.analytical(plant, target_xy=[0.4, 0.3],
+                                      q_seed=np.zeros(2))
+\end{lstlisting}
+
+\subsection{Geometric Jacobian (Drake + analytical)}
+
+\begin{equation}
+  \mathbf{J} = \frac{\partial \bm{p}_{ee}}{\partial \bq}
+  = \begin{bmatrix}
+    -L_1 s_1 - L_2 s_{12} & -L_2 s_{12} \\
+     L_1 c_1 + L_2 c_{12} &  L_2 c_{12}
+  \end{bmatrix} \in \mathbb{R}^{2 \times 2}
+\end{equation}
+
+where $s_i = \sin q_i$, $c_{12} = \cos(q_1+q_2)$, etc.
+Verified against Drake's \texttt{CalcJacobianTranslationalVelocity} and
+finite-differences via \texttt{manipulator.ik.verify()}.
+
+\subsection{Hybrid Jacobian (cable actuation space)}
+
+Joint-2 actuation is the green-cable displacement $\ell_G = r_p\,q_2$.
+The mapping from actuation rates $\dot{\bm{u}} = [\dot{q}_1,\, \dot{\ell}_G]^\top$
+to EE velocity:
+
+\begin{equation}
+  A = \mathrm{diag}(1,\ r_p), \qquad
+  \mathbf{J}_h = \mathbf{J}\,A^{-1} = \mathbf{J}\,\mathrm{diag}\!\left(1,\tfrac{1}{r_p}\right)
+\end{equation}
+
+\begin{lstlisting}
+J   = manipulator.ik.jacobian(plant, ctx)             # 2x2 geometric
+J_h = manipulator.ik.jacobian_hybrid(plant, ctx)      # 2x2 cable-space
+q_dot = manipulator.ik.velocity(plant, ctx, ee_vel)   # q-space vel IK
+\end{lstlisting}
+
+% ---------------------------------------------------------------------------
+\section{PD Controller: \texttt{CupManipulatorIKSystem}}
+% ---------------------------------------------------------------------------
+
+\texttt{CupManipulatorIKSystem} is a Drake \texttt{LeafSystem}.
+It lives inside the Drake Diagram alongside the \texttt{MultibodyPlant}.
+
+\paragraph{Input ports:} \texttt{desired\_ee\_pos} [2], \texttt{plant\_state} [$n$]
+
+\paragraph{Output ports:} \texttt{actuation} [2], \texttt{joint\_positions} [2],
+\texttt{cable\_lengths} [2], \texttt{cable\_tensions} [2]
+
+\subsection{Joint 1 — Direct Drive}
+
+\begin{equation}
+  \tau_1 = K_{p1}\,(q_{1,\text{des}} - q_1) - K_{d1}\,\dot{q}_1
+  \qquad [\text{Nm}]
+\end{equation}
+
+\begin{lstlisting}
+tau1 = self._Kp1 * (q_des[0] - q[0]) - self._Kd1 * q_dot[0]
+\end{lstlisting}
+
+Default gains: $K_{p1} = 80\,\text{Nm/rad}$, $K_{d1} = 16\,\text{Nm·s/rad}$
+$\Rightarrow \omega_n \approx 34\,\text{rad/s}$, overdamped.
+
+\subsection{Joint 2 — Single Cable with Tension Decomposition}
+
+A single cable wraps around the motor pulley (radius $r_p$).
+Both free ends attach to opposite sides of \texttt{link2}: one retracts,
+one extends.  Cable displacement error and speed:
+
+\begin{equation}
+  \Delta\ell = r_p\,(q_{2,\text{des}} - q_2), \qquad
+  \dot{\ell}  = r_p\,\dot{q}_2
+\end{equation}
+
+Signed net cable force:
+\begin{equation}
+  F_{\text{net}} = K_{p,c}\,\Delta\ell - K_{d,c}\,\dot{\ell}
+  \qquad [\text{N}]
+\end{equation}
+
+Tension decomposition (cables can only pull, $T \ge 0$):
+\begin{equation}
+  T_{\text{green}} = \max(F_{\text{net}},\ 0), \qquad
+  T_{\text{red}}   = \max(-F_{\text{net}},\ 0)
+\end{equation}
+
+Net joint torque via cable Jacobian $J_c = r_p$:
+\begin{equation}
+  \tau_2 = (T_{\text{green}} - T_{\text{red}})\,r_p = F_{\text{net}}\,r_p
+  \qquad [\text{Nm}]
+\end{equation}
+
+\begin{lstlisting}
+delta_l = self._r_p * (q_des[1] - q[1])       # cable displacement error [m]
+l_dot   = self._r_p * q_dot[1]                 # cable speed [m/s]
+F_net   = self._Kp_cable * delta_l - self._Kd_cable * l_dot
+
+T_green = max(F_net,  0.0)   # retracting side
+T_red   = max(-F_net, 0.0)   # extending side
+
+tau2 = (T_green - T_red) * self._r_p          # = F_net * r_p  [Nm]
+tau  = np.clip([tau1, tau2], -tau_max, tau_max)
+\end{lstlisting}
+
+Default cable gains: $K_{p,c} = 260\,\text{N/m}$, $K_{d,c} = 35\,\text{N·s/m}$,
+$\tau_{\max} = 10\,\text{Nm}$.
+Effective joint-space equivalents: $K_{p,j2} = K_{p,c}\,r_p^2$,
+$K_{d,j2} = K_{d,c}\,r_p^2$.
+
+% ---------------------------------------------------------------------------
+\section{\texttt{ik-diagram} Mode (\texttt{IKDiagramSimulation})}
+% ---------------------------------------------------------------------------
+
+\subsection{Drake Diagram Topology}
+
+\begin{center}
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners, minimum width=3.0cm, minimum height=0.8cm,
+              align=center, font=\small},
+  arr/.style={-{Stealth}, thick},
+  node distance=1.2cm and 2.5cm,
+]
+  \node[box, fill=green!15] (traj) {\texttt{LoopingTrajectorySource}\\(EE ref $x_r, y_r$)};
+  \node[box, fill=blue!12, right=of traj] (ik) {\texttt{CupManipulatorIKSystem}\\(IK + PD + cable)};
+  \node[box, fill=orange!15, right=of ik] (plant) {\texttt{MultibodyPlant}\\(cable manipulator)};
+
+  \draw[arr] (traj) -- node[above, font=\scriptsize]{\texttt{desired\_ee\_pos [2]}} (ik);
+  \draw[arr] (ik) -- node[above, font=\scriptsize]{\texttt{actuation [2]}} (plant);
+  \draw[arr] (plant.south) -- ++(0,-0.7) -| node[below, font=\scriptsize, pos=0.3]
+             {\texttt{plant\_state} [$n$]} (ik.south);
+\end{tikzpicture}
+\end{center}
+
+All three blocks are added to Drake's \texttt{DiagramBuilder} and wired
+with \texttt{builder.Connect()}.  The diagram is fixed-timestep
+($\Delta t = 2\,\text{ms}$) with Meshcat streaming.
+
+\subsection{Build Sequence (in code)}
+
+\begin{lstlisting}
+sim = IKDiagramSimulation(CABLE_MANIPULATOR_CONFIG, meshcat)
+sim.build_plant()        # MultibodyPlant: URDF load -> weld -> actuators -> finalize
+sim.build_trajectory(args)   # PiecewisePolynomial circle/rect/line, clamped to workspace
+sim.build_controller()       # CupManipulatorIKSystem added to builder
+sim.connect_and_build()      # Connect(), add LogVectorOutput loggers, builder.Build()
+sim.initialize()             # patch zero-mass bodies, set q=0, verify Jacobian
+sim.run()                    # AdvanceTo() in 0.1 s chunks, loops until Ctrl-C
+sim.plot(args.traj_shape)    # 4-panel time-series + EE XY overlay
+\end{lstlisting}
+
+\subsection{Trajectory Shapes}
+
+The looping EE reference repeats every \texttt{--duration} seconds.
+Waypoints are clamped to the reachable workspace $[|L_1-L_2|,\ L_1+L_2]$.
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\texttt{--traj-shape} & Formula & Key args \\
+\midrule
+\texttt{circle} & $x = c_x + R\cos\theta,\ y = c_y + R\sin\theta$ &
+                  \texttt{--traj-radius}, \texttt{--traj-cx}, \texttt{--traj-cy} \\
+\texttt{rect}   & Perimeter of $[x_{\min},x_{\max}]\times[y_{\min},y_{\max}]$ &
+                  \texttt{--traj-x-range}, \texttt{--traj-y-range} \\
+\texttt{line}   & $x \in [c_x - R,\,c_x + R]$, $y = c_y$ &
+                  same as circle \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Loggers}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Logger key & Signal \\
+\midrule
+\texttt{state}    & Full plant state $[\bq,\ \dot{\bq}]$ \\
+\texttt{q\_des}   & IK solution $[q_{1,\text{des}},\ q_{2,\text{des}}]$ \\
+\texttt{cable}    & Green/red cable displacements $[\Delta\ell_G, \Delta\ell_R]$ [m] \\
+\texttt{tensions} & $[T_{\text{green}}, T_{\text{red}}]$ [N] \\
+\texttt{ref}      & EE reference $(x_r, y_r)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Invocation Example}
+
+\begin{lstlisting}[language=bash]
+python script_cup_manipulator_pendulam_with_spring_damper.py \
+    --mode ik-diagram \
+    --traj-shape circle --traj-radius 0.30 --traj-cx 0.35 --traj-cy 0.0 \
+    --duration 8.0 --traj-n 200
+\end{lstlisting}
+
+\end{document}

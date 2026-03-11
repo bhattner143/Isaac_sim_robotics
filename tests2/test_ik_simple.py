@@ -32,7 +32,7 @@ print(f'FK at seed: ({ee_seed[0]:.3f}, {ee_seed[1]:.3f}, {ee_seed[2]:.3f})')
 # Test IK
 target_x, target_y = 0.0, 1.0
 print(f'\nTarget: ({target_x}, {target_y}, z_unchanged)')
-q_sol, success = manip.solve_initial_pose_via_ik(plant, np.array([target_x, target_y]), q_seed, pos_tol=0.01, verbose=True, target_z=None)
+q_sol, success = manip.compute_ik_analytical(plant, np.array([target_x, target_y]), q_seed, pos_tol=0.01, verbose=True, target_z=None)
 
 if success:
     manip.set_positions_user_order(plant, context, q_sol)

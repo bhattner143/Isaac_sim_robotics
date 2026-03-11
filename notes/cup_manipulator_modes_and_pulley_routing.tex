@@ -1,0 +1,262 @@
+% =============================================================================
+%  Cup Manipulator: Argument Modes, IK/Kinematics, and Pulley Cable Routing
+%  Covers: script_cup_manipulator_pydrake.py  |  test_drive_pulley.py
+% =============================================================================
+
+\documentclass[11pt, a4paper]{article}
+
+\usepackage{amsmath, amssymb, bm}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage[backgroundcolor=blue!5, linecolor=blue!40, linewidth=1pt,
+            innertopmargin=6pt, innerbottommargin=6pt,
+            innerleftmargin=7pt, innerrightmargin=7pt]{mdframed}
+
+\geometry{margin=2.2cm}
+
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue!70!black},
+  commentstyle=\color{gray},
+  stringstyle=\color{orange!80!black},
+  frame=single,
+  breaklines=true,
+  columns=fullflexible,
+  backgroundcolor=\color{gray!8},
+  xleftmargin=6pt, xrightmargin=6pt,
+  aboveskip=4pt, belowskip=4pt,
+}
+
+\newcommand{\bq}{\bm{q}}
+\newcommand{\bp}{\bm{p}}
+
+% =============================================================================
+\title{\textbf{Cup Manipulator: Modes, Kinematics \& Pulley Routing}\\
+       \large \texttt{script\_cup\_manipulator\_pydrake.py} \;|\; \texttt{test\_drive\_pulley.py}}
+\date{March 2026}
+\author{Isaac-sim robotics notes}
+% =============================================================================
+
+\begin{document}
+\maketitle
+
+% ---------------------------------------------------------------------------
+\section{Script Overview: \texttt{script\_cup\_manipulator\_pydrake.py}}
+% ---------------------------------------------------------------------------
+
+The script drives a 2-DOF revolute cup manipulator (joints
+\texttt{link1\_base} $q_1$, \texttt{link2\_link1} $q_2$) with an optional
+3-D pendulum ball attached to link~2.  It is invoked via \verb|--mode|:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Mode} & \textbf{Description} \\
+\midrule
+\texttt{scene-viz}    & Static Meshcat display, no physics \\
+\texttt{simulation}   & Full PhysX dynamics, PD torque control \\
+\texttt{joint-motion} & Sinusoidal joint sweep, excites ball swing \\
+\texttt{run-all-jts}  & Interactive terminal: type angles, robot moves \\
+\texttt{min-jerk-joint} & Smooth point-to-point with minimum-jerk profile \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ---------------------------------------------------------------------------
+\section{Forward Kinematics (2-DOF Planar)}
+% ---------------------------------------------------------------------------
+
+With link lengths $L_1 = 342.47\,\text{mm}$ and $L_2 = 190.00\,\text{mm}$
+(both lying in the horizontal $XY$ plane at $Z = \text{const}$):
+
+\begin{equation}
+  \bp_{ee} =
+  \begin{pmatrix} x_{ee} \\ y_{ee} \end{pmatrix}
+  =
+  \begin{pmatrix}
+    L_1 \cos q_1 + L_2 \cos(q_1 + q_2) \\
+    L_1 \sin q_1 + L_2 \sin(q_1 + q_2)
+  \end{pmatrix}
+  \label{eq:fk}
+\end{equation}
+
+\noindent Drake computes this implicitly; the code reads the EE position via:
+
+\begin{lstlisting}
+cup_body = plant.GetBodyByName("link2", model_instance)
+X_WC = plant.CalcRelativeTransform(context,
+                                    plant.world_frame(),
+                                    cup_body.body_frame())
+p_ee = X_WC.translation()   # [x, y, z] world frame
+\end{lstlisting}
+
+% ---------------------------------------------------------------------------
+\section{Minimum-Jerk Joint-Space Profile (\texttt{min-jerk-joint} mode)}
+% ---------------------------------------------------------------------------
+
+Given a move of duration $T$ and normalised time $s = t/T \in [0,1]$,
+the minimum-jerk velocity profile is:
+
+\begin{equation}
+  h(s) = 10s^3 - 15s^4 + 6s^5
+  \label{eq:minjerk-pos}
+\end{equation}
+
+\begin{equation}
+  \dot{h}(s) = \frac{30s^2 - 60s^3 + 30s^4}{T}, \qquad
+  \ddot{h}(s) = \frac{60s - 180s^2 + 120s^3}{T^2}
+  \label{eq:minjerk-vel}
+\end{equation}
+
+$h(0)=0$, $h(1)=1$; first and second derivatives vanish at both endpoints,
+giving smooth ($C^2$) motion with zero jerk at start and end.
+
+\begin{lstlisting}
+def min_jerk_profile(t: float, T: float):
+    s = np.clip(t / T, 0.0, 1.0)
+    h     = 10*s**3 - 15*s**4 + 6*s**5
+    hdot  = (30*s**2 - 60*s**3 + 30*s**4) / T
+    hddot = (60*s  - 180*s**2 + 120*s**3) / T**2
+    return h, hdot, hddot
+
+# Apply to joint space
+q_cmd = q_start + h * (q_target - q_start)
+\end{lstlisting}
+
+% ---------------------------------------------------------------------------
+\section{Script Overview: \texttt{test\_drive\_pulley.py}}
+% ---------------------------------------------------------------------------
+
+Visualises the tendon/cable routing of the cable-driven manipulator in
+Meshcat.  The cable transmits torque from the drive pulley on body $q_1$
+(\texttt{pulley\_htd\_5m\_60t}) through two idler bearings (623ZZ) to the
+large driven pulley on body $q_2$ (\texttt{link2\_tendon}).
+
+\medskip
+\begin{mdframed}
+\textbf{Cable route (ordered)}:\\
+Start anchor $\xrightarrow{\;}$
+Drive pulley (HTD 5M 60T, $r_p \approx 47.75\,\text{mm}$) $\xrightarrow{\;}$
+Idler-L \;/\; Idler-R (623ZZ) $\xrightarrow{\;}$
+Big driven pulley ($q_2$ body) $\xrightarrow{\;}$
+End anchor
+\end{mdframed}
+
+% ---------------------------------------------------------------------------
+\section{URDF Visual-Origin Transform}
+% ---------------------------------------------------------------------------
+
+Every pulley centroid is computed from its OBJ mesh centre
+$\bm{p}_{\text{local}}$ and the URDF \texttt{<visual><origin>} tag:
+
+\begin{equation}
+  \bm{p}_{\text{body}}
+  = R_z(\psi)\,R_y(\theta)\,R_x(\phi)\;\bm{p}_{\text{local}}
+  \;+\; \bm{r}_{\text{xyz}}
+  \label{eq:vis-origin}
+\end{equation}
+
+where $(\phi,\theta,\psi)$ are roll-pitch-yaw from the URDF \texttt{rpy}
+attribute.
+
+\begin{lstlisting}
+# PulleyBase._compute_centroid()
+roll, pitch, yaw = self.vis_rpy
+Rx = np.array([[1,0,0],[0,np.cos(roll),-np.sin(roll)],
+                        [0,np.sin(roll), np.cos(roll)]])
+Ry = ...   # standard Ry(pitch)
+Rz = ...   # standard Rz(yaw)
+R  = Rz @ Ry @ Rx
+
+centroid_body = R @ centroid_local + np.array(self.vis_xyz)
+\end{lstlisting}
+
+% ---------------------------------------------------------------------------
+\section{External Tangent Between Two Pulleys}
+% ---------------------------------------------------------------------------
+
+To route the cable between two circular pulleys with centres $\bm{c}_1,
+\bm{c}_2$ (world frame) and radii $r_1, r_2$, the external tangent contact
+points $T_1, T_2$ satisfy:
+
+\begin{equation}
+  D = \|\bm{c}_2 - \bm{c}_1\|, \qquad
+  \hat{\bm{d}} = \frac{\bm{c}_2 - \bm{c}_1}{D},\qquad
+  \hat{\bm{n}}_\perp = (-\hat{d}_y,\; \hat{d}_x)
+\end{equation}
+
+\begin{equation}
+  \cos\alpha = \frac{r_1 - r_2}{D},\qquad
+  \sin\alpha = \sqrt{1 - \cos^2\!\alpha}
+\end{equation}
+
+\begin{equation}
+  \bm{n} = \cos\alpha\;\hat{\bm{d}} + \epsilon\,\sin\alpha\;\hat{\bm{n}}_\perp,
+  \quad \epsilon \in \{+1,-1\}
+\end{equation}
+
+\begin{equation}
+  T_1 = \bm{c}_1 + r_1\,\bm{n},\qquad
+  T_2 = \bm{c}_2 + r_2\,\bm{n}
+  \label{eq:tangent}
+\end{equation}
+
+$\epsilon$ selects the upper/lower branch.
+For an \emph{internal} tangent (cable crosses between pulleys) replace
+$\cos\alpha = (r_1+r_2)/D$ and negate $r_2$ in $T_2$.
+
+\begin{lstlisting}
+# PulleyBase.compute_tangent()  (works in XY; Z preserved)
+d     = p2 - p1                          # 2-D displacement
+D     = np.linalg.norm(d)
+d_hat = d / D
+perp  = np.array([-d_hat[1], d_hat[0]])  # CCW normal
+
+cos_a = (r1 - r2) / D                   # external tangent
+sin_a = np.sqrt(max(0.0, 1.0 - cos_a**2))
+n = cos_a * d_hat + branch * sin_a * perp   # branch = +/-1
+
+T1 = np.array([p1[0] + r1*n[0], p1[1] + r1*n[1], c1[2]])
+T2 = np.array([p2[0] + r2*n[0], p2[1] + r2*n[1], c2[2]])
+\end{lstlisting}
+
+After computing tangents in the world frame, Drake FK maps them
+back into the respective body frames for cable drawing:
+
+\begin{lstlisting}
+# _Xw returns (R, t) for a body in the world frame
+R1, t1 = _Xw(cfg1.body_name)
+c1_w   = R1 @ cfg1.centroid + t1        # centroid in world
+
+T1_w, T2_w = PulleyBase.compute_tangent(
+    c1_w, cfg1.radius, c2_w, cfg2.radius, branch)
+
+# Back to body frame (for FK consistency in draw_cables)
+T1_body = R1.T @ (T1_w - t1)
+T2_body = R2.T @ (T2_w - t2)
+\end{lstlisting}
+
+% ---------------------------------------------------------------------------
+\section{Pulley Pitch Radius (HTD 5M 60T)}
+% ---------------------------------------------------------------------------
+
+Both the drive and driven pulleys share the same HTD 5M 60T belt spec:
+
+\begin{equation}
+  r_p = \frac{N \cdot p}{2\pi}
+      = \frac{60 \times 5\,\text{mm}}{2\pi}
+      \approx 47.75\,\text{mm}
+  \label{eq:pitch-radius}
+\end{equation}
+
+\begin{lstlisting}
+belt_teeth   = 60
+belt_pitch_m = 0.005          # 5 mm pitch (HTD-5M)
+pitch_radius = belt_teeth * belt_pitch_m / (2 * np.pi)  # ~0.04775 m
+\end{lstlisting}
+
+\end{document}

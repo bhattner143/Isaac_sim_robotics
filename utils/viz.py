@@ -293,8 +293,12 @@ def plot_frames_top_view(plant, context, manipulator, cart_model, title="Frame O
                  colors=['red', 'blue'], labels=['X_w', 'Y_w'], axis_indices=[0, 1], alpha=0.5)
     ax1.plot(0, 0, 'ko', markersize=8, label='World Origin')
     
-    # Manipulator base frame
-    base_frame = plant.GetFrameByName("base_mount_manipulator", manipulator.model_instance)
+    # Manipulator base frame (try class attribute first, then fallback to "base_mount_manipulator")
+    _base_frame_name = getattr(manipulator, 'BASE_LINK_NAME', 'base_mount_manipulator')
+    try:
+        base_frame = plant.GetFrameByName(_base_frame_name, manipulator.model_instance)
+    except Exception:
+        base_frame = plant.GetFrameByName("base_mount_manipulator", manipulator.model_instance)
     X_WB = plant.CalcRelativeTransform(context, plant.world_frame(), base_frame)
     base_pos = X_WB.translation()
     base_rot = X_WB.rotation().matrix()
@@ -303,7 +307,12 @@ def plot_frames_top_view(plant, context, manipulator, cart_model, title="Frame O
     ax1.plot(base_pos[0], base_pos[1], 'rs', markersize=10, label='Base Frame')
     
     # Link1 frame
-    link1_frame = plant.GetFrameByName("link1", manipulator.model_instance)
+    try:
+        link1_frame = plant.GetFrameByName("link1", manipulator.model_instance)
+    except Exception:
+        # Cable URDF uses pulley_htd_5m_60t as the link1 equivalent body
+        _link1_body_name = getattr(manipulator, 'LINK1_NAME', 'pulley_htd_5m_60t')
+        link1_frame = plant.GetBodyByName(_link1_body_name, manipulator.model_instance).body_frame()
     X_WL1 = plant.CalcRelativeTransform(context, plant.world_frame(), link1_frame)
     link1_pos = X_WL1.translation()
     link1_rot = X_WL1.rotation().matrix()

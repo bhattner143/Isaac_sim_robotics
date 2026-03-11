@@ -4,10 +4,10 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
 # Define project paths
-PLANT_DIR="$SCRIPT_DIR/model_using_onshape_to_robot/ball"
+PLANT_DIR="$SCRIPT_DIR/model_using_onshape_to_robot/manipulator_cable"
 ONSHAPE_DIR="$SCRIPT_DIR/model_using_onshape_to_robot"
 
-# Change to the ball directory
+# Change to the manipulator_cable directory
 cd "$PLANT_DIR"
 
 # Load Onshape API credentials from .env file
@@ -31,12 +31,12 @@ if ! command -v conda &> /dev/null; then
 fi
 
 # Run onshape-to-robot with config.json
-echo "Converting ball from Onshape..."
+echo "Converting manipulator_cable from Onshape..."
 echo "Working directory: $PLANT_DIR"
 conda run -n pydrake onshape-to-robot config.json
 
 echo ""
 echo "✓ Conversion complete!"
 echo "Generated files in: $PLANT_DIR"
-echo "  - ball.urdf"
+echo "  - manipulator_cable.urdf"
 echo "  - assets/ (mesh files)"

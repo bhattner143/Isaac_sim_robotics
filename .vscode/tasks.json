@@ -71,6 +71,26 @@
                 "clear": true
             },
             "problemMatcher": []
+        },
+        {
+            "label": "🔄 Onshape → URDF: manipulator_cable",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "${workspaceFolder}/step1_convert_from_onshape_ball.sh"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
         }
     ]
 }
