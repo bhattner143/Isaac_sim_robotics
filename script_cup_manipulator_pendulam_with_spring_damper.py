@@ -135,6 +135,7 @@ from script_cup_manipulator_pendulam_lqr_min_effort_2d import (
 
 from robots.cup_manipulator import RobotBase, CupManipulator, CartPendulum2DExtended
 from robots.cup_manipulator_tendon import CupManipulatorTendon, CupManipulatorIKSystem, ComputedTorqueController, create_cable_manipulator_config
+from robots.motor import MOTOR_CHOICES
 
 # ── Cable routing ─────────────────────────────────────────────────────────────
 from utils.viz_cables import (
@@ -214,16 +215,33 @@ _mount.add_argument(
     help='Base pitch tilt around Y-axis [deg]  (default: 0 → horizontal SCARA)',
 )
 
-#── Joint damping and stiffness ─────────────────────────────────────────────────────────
+#── Motor model ──────────────────────────────────────────────────────────────
+_mount.add_argument(
+    '--motor', type=str, default=None,
+    choices=MOTOR_CHOICES,
+    metavar='MOTOR_NAME',
+    help=(
+        'Actuator motor model to load (registered via @motor_choice).  '
+        f'Valid choices: {MOTOR_CHOICES}  (default: None → no motor).  '
+        'When set, the motor\'s viscous_damping_joint overrides --joint-damping, '
+        'effort_limit is set to peak_torque_joint, and rotor inertia / gear ratio '
+        'are applied to the joint actuators.'
+    ),
+)
+
+#── Joint damping and stiffness (used only if no motor is specified)─────────────────────────────────────────────────────────
 _mount.add_argument(
     '--joint-damping', type=float, nargs=2, default=[0.05, 0.05],
     metavar=('D1', 'D2'),
-    help='Viscous joint damping [Nm·s/rad] for [link1_base, link2_link1]  (default: 0 0)',
+    help=(
+        'Viscous joint damping [Nm·s/rad] for [link1_base, link2_link1]  (default: 0.05 0.05).  '
+        'IGNORED when --motor is set — damping is then taken from the motor model.'
+    ),
 )
 _mount.add_argument(
-    '--joint-stiffness', type=float, nargs=2, default=[0.5, 0.5],
+    '--joint-stiffness', type=float, nargs=2, default=[2.5, 2.5],
     metavar=('K1', 'K2'),
-    help='Passive joint spring stiffness [Nm/rad] for [link1_base, link2_link1]  (default: 0 0)',
+    help='Passive joint spring stiffness [Nm/rad] for [link1_base, link2_link1]  (default: 2.5 2.5)  (always used; motors have no stiffness param)',
 )
 
 # ── 2. Meshcat camera ────────────────────────────────────────────────────────
@@ -351,7 +369,7 @@ _ct.add_argument(
 
 def _validate_args(a: argparse.Namespace) -> None:
     """Enforce cross-argument dependencies after parsing."""
-    traj_modes = {'ee-trajectory', 'pd-control', 'computed-torque'}
+    traj_modes = {'ee-trajectory', 'ik-diagram', 'computed-torque'}
     if a.mode in traj_modes:
         if a.traj_shape in ('circle', 'line') and a.traj_radius <= 0:
             parser.error(f'--traj-radius must be > 0 for --traj-shape {a.traj_shape}')
@@ -396,6 +414,7 @@ CABLE_MANIPULATOR_CONFIG = create_cable_manipulator_config(
     stiffness=tuple(args.joint_stiffness),
     tilt_roll_deg=args.tilt_roll,
     tilt_pitch_deg=args.tilt_pitch,
+    motor=args.motor,  # None → passive springs/dampers only; set via --motor flag
 )
 # SIMULATION_CONFIG = SimulationConfig.from_args(args, PHYSICS_CONFIG, MUSCLE_CONFIG, IMPEDANCE_CONFIG, ZFT_CONFIG, None)
 

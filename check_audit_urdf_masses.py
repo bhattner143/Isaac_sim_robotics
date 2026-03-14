@@ -31,7 +31,12 @@ for name, body in links:
 
 # ── Link lengths from joint origins ──────────────────────────────────────────
 # Each revolute joint's <origin xyz="..."> gives the translation from the
-# parent link's frame to the child joint frame, which equals the link length.
+# parent link's frame to the child joint frame.
+#
+# For a horizontal SCARA arm the joints rotate about Z, so the kinematically
+# meaningful "arm length" is the XY-plane projection of the joint offset.
+# The Z component is a vertical height difference between joint planes and
+# does NOT contribute to horizontal reach or IK.
 print("=" * 60)
 print("JOINT ORIGINS  (= link lengths along kinematic chain)")
 print("=" * 60)
@@ -39,7 +44,7 @@ print("=" * 60)
 joints = re.findall(
     r'<joint name="([^"]+)" type="([^"]+)">(.*?)</joint>', txt, re.DOTALL
 )
-total_reach = 0.0
+total_reach_xy = 0.0
 for jname, jtype, jbody in joints:
     origin_m = re.search(r'<origin xyz="([^"]+)"', jbody)
     parent_m = re.search(r'<parent link="([^"]+)"', jbody)
@@ -48,8 +53,10 @@ for jname, jtype, jbody in joints:
 
     if not origin_m:
         continue
-    xyz = np.fromstring(origin_m.group(1), sep=' ')
-    length = np.linalg.norm(xyz)
+    xyz    = np.fromstring(origin_m.group(1), sep=' ')
+    len_3d = np.linalg.norm(xyz)
+    len_xy = np.linalg.norm(xyz[:2])   # horizontal arm length (XY projection)
+    len_z  = abs(xyz[2])               # vertical height offset
     parent = parent_m.group(1) if parent_m else '?'
     child  = child_m.group(1)  if child_m  else '?'
     axis   = axis_m.group(1)   if axis_m   else 'N/A'
@@ -57,14 +64,16 @@ for jname, jtype, jbody in joints:
     marker = "  🔵 REVOLUTE" if jtype == 'revolute' else f"  ({jtype})"
     print(f"\nJoint: {jname}{marker}")
     print(f"  {parent}  →  {child}")
-    print(f"  origin xyz = [{origin_m.group(1)}]")
-    print(f"  |length|   = {length*1e3:.2f} mm  ({length:.6f} m)")
-    print(f"  axis       = [{axis}]")
+    print(f"  origin xyz      = [{origin_m.group(1)}]")
+    print(f"  arm length (XY) = {len_xy*1e3:.2f} mm  ← horizontal reach contribution")
+    print(f"  Z height offset = {len_z*1e3:.2f} mm  ← vertical (not reach)")
+    print(f"  3D magnitude    = {len_3d*1e3:.2f} mm  (hypotenuse — not kinematically meaningful)")
+    print(f"  axis            = [{axis}]")
     if jtype == 'revolute':
-        total_reach += length
+        total_reach_xy += len_xy
 
 print()
 print("=" * 60)
-print(f"Sum of revolute joint offsets: {total_reach*1e3:.2f} mm  ({total_reach:.6f} m)")
-print("(max reach ≈ L1 + L2, computed via Drake FK in practice)")
+print(f"Max horizontal reach (sum of XY arm lengths): {total_reach_xy*1e3:.2f} mm  ({total_reach_xy:.6f} m)")
+print("(= L1 + L2 when all joints fully extended in-plane)")
 print("=" * 60)

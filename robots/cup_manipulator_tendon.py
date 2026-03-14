@@ -40,6 +40,7 @@ from pydrake.all import (
 from pydrake.multibody.tree import MultibodyForces
 from robots.cup_manipulator import RobotBase
 from robot_types import ManipulatorConfig, JointConfig, Pose
+from robots.motor import get_motor, MotorModelConfig
 
 from test_drive_pulley import (
     PulleyBase,
@@ -84,6 +85,18 @@ class CupManipulatorTendon(RobotBase):
         self.enable_visualization      = enable_visualization
         self.rig                       = None  # CableRig — set via init_cable_rig()
         self.ik                        = CupManipulatorIK(self)
+        # Instantiate motor model from config name, or None if not specified.
+        # Motor parameters (damping, effort limits, inertia) take priority over
+        # the raw JointConfig values when a motor is configured.
+        _motor_name = getattr(config, 'motor_name', None)
+        self.motor: Optional[MotorModelConfig] = (
+            get_motor(_motor_name) if _motor_name else None
+        )
+        if self.motor is not None:
+            print(colored(f"✓ Motor model loaded: {type(self.motor).__name__}  "
+                          f"τ_peak={self.motor.peak_torque_joint} Nm  "
+                          f"b={self.motor.viscous_damping_joint} Nm·s/rad  "
+                          f"N={self.motor.gear_ratio}", 'magenta'))
 
     # ── URDF loading ────────────────────────────────────────────────────────
 
@@ -143,15 +156,49 @@ class CupManipulatorTendon(RobotBase):
 
     # ── Joint actuators ─────────────────────────────────────────────────────
 
+    def set_joint_properties(self, plant: MultibodyPlant):
+        """Set joint damping. Motor viscous_damping_joint overrides JointConfig.damping."""
+        print(colored(f"\nSetting joint properties for '{self.name}':", 'yellow'))
+        for joint_idx in plant.GetJointIndices(self.model_instance):
+            joint = plant.get_mutable_joint(joint_idx)
+            joint_name = joint.name()
+            if joint.num_velocities() > 0 and joint_name in self.config.joint_configs:
+                if self.motor is not None:
+                    damping = self.motor.viscous_damping_joint
+                    source  = f"motor:{type(self.motor).__name__}"
+                else:
+                    damping = self.config.joint_configs[joint_name].damping
+                    source  = "JointConfig"
+                if hasattr(joint, 'set_default_damping_vector') and damping > 0:
+                    joint.set_default_damping_vector([damping])
+                print(colored(f"  ✓ {joint_name}: damping={damping:.4f} Nm·s/rad  [{source}]", 'cyan'))
+        print(colored(f"✓ Joint properties configured", 'green'))
+
     def add_joint_actuators(self, plant: MultibodyPlant):
         if plant.is_finalized():
             raise RuntimeError("Cannot add actuators after plant is finalized")
         jt1 = self.get_joint_by_name(plant, self.JT1_NAME)
         jt2 = self.get_joint_by_name(plant, self.JT2_NAME)
-        plant.AddJointActuator(self.ACT1_NAME, jt1)
-        plant.AddJointActuator(self.ACT2_NAME, jt2)
+        if self.motor is not None:
+            effort_limit  = self.motor.peak_torque_joint
+            rotor_inertia = self.motor.rotor_inertia_motor
+            gear_ratio    = self.motor.gear_ratio
+        else:
+            effort_limit  = np.inf
+            rotor_inertia = 0.0
+            gear_ratio    = 1.0
+        act1 = plant.AddJointActuator(self.ACT1_NAME, jt1, effort_limit)
+        act2 = plant.AddJointActuator(self.ACT2_NAME, jt2, effort_limit)
+        if self.motor is not None:
+            act1.set_default_rotor_inertia(rotor_inertia)
+            act1.set_default_gear_ratio(gear_ratio)
+            act2.set_default_rotor_inertia(rotor_inertia)
+            act2.set_default_gear_ratio(gear_ratio)
         self.actuator_names = [self.ACT1_NAME, self.ACT2_NAME]
         print(colored(f"✓ Added actuators: {self.ACT1_NAME}, {self.ACT2_NAME}", 'green'))
+        if self.motor is not None:
+            print(colored(f"  τ_limit={effort_limit} Nm  I_rotor={rotor_inertia} kg·m²  "
+                          f"N={gear_ratio}  [motor:{type(self.motor).__name__}]", 'cyan'))
 
     # ── EE kinematics ───────────────────────────────────────────────────────
 
@@ -1226,8 +1273,16 @@ def create_cable_manipulator_config(
     friction:      tuple = (0.0, 0.0),
     tilt_roll_deg:  float = 0.0,
     tilt_pitch_deg: float = 0.0,
+    motor: Optional[str] = None,
 ) -> ManipulatorConfig:
-    """Factory for the cable (tendon) manipulator configuration."""
+    """Factory for the cable (tendon) manipulator configuration.
+
+    Args:
+        motor: Registered motor name, e.g. ``"AK80_8_KV60_Config"``.  When set,
+               ``CupManipulatorTendon`` will read viscous damping, torque limits,
+               and rotor inertia from the motor model instead of *damping*.
+               Pass ``None`` (default) to keep the raw *damping* tuple.
+    """
     urdf_dir    = str(Path(urdf_path).parent)
     joint_names = ["link1_base", "link2_link1"]
     if joint_angles is None:
@@ -1247,14 +1302,7 @@ def create_cable_manipulator_config(
         base_pose=Pose(),
         tilt_roll_deg=tilt_roll_deg,
         tilt_pitch_deg=tilt_pitch_deg,
+        motor_name=motor,
         package_map={"assets": urdf_dir + "/assets/"},
     )
-
-from robots.motor import (
-    MotorModelConfig,
-    motor_choice,
-    get_motor,
-    MOTOR_CHOICES,
-    AK80_8_KV60_Config,
-)
 

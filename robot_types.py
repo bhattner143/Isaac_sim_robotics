@@ -55,6 +55,12 @@ class ManipulatorConfig:
     tilt_roll_deg:  float = 0.0   # rotation around X-axis
     tilt_pitch_deg: float = 0.0   # rotation around Y-axis
 
+    # Motor model name (registered via @motor_choice in robots/motor.py).
+    # When set, CupManipulatorTendon reads viscous damping, effort limits, and
+    # rotor inertia from the motor rather than from joint_configs.
+    # e.g. motor_name="AK80_8_KV60_Config"
+    motor_name: Optional[str] = None
+
     # Package mapping for mesh loading (package_name -> directory_path)
     package_map: Dict[str, str] = field(default_factory=dict)
     
