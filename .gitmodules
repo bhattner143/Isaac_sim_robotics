@@ -1,0 +1,4 @@
+[submodule "drake-ros"]
+	path = drake-ros
+	url = https://github.com/bhattner143/drake-ros.git
+	branch = user/pubsub-test
