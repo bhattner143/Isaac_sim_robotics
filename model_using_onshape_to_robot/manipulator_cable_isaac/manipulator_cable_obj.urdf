@@ -193,20 +193,20 @@
         <mesh filename="package://assets/part_1.obj"/>
       </geometry>
     </collision>
-    <!-- Part 623zz -->
+    <!-- Part part_623zz -->
     <visual>
       <origin xyz="0.232304 0.037208 0.198249" rpy="9.64146e-19 6.17562e-16 -6.93889e-17"/>
       <geometry>
-        <mesh filename="package://assets/623zz.obj"/>
+        <mesh filename="package://assets/part_623zz.obj"/>
       </geometry>
-      <material name="623zz_material">
+      <material name="part_623zz_material">
         <color rgba="0.956863 0.956863 0.956863 1"/>
       </material>
     </visual>
     <collision>
       <origin xyz="0.232304 0.037208 0.198249" rpy="9.64146e-19 6.17562e-16 -6.93889e-17"/>
       <geometry>
-        <mesh filename="package://assets/623zz.obj"/>
+        <mesh filename="package://assets/part_623zz.obj"/>
       </geometry>
     </collision>
     <!-- Part pulley_htd_5m_60t_2 -->
@@ -241,20 +241,20 @@
         <mesh filename="package://assets/link1.obj"/>
       </geometry>
     </collision>
-    <!-- Part 623zz_2 -->
+    <!-- Part part_623zz_2 -->
     <visual>
       <origin xyz="0.232043 -0.0375 0.201849" rpy="9.64146e-19 2.70617e-16 -6.93889e-17"/>
       <geometry>
-        <mesh filename="package://assets/623zz.obj"/>
+        <mesh filename="package://assets/part_623zz.obj"/>
       </geometry>
-      <material name="623zz_2_material">
+      <material name="part_623zz_2_material">
         <color rgba="0.956863 0.956863 0.956863 1"/>
       </material>
     </visual>
     <collision>
       <origin xyz="0.232043 -0.0375 0.201849" rpy="9.64146e-19 2.70617e-16 -6.93889e-17"/>
       <geometry>
-        <mesh filename="package://assets/623zz.obj"/>
+        <mesh filename="package://assets/part_623zz.obj"/>
       </geometry>
     </collision>
     <!-- Part tutup_base_1_dgn_mounting -->
