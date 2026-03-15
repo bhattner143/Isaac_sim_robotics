@@ -53,3 +53,6 @@ Thumbs.db
 *.tmp
 *.bak
 isaac-sim-webRTC/
+
+# NVIDIA Streamer recording files
+*.etli
