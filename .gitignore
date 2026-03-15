@@ -56,3 +56,4 @@ isaac-sim-webRTC/*.AppImage
 
 # NVIDIA Streamer recording files
 *.etli
+meshes/
