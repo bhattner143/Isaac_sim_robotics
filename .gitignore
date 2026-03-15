@@ -52,7 +52,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.bak
-isaac-sim-webRTC/
+isaac-sim-webRTC/*.AppImage
 
 # NVIDIA Streamer recording files
 *.etli
