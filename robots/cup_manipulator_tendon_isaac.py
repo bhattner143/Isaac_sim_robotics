@@ -16,6 +16,7 @@ IMPORTANT: SimulationApp MUST be created before importing this module.
 
 import math
 import os
+import xml.etree.ElementTree as ET
 import numpy as np
 from pathlib import Path
 from typing import Optional, List, Dict
@@ -27,7 +28,7 @@ import omni.kit.commands
 from isaacsim.core.utils.stage import add_reference_to_stage
 from isaacsim.asset.importer.urdf import _urdf
 from isaacsim.core.experimental.prims import Articulation
-from pxr import UsdGeom, UsdPhysics, Gf, Usd
+from pxr import UsdGeom, UsdPhysics, Gf, Usd, Vt
 
 # Re-use the same config types from PyDrake side
 import sys
@@ -143,6 +144,9 @@ class CupManipulatorTendonIsaac:
         if not import_urdf_to_usd(urdf_path, usd_path):
             raise RuntimeError(f"URDF→USD conversion failed for {urdf_path}")
         self._usd_path = usd_path
+        # Bake URDF colors into the USD sublayer files on disk before
+        # add_reference_to_stage reads them into the live stage.
+        self.apply_urdf_colors()
 
     def load_urdf(self, world=None) -> None:
         """Add the pre-converted USD to the stage.
@@ -166,6 +170,96 @@ class CupManipulatorTendonIsaac:
             f"✓ Added robot to scene at {self.prim_path}",
             'green'
         ))
+
+    def apply_urdf_colors(self) -> None:
+        """Write URDF <material><color> values into the USB sublayer files.
+
+        The URDFParseAndImportFile importer creates raw Mesh geometry but
+        drops all material/color definitions. The visual meshes are stored
+        in USD sublayer files (configuration/manipulator_cable_obj_base.usd
+        etc.) — NOT in the live Isaac Sim stage — so we must open those USD
+        files directly with pxr, set primvars:displayColor on each Mesh
+        prim, and save them before the stage loads the reference.
+        """
+        if self._usd_path is None:
+            return
+
+        urdf_path = str(Path(self.config.urdf_path).absolute())
+        try:
+            tree = ET.parse(urdf_path)
+        except Exception as e:
+            print(colored(f"[apply_urdf_colors] Could not parse URDF: {e}", 'yellow'))
+            return
+
+        # Build map: part_name (OBJ filename stem) → RGB
+        # Duplicate part names in URDF (used on multiple links) are fine —
+        # last occurrence wins, but colors are identical for same-named parts.
+        color_map: Dict[str, Gf.Vec3f] = {}
+        for visual in tree.iter('visual'):
+            mesh_elem = visual.find('geometry/mesh')
+            color_elem = visual.find('material/color')
+            if mesh_elem is None or color_elem is None:
+                continue
+            filename = mesh_elem.get('filename', '')
+            part_name = Path(filename).stem          # e.g. "base", "tutup_base_1"
+            rgba_str = color_elem.get('rgba', '')
+            try:
+                r, g, b, _ = [float(v) for v in rgba_str.split()]
+                color_map[part_name] = Gf.Vec3f(r, g, b)
+            except ValueError:
+                continue
+
+        if not color_map:
+            print(colored("[apply_urdf_colors] No colors found in URDF", 'yellow'))
+            return
+
+        # Find all USD sublayer files: the main USD + everything in configuration/.
+        usd_dir = Path(self._usd_path).parent
+        sublayer_files: list[Path] = list(usd_dir.glob("*.usd"))
+        config_dir = usd_dir / "configuration"
+        if config_dir.is_dir():
+            sublayer_files += list(config_dir.glob("*.usd"))
+
+        total_applied = 0
+        for usd_file in sublayer_files:
+            sub_stage = Usd.Stage.Open(str(usd_file))
+            if sub_stage is None:
+                continue
+            applied = 0
+            for prim in sub_stage.Traverse():
+                if prim.GetTypeName() != 'Mesh':
+                    continue
+                # Path: /visuals/base_mate/tutup_base_1/World/mesh
+                # part name is the 3rd-from-end component (index -3 relative to /mesh)
+                path_parts = prim.GetPath().pathString.split('/')
+                matched_color = None
+                for component in reversed(path_parts):
+                    if not component:
+                        continue
+                    if component in color_map:
+                        matched_color = color_map[component]
+                        break
+                    # The URDF importer prefixes invalid prim names with "part_"
+                    # (e.g. "623zz" → "part_623zz"), so strip it and try again.
+                    if component.startswith('part_') and component[5:] in color_map:
+                        matched_color = color_map[component[5:]]
+                        break
+                    # Isaac Sim appends _0, _1 etc. for duplicate prims; try base name
+                    if '_' in component:
+                        prefix, suffix = component.rsplit('_', 1)
+                        if suffix.isdigit() and prefix in color_map:
+                            matched_color = color_map[prefix]
+                            break
+                if matched_color is None:
+                    continue
+                gprim = UsdGeom.Gprim(prim)
+                gprim.GetDisplayColorAttr().Set(Vt.Vec3fArray([matched_color]))
+                applied += 1
+            if applied > 0:
+                sub_stage.Save()
+                total_applied += applied
+
+        print(colored(f"✓ Applied URDF colors to {total_applied} mesh prims across {len(sublayer_files)} USD files", 'green'))
 
     # ── Weld base ───────────────────────────────────────────────────────────
 

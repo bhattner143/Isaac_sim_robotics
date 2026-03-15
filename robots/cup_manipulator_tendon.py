@@ -42,7 +42,7 @@ from robots.cup_manipulator import RobotBase
 from robot_types import ManipulatorConfig, JointConfig, Pose
 from robots.motor import get_motor, MotorModelConfig
 
-from test_drive_pulley import (
+from cable import (
     PulleyBase,
     BigPulley,
     CableRig,

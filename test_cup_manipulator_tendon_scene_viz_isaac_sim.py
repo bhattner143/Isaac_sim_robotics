@@ -44,7 +44,7 @@ Usage:
 import sys
 
 _RENDER_CHOICES = ("native", "websocket", "headless")
-_render_mode = "websocket"  # default
+_render_mode = "native"  # default
 for _i, _arg in enumerate(sys.argv):
     if _arg == "--render" and _i + 1 < len(sys.argv):
         _render_mode = sys.argv[_i + 1]
@@ -52,6 +52,16 @@ for _i, _arg in enumerate(sys.argv):
             print(f"[ERROR] --render must be one of {_RENDER_CHOICES}, got '{_render_mode}'")
             sys.exit(1)
         break
+
+# ============================================================================
+# SUPPRESS ISAAC SIM STARTUP WARNINGS
+# ============================================================================
+# CARB_LOG_LEVEL=error silences carb-level warnings (crashdumps, PCIe,
+# deprecated omni.isaac.* namespaces).  Set to "warn" to re-enable.
+import os
+os.environ.setdefault("CARB_LOG_LEVEL", "error")
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # ============================================================================
 # MUST BE FIRST — Isaac Sim requirement
@@ -62,7 +72,7 @@ simulation_app = SimulationApp({
     "headless": _render_mode != "native",   # native → local window
     "width":    1280,
     "height":   720,
-    "hide_ui":  False,
+    "hide_ui":  True,  # stream viewport only (set False to stream full editor UI)
 })
 
 # Enable WebRTC streaming extension when mode is 'websocket'
@@ -86,6 +96,7 @@ if _render_mode == "websocket":
 # IMPORTS (after SimulationApp)
 # ============================================================================
 import argparse
+import queue
 import threading
 import numpy as np
 from pathlib import Path
@@ -104,6 +115,9 @@ from robots.cup_manipulator_tendon_isaac import (
     CupManipulatorTendonIsaac,
     create_cable_manipulator_config,
 )
+
+# ── Cable FK (headless Drake plant for cable tangent computation) ─────────────
+from cable import DrakeCablePlant
 
 
 # ============================================================================
@@ -191,18 +205,103 @@ def update_ee_marker(stage, position: np.ndarray):
 
 
 # ============================================================================
+# USD CABLE RENDERING
+# ============================================================================
+
+_CABLE_ROOT = "/World/Cables"
+_CABLE_RADIUS = 0.0005  # 0.5 mm
+
+
+def _usd_cylinder(stage, path: str, p0: np.ndarray, p1: np.ndarray, color_rgb):
+    """Create or update a thin cylinder prim between two world-frame points."""
+    diff = p1 - p0
+    length = float(np.linalg.norm(diff))
+    if length < 1e-9:
+        return
+    mid = (p0 + p1) * 0.5
+
+    # Orientation: cylinder default axis is Z; rotate to align with diff
+    z_hat = diff / length
+    tmp = np.array([0., 1., 0.]) if abs(z_hat[0]) > 0.9 else np.array([1., 0., 0.])
+    x_hat = np.cross(tmp, z_hat)
+    x_hat /= np.linalg.norm(x_hat)
+    y_hat = np.cross(z_hat, x_hat)
+    # 4×4 row-major for USD (rows = basis vectors + translation)
+    mat = Gf.Matrix4d(
+        float(x_hat[0]), float(x_hat[1]), float(x_hat[2]), 0.0,
+        float(y_hat[0]), float(y_hat[1]), float(y_hat[2]), 0.0,
+        float(z_hat[0]), float(z_hat[1]), float(z_hat[2]), 0.0,
+        float(mid[0]),   float(mid[1]),   float(mid[2]),   1.0,
+    )
+
+    prim = stage.GetPrimAtPath(path)
+    if prim.IsValid():
+        # Update existing
+        cyl = UsdGeom.Cylinder(prim)
+        cyl.GetHeightAttr().Set(length)
+        xf = UsdGeom.Xformable(prim)
+        xf.ClearXformOpOrder()
+        xf.AddTransformOp().Set(mat)
+    else:
+        # Create new
+        cyl = UsdGeom.Cylinder.Define(stage, path)
+        cyl.GetRadiusAttr().Set(_CABLE_RADIUS)
+        cyl.GetHeightAttr().Set(length)
+        cyl.GetDisplayColorAttr().Set([Gf.Vec3f(*[float(c) for c in color_rgb])])
+        xf = UsdGeom.Xformable(cyl.GetPrim())
+        xf.ClearXformOpOrder()
+        xf.AddTransformOp().Set(mat)
+
+
+def draw_cables_usd(stage, drake_cable: DrakeCablePlant):
+    """Draw all cable segments and wrap arcs as USD Cylinder prims."""
+    # Straight segments between waypoints
+    for route, pts in drake_cable.get_cable_world_points():
+        skip = getattr(route, "skip_chord_segments", frozenset())
+        color = _route_color(route)
+        base = f"{_CABLE_ROOT}/{route.meshcat_path.replace('/', '_').strip('_')}"
+        for i, (p0, p1) in enumerate(zip(pts[:-1], pts[1:])):
+            if i in skip:
+                continue
+            _usd_cylinder(stage, f"{base}/seg{i:02d}", p0, p1, color)
+
+    # Wrap arcs
+    for label, color, arc_pts in drake_cable.get_wrap_arcs():
+        base = f"{_CABLE_ROOT}/wrap_{label}"
+        for i, (p0, p1) in enumerate(zip(arc_pts[:-1], arc_pts[1:])):
+            _usd_cylinder(stage, f"{base}/arc{i:02d}", p0, p1, color)
+
+    print(colored("✓ Cables drawn", 'green'))
+
+
+def _route_color(route):
+    """Extract RGB tuple from a CableRoute's mpl_color string."""
+    if "green" in route.mpl_color.lower():
+        return (0.1, 0.85, 0.1)
+    return (0.9, 0.1, 0.1)
+
+
+def update_cables_usd(stage, drake_cable: DrakeCablePlant):
+    """Update existing cable USD prims after joint angles changed."""
+    # Remove old cable prim tree and redraw
+    cable_prim = stage.GetPrimAtPath(_CABLE_ROOT)
+    if cable_prim.IsValid():
+        stage.RemovePrim(_CABLE_ROOT)
+    draw_cables_usd(stage, drake_cable)
+
+
+# ============================================================================
 # INTERACTIVE COMMAND LOOP
 # ============================================================================
 
-def interactive_loop(manipulator: CupManipulatorTendonIsaac, world: World, stage):
-    """CLI command loop — runs in a background thread.
+# Thread-safe command queue — the CLI thread reads input and enqueues
+# commands; the main render loop dequeues and executes them so that ALL
+# Isaac Sim / USD / PhysX calls happen on a single thread.
+_cmd_queue: queue.Queue = queue.Queue()
 
-    Commands:
-      e <x> <y>     — IK: move EE to world XY
-      j <q1> <q2>   — set joints [degrees]
-      p             — print current state
-      q             — quit
-    """
+
+def _input_reader_thread():
+    """Background thread: reads stdin and puts raw lines on _cmd_queue."""
     print("\n" + "=" * 60)
     print("  Interactive Scene-Viz Commands:")
     print("    e <x> <y>     — move EE (IK)")
@@ -213,20 +312,36 @@ def interactive_loop(manipulator: CupManipulatorTendonIsaac, world: World, stage
 
     while simulation_app.is_running():
         try:
-            user_input = input(">> ").strip()
+            line = input(">> ").strip()
         except (EOFError, KeyboardInterrupt):
+            _cmd_queue.put("q")
             break
+        if line:
+            _cmd_queue.put(line)
 
-        if not user_input:
-            continue
+
+def process_pending_commands(
+    manipulator: CupManipulatorTendonIsaac,
+    world: World,
+    stage,
+    drake_cable: DrakeCablePlant = None,
+):
+    """Drain the command queue (called from the main render loop).
+
+    Returns False when the user requests quit, True otherwise.
+    """
+    while not _cmd_queue.empty():
+        try:
+            user_input = _cmd_queue.get_nowait()
+        except queue.Empty:
+            break
 
         parts = user_input.split()
         cmd = parts[0].lower()
 
         if cmd == 'q':
             print("[Isaac Sim] Quitting...")
-            simulation_app.close()
-            break
+            return False
 
         elif cmd == 'p':
             q = manipulator.get_positions_user_order()
@@ -252,6 +367,9 @@ def interactive_loop(manipulator: CupManipulatorTendonIsaac, world: World, stage
                     simulation_app.update()
                     ee = manipulator.get_end_effector_position()
                     update_ee_marker(stage, ee)
+                    if drake_cable:
+                        drake_cable.update(q_sol[0], q_sol[1])
+                        update_cables_usd(stage, drake_cable)
                     print(colored(
                         f"  ✓ IK → q1={np.rad2deg(q_sol[0]):+.2f}°  "
                         f"q2={np.rad2deg(q_sol[1]):+.2f}°  "
@@ -268,14 +386,18 @@ def interactive_loop(manipulator: CupManipulatorTendonIsaac, world: World, stage
         elif cmd == 'j' and len(parts) >= 3:
             try:
                 q1_deg, q2_deg = float(parts[1]), float(parts[2])
+                q1_rad, q2_rad = np.deg2rad(q1_deg), np.deg2rad(q2_deg)
                 manipulator.set_positions_user_order(
-                    {manipulator.JT1_NAME: np.deg2rad(q1_deg),
-                     manipulator.JT2_NAME: np.deg2rad(q2_deg)}
+                    {manipulator.JT1_NAME: q1_rad,
+                     manipulator.JT2_NAME: q2_rad}
                 )
                 world.step(render=True)
                 simulation_app.update()
                 ee = manipulator.get_end_effector_position()
                 update_ee_marker(stage, ee)
+                if drake_cable:
+                    drake_cable.update(q1_rad, q2_rad)
+                    update_cables_usd(stage, drake_cable)
                 print(colored(
                     f"  ✓ Set q1={q1_deg:+.2f}°  q2={q2_deg:+.2f}°  "
                     f"EE=({ee[0]:.4f}, {ee[1]:.4f})",
@@ -286,6 +408,8 @@ def interactive_loop(manipulator: CupManipulatorTendonIsaac, world: World, stage
 
         else:
             print("  Unknown command. Try: e, j, p, q")
+
+    return True
 
 
 # ============================================================================
@@ -360,8 +484,13 @@ def main():
     # ── EE marker ────────────────────────────────────────────────────────────
     add_ee_marker(stage, manipulator)
 
-    # ── Print initial state ──────────────────────────────────────────────────
+    # ── Drake cable rig (headless FK for cable tangent computation) ───────────
+    drake_urdf = "model_using_onshape_to_robot/manipulator_cable/manipulator_cable_obj.urdf"
     q = manipulator.get_positions_user_order()
+    drake_cable = DrakeCablePlant(drake_urdf, q1=float(q[0]), q2=float(q[1]))
+    draw_cables_usd(stage, drake_cable)
+
+    # ── Print initial state ──────────────────────────────────────────────────
     ee = manipulator.get_end_effector_position()
     print(colored(
         f"\n✓ Scene ready:\n"
@@ -370,18 +499,19 @@ def main():
         'green', attrs=['bold']
     ))
 
-    # ── Interactive CLI in background thread ─────────────────────────────────
+    # ── Input reader in background thread (only reads stdin) ───────────────
     cli_thread = threading.Thread(
-        target=interactive_loop,
-        args=(manipulator, world, stage),
+        target=_input_reader_thread,
         daemon=True,
     )
     cli_thread.start()
 
-    # ── Render loop (main thread, with simulation_app.update) ────────────────
+    # ── Render loop (main thread — all stage/physics ops happen here) ────────
     print("\nPress Ctrl+C or type 'q' to exit...")
     try:
         while simulation_app.is_running():
+            if not process_pending_commands(manipulator, world, stage, drake_cable):
+                break
             world.step(render=True)
             simulation_app.update()
     except KeyboardInterrupt:
