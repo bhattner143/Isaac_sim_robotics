@@ -77,19 +77,32 @@ simulation_app = SimulationApp({
 
 # Enable WebRTC streaming extension when mode is 'websocket'
 if _render_mode == "websocket":
+    import subprocess
     from isaacsim.core.utils.extensions import enable_extension
-    # omni.kit.livestream.webrtc: local WebRTC streaming, port 49100
-    # View with NVIDIA Omniverse Streaming Client: connect to localhost:49100
+
+    # Detect Tailscale IP so remote clients (Mac) can connect
+    _tailscale_ip = ""
+    try:
+        _tailscale_ip = subprocess.check_output(
+            ["tailscale", "ip", "-4"], text=True, timeout=3
+        ).strip()
+    except Exception:
+        pass
+
     simulation_app.set_setting("/app/window/drawMouse", True)
     simulation_app.set_setting("/app/livestream/port", 49100)
     simulation_app.set_setting("/app/livestream/proto", "websocket")
+    if _tailscale_ip:
+        simulation_app.set_setting("/app/livestream/publicEndpointAddress", _tailscale_ip)
     enable_extension("omni.kit.livestream.webrtc")
+
+    _connect_ip = _tailscale_ip if _tailscale_ip else "localhost"
     print("\n" + "=" * 60)
     print("  WebRTC streaming enabled (omni.kit.livestream.webrtc)")
-    print("  Port: 49100")
-    print("  Open the NVIDIA Omniverse Streaming Client app and")
-    print("  connect to: localhost:49100")
-    print("  https://docs.omniverse.nvidia.com/streaming-client")
+    print(f"  Port          : 49100")
+    if _tailscale_ip:
+        print(f"  Tailscale IP  : {_tailscale_ip}")
+    print(f"  Mac client    : connect to  {_connect_ip} : 49100")
     print("=" * 60 + "\n")
 
 # ============================================================================
