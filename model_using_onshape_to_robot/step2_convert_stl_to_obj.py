@@ -16,8 +16,9 @@ import trimesh
 
 def convert_stl_to_obj(model_name):
     """Convert STL files to OBJ for a specific model."""
-    
-    assets_dir = Path(f"model_using_onshape_to_robot/{model_name}/assets")
+
+    script_dir = Path(__file__).parent
+    assets_dir = script_dir / model_name / "assets"
     
     if not assets_dir.exists():
         print(f"Error: Assets directory not found: {assets_dir}")

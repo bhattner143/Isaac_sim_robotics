@@ -3,14 +3,21 @@
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-# Define project paths
-PLANT_DIR="$SCRIPT_DIR/model_using_onshape_to_robot/manipulator_cable"
-ONSHAPE_DIR="$SCRIPT_DIR/model_using_onshape_to_robot"
+# Require folder name argument
+if [ -z "$1" ]; then
+    echo "Usage: $0 <model_folder>"
+    echo "  e.g. $0 manipulator_cable"
+    exit 1
+fi
 
-# Change to the manipulator_cable directory
+# Define project paths
+PLANT_DIR="$SCRIPT_DIR/$1"
+ONSHAPE_DIR="$SCRIPT_DIR"
+
+# Change to the model directory
 cd "$PLANT_DIR"
 
-# Load Onshape API credentials from .env file
+# Load Onshape API credentials from .env file (located in model_using_onshape_to_robot/)
 source "$ONSHAPE_DIR/.env"
 
 # Export environment variables for onshape-to-robot
@@ -31,12 +38,12 @@ if ! command -v conda &> /dev/null; then
 fi
 
 # Run onshape-to-robot with config.json
-echo "Converting manipulator_cable from Onshape..."
+echo "Converting $1 from Onshape..."
 echo "Working directory: $PLANT_DIR"
 conda run -n pydrake onshape-to-robot config.json
 
 echo ""
 echo "✓ Conversion complete!"
 echo "Generated files in: $PLANT_DIR"
-echo "  - manipulator_cable.urdf"
+echo "  - $1.urdf"
 echo "  - assets/ (mesh files)"
