@@ -77,10 +77,11 @@
             "type": "shell",
             "command": "bash",
             "args": [
-                "${workspaceFolder}/step1_convert_from_onshape_ball.sh"
+                "${workspaceFolder}/model_using_onshape_to_robot/step1_convert_from_onshape.sh",
+                "manipulator_cable"
             ],
             "options": {
-                "cwd": "${workspaceFolder}"
+                "cwd": "${workspaceFolder}/model_using_onshape_to_robot"
             },
             "group": "build",
             "presentation": {
