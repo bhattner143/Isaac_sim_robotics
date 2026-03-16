@@ -39,9 +39,9 @@ from pydrake.multibody.tree import MultibodyForces
 
 # Import manipulator
 import sys
-sys.path.append(str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from script_cup_manipulator_controller_ofc import CupManipulator
-from robot_types import create_cup_manipulator_config
+from configs.robot.robot_types import create_cup_manipulator_config
 
 
 def smooth_trajectory(t, t_start, t_end, val_start, val_end):

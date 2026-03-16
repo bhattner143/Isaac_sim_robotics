@@ -23,7 +23,11 @@ from pydrake.all import (
 from termcolor import colored
 
 # Import from main script
-from robot_types import create_cart_pendulum_config
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from configs.robot.robot_types import create_cart_pendulum_config
 from test_cartpendulum3d_linearization import CartPendulum3D
 
 

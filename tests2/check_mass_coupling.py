@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pydrake.all import (
     MultibodyPlant,
@@ -20,7 +20,7 @@ from pydrake.all import (
     UnitInertia,
 )
 
-from robot_types import create_cup_manipulator_config, create_pendulum_config
+from configs.robot.robot_types import create_cup_manipulator_config, create_pendulum_config
 from archive.script_cup_manipulator_controller_drake import Pendulum3D, CupManipulator
 
 # Constants from main script

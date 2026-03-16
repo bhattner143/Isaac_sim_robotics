@@ -76,7 +76,7 @@ from pydrake.multibody.tree import MultibodyForces
 # Import from existing script
 import sys
 sys.path.append(str(Path(__file__).parent))
-from robot_types import (
+from configs.robot.robot_types import (
     create_cart_pendulum_config, 
     CartPendulumConfig, 
     create_cup_manipulator_config,

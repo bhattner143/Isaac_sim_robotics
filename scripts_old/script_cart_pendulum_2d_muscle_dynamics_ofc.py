@@ -64,7 +64,7 @@ from pydrake.all import (
 
 # Import from existing script
 sys.path.append(str(Path(__file__).parent))
-from robot_types import create_cart_pendulum_config, CartPendulumConfig, create_cup_manipulator_config
+from configs.robot.robot_types import create_cart_pendulum_config, CartPendulumConfig, create_cup_manipulator_config
 
 from scipy.linalg import solve_discrete_are
 

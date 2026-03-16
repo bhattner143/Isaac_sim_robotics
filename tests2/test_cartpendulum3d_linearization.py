@@ -51,7 +51,9 @@ from pydrake.all import (
 )
 
 # Import configuration and classes from main script
-from robot_types import create_cart_pendulum_config, CartPendulumConfig
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from configs.robot.robot_types import create_cart_pendulum_config, CartPendulumConfig
 
 
 # Cart-Pendulum configuration (for testing/validation purposes)

@@ -29,9 +29,9 @@ from pydrake.all import (
 )
 
 import sys
-sys.path.append(str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from script_cup_manipulator_controller_ofc import CupManipulator
-from robot_types import create_cup_manipulator_config
+from configs.robot.robot_types import create_cup_manipulator_config
 
 
 def run_passive_test(damping_value, duration=5.0, dt=0.001):

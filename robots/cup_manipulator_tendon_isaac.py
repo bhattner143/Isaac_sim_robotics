@@ -33,7 +33,7 @@ from pxr import UsdGeom, UsdPhysics, Gf, Usd, Vt
 # Re-use the same config types from PyDrake side
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from robot_types import ManipulatorConfig, JointConfig, Pose
+from configs.robot.robot_types import ManipulatorConfig, JointConfig, Pose
 
 
 # ============================================================================

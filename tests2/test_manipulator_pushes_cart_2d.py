@@ -79,7 +79,7 @@ _ARGS = _parser.parse_args()
 _original_argv = sys.argv.copy()
 sys.argv = [sys.argv[0]]  # Keep only script name
 
-sys.path.append(str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pydrake.all import (
     DiagramBuilder,
@@ -101,7 +101,7 @@ from pydrake.all import (
 )
 from pydrake.multibody.tree import JacobianWrtVariable
 
-from robot_types import create_cup_manipulator_config, create_cart_pendulum_config
+from configs.robot.robot_types import create_cup_manipulator_config, create_cart_pendulum_config
 from script_cup_manipulator_controller_ofc import (
     CupManipulator,
     CartPendulum3D,

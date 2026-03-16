@@ -19,7 +19,7 @@ from pydrake.all import (
 from pydrake.multibody.tree import FixedOffsetFrame
 from pydrake.math import RigidTransform, RollPitchYaw
 
-from robot_types import ManipulatorConfig
+from configs.robot.robot_types import ManipulatorConfig
 from configs.robot.robot_configs import CartPendulumPhysicsConfig
 
 # ============================================================================

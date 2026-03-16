@@ -7,7 +7,7 @@ import numpy as np
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pydrake.all import (
     MultibodyPlant,
@@ -15,7 +15,7 @@ from pydrake.all import (
     Linearize,
 )
 
-from robot_types import create_cup_manipulator_config, create_pendulum_config
+from configs.robot.robot_types import create_cup_manipulator_config, create_pendulum_config
 from archive.script_cup_manipulator_controller_drake import Pendulum3D, CupManipulator
 
 print("="*80)

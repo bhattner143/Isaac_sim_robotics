@@ -172,7 +172,11 @@ from pydrake.systems.primitives import Demultiplexer
 from termcolor import colored
 
 # Import from main script
-from robot_types import create_cup_manipulator_config, create_cart_pendulum_config
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from configs.robot.robot_types import create_cup_manipulator_config, create_cart_pendulum_config
 from script_cup_manipulator_controller_ofc import CupManipulator, CartPendulum3D
 
 

@@ -83,7 +83,7 @@ from pydrake.all import (
 import sys
 sys.path.append(str(Path(__file__).parent))
 
-from robot_types import (
+from configs.robot.robot_types import (
     create_cup_manipulator_config,
     create_cart_pendulum_config,
     ManipulatorConfig,

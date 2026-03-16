@@ -25,7 +25,11 @@ from pydrake.all import (
 )
 from pydrake.geometry import GeometryInstance, MakePhongIllustrationProperties
 
-from robot_types import create_cup_manipulator_config
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from configs.robot.robot_types import create_cup_manipulator_config
 from script_cup_manipulator_controller_ofc import CupManipulator
 
 

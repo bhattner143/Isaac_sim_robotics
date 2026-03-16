@@ -174,7 +174,7 @@ from pydrake.all import (
 )
 
 # Custom robot types
-from robot_types import (
+from configs.robot.robot_types import (
     ManipulatorConfig,
     SimulationConfig,
     VisualizationConfig,

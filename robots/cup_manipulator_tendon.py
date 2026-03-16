@@ -39,7 +39,7 @@ from pydrake.all import (
 )
 from pydrake.multibody.tree import MultibodyForces
 from robots.cup_manipulator import RobotBase
-from robot_types import ManipulatorConfig, JointConfig, Pose
+from configs.robot.robot_types import ManipulatorConfig, JointConfig, Pose
 from robots.motor import get_motor, MotorModelConfig
 
 from cable import (

@@ -2,7 +2,11 @@
 import numpy as np
 from pydrake.multibody.parsing import Parser
 from pydrake.multibody.plant import MultibodyPlant
-from robot_types import create_cup_manipulator_config
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from configs.robot.robot_types import create_cup_manipulator_config
 from script_cart_pendulam_2d_extended_ofc_v2 import CupManipulator
 
 # Setup
