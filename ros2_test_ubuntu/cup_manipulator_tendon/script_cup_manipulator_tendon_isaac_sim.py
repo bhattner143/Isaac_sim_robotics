@@ -70,7 +70,7 @@ sys.path[:] = [p for p in sys.path if "ros2_jazzy" not in p]
 # ============================================================================
 
 _RENDER_CHOICES = ("native", "websocket", "headless")
-_render_mode = "websocket"
+_render_mode = "native"  # default: native rendering with no streaming
 _mode = "joint_command"
 
 for _i, _arg in enumerate(sys.argv):

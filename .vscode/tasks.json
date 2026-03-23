@@ -73,6 +73,69 @@
             "problemMatcher": []
         },
         {
+            "label": "🦾 Isaac Sim: native (local window)",
+            "type": "shell",
+            "command": "/home/user/anaconda3/envs/env_isaacsim/bin/python",
+            "args": [
+                "${workspaceFolder}/ros2_test_ubuntu/cup_manipulator_tendon/script_cup_manipulator_tendon_isaac_sim.py",
+                "--render", "native"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "📡 Isaac Sim: websocket (WebRTC stream)",
+            "type": "shell",
+            "command": "/home/user/anaconda3/envs/env_isaacsim/bin/python",
+            "args": [
+                "${workspaceFolder}/ros2_test_ubuntu/cup_manipulator_tendon/script_cup_manipulator_tendon_isaac_sim.py",
+                "--render", "websocket"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "👻 Isaac Sim: headless (no display)",
+            "type": "shell",
+            "command": "/home/user/anaconda3/envs/env_isaacsim/bin/python",
+            "args": [
+                "${workspaceFolder}/ros2_test_ubuntu/cup_manipulator_tendon/script_cup_manipulator_tendon_isaac_sim.py",
+                "--render", "headless"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
             "label": "🔄 Onshape → URDF: manipulator_cable",
             "type": "shell",
             "command": "bash",
