@@ -155,6 +155,27 @@
                 "clear": true
             },
             "problemMatcher": []
+        },
+        {
+            "label": "🔄 Onshape → URDF: manipulator-hybrid-planar",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "${workspaceFolder}/model_using_onshape_to_robot/step1_convert_from_onshape.sh",
+                "manipulator-hybrid-planar"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/model_using_onshape_to_robot"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
         }
     ]
 }

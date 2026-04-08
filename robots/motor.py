@@ -319,10 +319,10 @@ if __name__ == "__main__":
         ),
     )
     # manipulator geometry
-    ap.add_argument("--mass",        type=float, default=1.0,
-                    help="Link mass [kg]  (default: 1.0)")
-    ap.add_argument("--link-length", type=float, default=0.5,
-                    help="Total link length [m]  (default: 0.5)")
+    ap.add_argument("--mass",        type=float, default=2.0,
+                    help="Link mass [kg]  (default: 2.0)")
+    ap.add_argument("--link-length", type=float, default=1.0,
+                    help="Total link length [m]  (default: 1.0)")
     ap.add_argument("--com-percent", type=float, default=75.0,
                     help="CoM position as %% of link length from joint  (default: 75.0)")
     # motion parameters

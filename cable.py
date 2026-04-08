@@ -683,6 +683,102 @@ class FixedBodyPoint:
             )
         return self._tangent_point
 
+
+# ─── CableSpring: optional compliant element at cable endpoints ──────────────
+
+@dataclass
+class CableSpring:
+    """Spring element inserted between a cable endpoint attachment and the cable.
+
+    When enabled, the last cable segment (BigPulley exit → EndPoint) is drawn
+    as a zigzag spring instead of a straight line.
+
+    Attributes:
+        stiffness:        Spring stiffness [N/m].
+        rest_length:      Natural (unstretched) length [m].
+        n_coils:          Number of helical coils for visualization.
+        amplitude:        Helix radius perpendicular to spring axis [m].
+        spring_fraction:  Fraction of the last cable segment occupied by the
+                          spring (0–1).  E.g. 0.30 means the spring is 30% of
+                          the total segment length.
+        spring_position:  Centre position of the spring along the segment,
+                          measured from the endpoint side (0 = at endpoint,
+                          1 = at pulley).  E.g. 0.5 centres the spring;
+                          0.3 places it closer to the endpoint.
+        enabled:          Whether this spring is active.
+        label:            Human-readable name for logging.
+    """
+    stiffness:        float = 100.0
+    rest_length:      float = 0.002
+    n_coils:          int   = 6
+    amplitude:        float = 0.004
+    spring_fraction:  float = 0.30
+    spring_position:  float = 0.50
+    enabled:          bool  = True
+    label:            str   = ""
+
+
+def spring_zigzag_points(p_start: np.ndarray, p_end: np.ndarray,
+                         n_coils: int = 6, amplitude: float = 0.004,
+                         lead_fraction: float = 0.1,
+                         pts_per_coil: int = 16) -> np.ndarray:
+    """Generate 3-D helical coil points between two endpoints to visualize a spring.
+
+    Parameters
+    ----------
+    p_start, p_end : array-like, shape (3,)
+        Spring attachment points in whatever frame (world / body).
+    n_coils : int
+        Number of full helical turns.
+    amplitude : float
+        Helix radius perpendicular to the spring axis [m].
+    lead_fraction : float
+        Fraction of total length reserved for straight lead-in/lead-out segments
+        at each end (so the spring doesn't start abruptly at the anchor).
+    pts_per_coil : int
+        Number of sample points per coil turn (higher = smoother helix).
+
+    Returns
+    -------
+    pts : np.ndarray, shape (N, 3)
+        Ordered 3-D points tracing the helical spring path.
+    """
+    p0 = np.asarray(p_start, float)
+    p1 = np.asarray(p_end, float)
+    axis = p1 - p0
+    length = np.linalg.norm(axis)
+    if length < 1e-9:
+        return np.vstack([p0, p1])
+    ax = axis / length
+
+    # Build two perpendicular directions spanning the plane normal to the axis
+    tmp = np.array([0.0, 1.0, 0.0]) if abs(ax[1]) < 0.9 else np.array([1.0, 0.0, 0.0])
+    perp1 = np.cross(ax, tmp)
+    perp1 /= np.linalg.norm(perp1)
+    perp2 = np.cross(ax, perp1)  # already unit length
+
+    lead_len = length * lead_fraction
+    coil_len = length - 2 * lead_len
+    if coil_len <= 0:
+        return np.vstack([p0, p1])
+
+    pts = [p0, p0 + ax * lead_len]
+
+    # Helical coil: parametric helix along the axis
+    n_total = n_coils * pts_per_coil
+    for i in range(n_total + 1):
+        frac = i / n_total               # 0 → 1 along coil region
+        t = lead_len + coil_len * frac    # distance along axis
+        theta = 2.0 * np.pi * n_coils * frac  # angle swept
+        pts.append(p0 + ax * t
+                   + amplitude * np.cos(theta) * perp1
+                   + amplitude * np.sin(theta) * perp2)
+
+    pts.append(p0 + ax * (length - lead_len))
+    pts.append(p1)
+
+    return np.array(pts)
+
 # ──────────────────────────────────────────────────────────────────────────────
 
 class CableRig:
@@ -691,7 +787,7 @@ class CableRig:
     Create AFTER setting PulleyBase.assets_dir (so mesh centroids resolve eagerly).
     Then call rig.compute_tangents(plant, ctx, manipulator) to compute FK tangents.
     """
-    def __init__(self):
+    def __init__(self, springs_enabled: bool = True):
         _Q1 = "pulley_htd_5m_60t"
         _Q2 = "link2_tendon"
 
@@ -774,6 +870,11 @@ class CableRig:
                           self.pulley_big,
                           self.cable_start_l, self.cable_start_r,
                           self.cable_end_l,   self.cable_end_r]
+
+        # ── Optional springs at cable endpoints ───────────────────────────────
+        self.springs_enabled = springs_enabled
+        self.spring_L = CableSpring(label="Spring End-L", enabled=springs_enabled)
+        self.spring_R = CableSpring(label="Spring End-R", enabled=springs_enabled)
 
     def compute_tangents(self, plant, plant_context, manipulator) -> None:
         """Compute all inter-pulley tangent contacts using Drake FK.
@@ -1060,15 +1161,20 @@ class CupManipulator(RobotBase):
 
     # ── Cable rig ───────────────────────────────────────────────────────────
 
-    def init_cable_rig(self, urdf_path: str = None, assets_dir: str = None) -> None:
-        """Initialize the cable rig.  Call after the plant is built."""
+    def init_cable_rig(self, urdf_path: str = None, assets_dir: str = None,
+                       springs_enabled: bool = True) -> None:
+        """Initialize the cable rig.  Call after the plant is built.
+
+        Args:
+            springs_enabled: If True, add compliant springs at End-point L/R.
+        """
         if urdf_path is None:
             urdf_path = self.config.urdf_path
         if assets_dir is None:
             assets_dir = str(Path(urdf_path).parent / "assets")
         PulleyBase._urdf_origins = _parse_urdf_part_origins(urdf_path)
         PulleyBase.assets_dir    = assets_dir
-        self.rig = CableRig()
+        self.rig = CableRig(springs_enabled=springs_enabled)
 
     def compute_tangents(self, plant, plant_context) -> None:
         """Recompute all cable tangent contacts at the current joint configuration."""
@@ -1156,6 +1262,12 @@ def build_plant(manipulator_config):
 
 # ──────────────────────────────────────────────────────────────────────────────
 def main():
+    import argparse
+    ap = argparse.ArgumentParser(description="Cable routing visualization.")
+    ap.add_argument("--no-springs", action="store_true",
+                    help="Disable endpoint springs (default: springs enabled)")
+    args = ap.parse_args()
+    springs_enabled = not args.no_springs
 
     # ── Configuration ─────────────────────────────────────────────────────────
     config = create_cable_manipulator_config(
@@ -1172,7 +1284,7 @@ def main():
     builder, plant, scene_graph, manipulator = build_plant(config)
 
     # ── Cable rig — owned by manipulator, mirrors physical assembly ───────────
-    manipulator.init_cable_rig()
+    manipulator.init_cable_rig(springs_enabled=springs_enabled)
     rig = manipulator.rig  # local alias for draw_cables / viz helpers
 
     MeshcatVisualizer.AddToBuilder(builder, scene_graph, meshcat)
@@ -1284,13 +1396,15 @@ class DrakeCablePlant:
             ...
     """
 
-    def __init__(self, drake_urdf: str, q1: float = 0.0, q2: float = 0.0):
+    def __init__(self, drake_urdf: str, q1: float = 0.0, q2: float = 0.0,
+                 springs_enabled: bool = True):
         config = create_cable_manipulator_config(
             urdf_path=drake_urdf,
             joint_angles={"link1_base": q1, "link2_link1": q2},
         )
         self.builder, self.plant, self._sg, self.manipulator = build_plant(config)
-        self.manipulator.init_cable_rig(urdf_path=drake_urdf)
+        self.manipulator.init_cable_rig(urdf_path=drake_urdf,
+                                        springs_enabled=springs_enabled)
         self.rig = self.manipulator.rig
         self.diagram = self.builder.Build()
         self._root_ctx = self.diagram.CreateDefaultContext()

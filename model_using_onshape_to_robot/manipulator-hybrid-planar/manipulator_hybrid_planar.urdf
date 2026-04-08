@@ -1,0 +1,685 @@
+<?xml version="1.0" ?>
+<!-- Generated using onshape-to-robot -->
+<!-- Onshape https://cad.onshape.com/documents/fe901ef874dd1eda21c36211/w/ed3b2a5643c5258023c9ab0e/e/58577efb190db4f436db9187 -->
+<robot name="manipulator_hybrid_planar">
+  <!-- Link shoulder_tranmission_system -->
+  <link name="shoulder_tranmission_system">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1e-09"/>
+      <inertia ixx="1e-09" ixy="0" ixz="0" iyy="1e-09" iyz="0" izz="1e-09"/>
+    </inertial>
+    <!-- Part ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od -->
+    <visual>
+      <origin xyz="-0.0857444 0 0.135375" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od.stl"/>
+      </geometry>
+      <material name="ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0857444 0 0.135375" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od_2 -->
+    <visual>
+      <origin xyz="-0.0857444 -5.20417e-18 0.13535" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od__2.stl"/>
+      </geometry>
+      <material name="ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od_2_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0857444 -5.20417e-18 0.13535" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od__2.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part 6000_2z_c3_1___10_mm_id_26_mm_od -->
+    <visual>
+      <origin xyz="-0.0857444 -1.38778e-17 0.0167" rpy="-4.4081e-39 3.49394e-40 -3.14807e-17"/>
+      <geometry>
+        <mesh filename="package://assets/6000_2z_c3_1___10_mm_id_26_mm_od.stl"/>
+      </geometry>
+      <material name="6000_2z_c3_1___10_mm_id_26_mm_od_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0857444 -1.38778e-17 0.0167" rpy="-4.4081e-39 3.49394e-40 -3.14807e-17"/>
+      <geometry>
+        <mesh filename="package://assets/6000_2z_c3_1___10_mm_id_26_mm_od.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part axles -->
+    <visual>
+      <origin xyz="0.13926 0 0.26355" rpy="7.39557e-31 5.1276e-30 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/axles.stl"/>
+      </geometry>
+      <material name="axles_material">
+        <color rgba="0.627451 0.627451 0.627451 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.13926 0 0.26355" rpy="7.39557e-31 5.1276e-30 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/axles.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od_3 -->
+    <visual>
+      <origin xyz="-0.0857444 0 0.1354" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od__3.stl"/>
+      </geometry>
+      <material name="ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od_3_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0857444 0 0.1354" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od__3.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part shoulder_tranmission_system -->
+    <visual>
+      <origin xyz="0.13926 1.38778e-16 0.26355" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/shoulder_tranmission_system.stl"/>
+      </geometry>
+      <material name="shoulder_tranmission_system_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.13926 1.38778e-16 0.26355" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/shoulder_tranmission_system.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part 3d_ak80_8 -->
+    <visual>
+      <origin xyz="-0.21074 -1.11022e-16 0.01965" rpy="3.14159 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/3d_ak80_8.stl"/>
+      </geometry>
+      <material name="3d_ak80_8_material">
+        <color rgba="0.235294 0.235294 0.235294 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.21074 -1.11022e-16 0.01965" rpy="3.14159 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/3d_ak80_8.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part 6000_2z_c3_1___10_mm_id_26_mm_od_2 -->
+    <visual>
+      <origin xyz="-0.21074 -1.11022e-16 0.12865" rpy="3.14159 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/6000_2z_c3_1___10_mm_id_26_mm_od__2.stl"/>
+      </geometry>
+      <material name="6000_2z_c3_1___10_mm_id_26_mm_od_2_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.21074 -1.11022e-16 0.12865" rpy="3.14159 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/6000_2z_c3_1___10_mm_id_26_mm_od__2.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part shoulder_tranmission_system_2 -->
+    <visual>
+      <origin xyz="0.139256 0 0.2643" rpy="5.62504e-24 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/shoulder_tranmission_system__2.stl"/>
+      </geometry>
+      <material name="shoulder_tranmission_system_2_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.139256 0 0.2643" rpy="5.62504e-24 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/shoulder_tranmission_system__2.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part t5_timing_pulley_16mm_30t -->
+    <visual>
+      <origin xyz="-0.21074 -1.11022e-16 0.08855" rpy="7.39557e-31 5.1276e-30 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/t5_timing_pulley_16mm_30t.stl"/>
+      </geometry>
+      <material name="t5_timing_pulley_16mm_30t_material">
+        <color rgba="0.960784 0.960784 0.964706 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.21074 -1.11022e-16 0.08855" rpy="7.39557e-31 5.1276e-30 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/t5_timing_pulley_16mm_30t.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part t5_16mm_width__100mm_centre__2x_30t -->
+    <visual>
+      <origin xyz="-0.0857398 -2.77556e-17 0.10505" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/t5_16mm_width__100mm_centre__2x_30t.stl"/>
+      </geometry>
+      <material name="t5_16mm_width__100mm_centre__2x_30t_material">
+        <color rgba="0.964706 0.964706 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0857398 -2.77556e-17 0.10505" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/t5_16mm_width__100mm_centre__2x_30t.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part m10_threaded_shaft -->
+    <visual>
+      <origin xyz="0.139256 1.38778e-16 0.2643" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/m10_threaded_shaft.stl"/>
+      </geometry>
+      <material name="m10_threaded_shaft_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.139256 1.38778e-16 0.2643" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/m10_threaded_shaft.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part 6000_2z_c3_1___10_mm_id_26_mm_od_3 -->
+    <visual>
+      <origin xyz="-0.21074 -1.38778e-16 0.083" rpy="3.14159 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/6000_2z_c3_1___10_mm_id_26_mm_od__2.stl"/>
+      </geometry>
+      <material name="6000_2z_c3_1___10_mm_id_26_mm_od_3_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.21074 -1.38778e-16 0.083" rpy="3.14159 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/6000_2z_c3_1___10_mm_id_26_mm_od__2.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part m5_threaded_shaft -->
+    <visual>
+      <origin xyz="-0.114301 0.0484621 0.110768" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/m5_threaded_shaft.stl"/>
+      </geometry>
+      <material name="m5_threaded_shaft_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.114301 0.0484621 0.110768" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/m5_threaded_shaft.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part m5_threaded_shaft_2 -->
+    <visual>
+      <origin xyz="-0.100943 -0.0266344 0.106249" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/m5_threaded_shaft__2.stl"/>
+      </geometry>
+      <material name="m5_threaded_shaft_2_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.100943 -0.0266344 0.106249" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="package://assets/m5_threaded_shaft__2.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part t5_timing_pulley_16mm_30t_2 -->
+    <visual>
+      <origin xyz="-0.0857398 -2.77556e-17 0.08855" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/t5_timing_pulley_16mm_30t.stl"/>
+      </geometry>
+      <material name="t5_timing_pulley_16mm_30t_2_material">
+        <color rgba="0.960784 0.960784 0.964706 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0857398 -2.77556e-17 0.08855" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/t5_timing_pulley_16mm_30t.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part m10_threaded_shaft_2 -->
+    <visual>
+      <origin xyz="0.139256 1.38778e-16 0.2643" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/m10_threaded_shaft__2.stl"/>
+      </geometry>
+      <material name="m10_threaded_shaft_2_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.139256 1.38778e-16 0.2643" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/m10_threaded_shaft__2.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part shoulder_tranmission_system_3 -->
+    <visual>
+      <origin xyz="0.13926 1.38778e-16 0.2643" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/shoulder_tranmission_system__3.stl"/>
+      </geometry>
+      <material name="shoulder_tranmission_system_3_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.13926 1.38778e-16 0.2643" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/shoulder_tranmission_system__3.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link drive_system -->
+  <link name="drive_system">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1e-09"/>
+      <inertia ixx="1e-09" ixy="0" ixz="0" iyy="1e-09" iyz="0" izz="1e-09"/>
+    </inertial>
+    <!-- Part drive_pulley -->
+    <visual>
+      <origin xyz="-0.0124289 -0.4595 0.165" rpy="-1.62606e-38 1.00902e-38 1.5708"/>
+      <geometry>
+        <mesh filename="package://assets/drive_pulley.stl"/>
+      </geometry>
+      <material name="drive_pulley_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0124289 -0.4595 0.165" rpy="-1.62606e-38 1.00902e-38 1.5708"/>
+      <geometry>
+        <mesh filename="package://assets/drive_pulley.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part drive_axle -->
+    <visual>
+      <origin xyz="-0.0124289 -0.4595 0.1633" rpy="4.44843e-37 1.46497e-36 1.5708"/>
+      <geometry>
+        <mesh filename="package://assets/drive_axle.stl"/>
+      </geometry>
+      <material name="drive_axle_material">
+        <color rgba="0.627451 0.627451 0.627451 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0124289 -0.4595 0.1633" rpy="4.44843e-37 1.46497e-36 1.5708"/>
+      <geometry>
+        <mesh filename="package://assets/drive_axle.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part upper_arm -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.165" rpy="-4.00416e-35 -1.33933e-34 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper_arm.stl"/>
+      </geometry>
+      <material name="upper_arm_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.165" rpy="-4.00416e-35 -1.33933e-34 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper_arm.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part laser_cut_acrylic -->
+    <visual>
+      <origin xyz="0.4 0.0469711 0.165" rpy="-4.00416e-35 -1.33933e-34 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/laser_cut_acrylic.stl"/>
+      </geometry>
+      <material name="laser_cut_acrylic_material">
+        <color rgba="0.964706 0.964706 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0469711 0.165" rpy="-4.00416e-35 -1.33933e-34 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/laser_cut_acrylic.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part laser_cut_acrylic_2 -->
+    <visual>
+      <origin xyz="0.4 0.0471711 0.165" rpy="-4.00416e-35 -1.33933e-34 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/laser_cut_acrylic__2.stl"/>
+      </geometry>
+      <material name="laser_cut_acrylic_2_material">
+        <color rgba="0.964706 0.964706 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0471711 0.165" rpy="-4.00416e-35 -1.33933e-34 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/laser_cut_acrylic__2.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part upper_arm_2 -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.165" rpy="-4.00416e-35 -1.33933e-34 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper_arm__2.stl"/>
+      </geometry>
+      <material name="upper_arm_2_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.165" rpy="-4.00416e-35 -1.33933e-34 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper_arm__2.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part drive_system -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.165" rpy="5.14279e-39 3.49394e-40 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/drive_system.stl"/>
+      </geometry>
+      <material name="drive_system_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.165" rpy="5.14279e-39 3.49394e-40 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/drive_system.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part shoulder_axle -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.165" rpy="-6.5253e-55 8.90104e-57 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/shoulder_axle.stl"/>
+      </geometry>
+      <material name="shoulder_axle_material">
+        <color rgba="0.627451 0.627451 0.627451 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.165" rpy="-6.5253e-55 8.90104e-57 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/shoulder_axle.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part 626_2rs___6mm_id_19mm_od -->
+    <visual>
+      <origin xyz="-0.0595 1.79202e-13 0.1973" rpy="1.46497e-36 -4.44843e-37 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od.stl"/>
+      </geometry>
+      <material name="626_2rs___6mm_id_19mm_od_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0595 1.79202e-13 0.1973" rpy="1.46497e-36 -4.44843e-37 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part flange_coupling_10mm_id -->
+    <visual>
+      <origin xyz="0 0 0.2" rpy="6.12323e-17 5.01771e-40 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/flange_coupling_10mm_id.stl"/>
+      </geometry>
+      <material name="flange_coupling_10mm_id_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.2" rpy="6.12323e-17 5.01771e-40 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/flange_coupling_10mm_id.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part drive_system_2 -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.165" rpy="-4.00416e-35 -1.33933e-34 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/drive_system__2.stl"/>
+      </geometry>
+      <material name="drive_system_2_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.165" rpy="-4.00416e-35 -1.33933e-34 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/drive_system__2.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part 626_2rs___6mm_id_19mm_od_2 -->
+    <visual>
+      <origin xyz="-0.0595 1.79202e-13 0.1327" rpy="1.46497e-36 -4.44843e-37 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od.stl"/>
+      </geometry>
+      <material name="626_2rs___6mm_id_19mm_od_2_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0595 1.79202e-13 0.1327" rpy="1.46497e-36 -4.44843e-37 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link elbow_axle -->
+  <link name="elbow_axle">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1e-09"/>
+      <inertia ixx="1e-09" ixy="0" ixz="0" iyy="1e-09" iyz="0" izz="1e-09"/>
+    </inertial>
+    <!-- Part elbow_axle -->
+    <visual>
+      <origin xyz="-1.83187e-15 -3.63598e-15 -0.0309" rpy="3.14159 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/elbow_axle.stl"/>
+      </geometry>
+      <material name="elbow_axle_material">
+        <color rgba="0.627451 0.627451 0.627451 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-1.83187e-15 -3.63598e-15 -0.0309" rpy="3.14159 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/elbow_axle.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part end_effector -->
+    <visual>
+      <origin xyz="-0.0001 2.22045e-16 -0.0258" rpy="2.78971e-17 -1.2587e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/end_effector.stl"/>
+      </geometry>
+      <material name="end_effector_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0001 2.22045e-16 -0.0258" rpy="2.78971e-17 -1.2587e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/end_effector.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part elbow_roller -->
+    <visual>
+      <origin xyz="5.55112e-16 6.93889e-18 -0.0259" rpy="5.57941e-18 -2.09783e-17 2.26696e-17"/>
+      <geometry>
+        <mesh filename="package://assets/elbow_roller.stl"/>
+      </geometry>
+      <material name="elbow_roller_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="5.55112e-16 6.93889e-18 -0.0259" rpy="5.57941e-18 -2.09783e-17 2.26696e-17"/>
+      <geometry>
+        <mesh filename="package://assets/elbow_roller.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part aluminium_strut -->
+    <visual>
+      <origin xyz="-0.0001 2.22045e-16 -0.0258" rpy="2.78971e-17 -1.2587e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/aluminium_strut.stl"/>
+      </geometry>
+      <material name="aluminium_strut_material">
+        <color rgba="0.960784 0.960784 0.964706 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0001 2.22045e-16 -0.0258" rpy="2.78971e-17 -1.2587e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/aluminium_strut.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part laser_cut -->
+    <visual>
+      <origin xyz="4.82947e-15 0.0001 -0.0257" rpy="3.34766e-17 -1.2587e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/laser_cut.stl"/>
+      </geometry>
+      <material name="laser_cut_material">
+        <color rgba="0.964706 0.964706 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="4.82947e-15 0.0001 -0.0257" rpy="3.34766e-17 -1.2587e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/laser_cut.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part laser_cut_2 -->
+    <visual>
+      <origin xyz="4.77396e-15 -0.0001 -0.0257" rpy="3.34766e-17 -1.2587e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/laser_cut__2.stl"/>
+      </geometry>
+      <material name="laser_cut_2_material">
+        <color rgba="0.964706 0.964706 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="4.77396e-15 -0.0001 -0.0257" rpy="3.34766e-17 -1.2587e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/laser_cut__2.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part laser_cut_3 -->
+    <visual>
+      <origin xyz="5.10703e-15 -0.0001 -0.0259" rpy="-8.36913e-17 3.14674e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/laser_cut__3.stl"/>
+      </geometry>
+      <material name="laser_cut_3_material">
+        <color rgba="0.964706 0.964706 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="5.10703e-15 -0.0001 -0.0259" rpy="-8.36913e-17 3.14674e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/laser_cut__3.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part laser_cut_4 -->
+    <visual>
+      <origin xyz="5.05151e-15 0.0001 -0.0259" rpy="-7.45603e-17 3.05467e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/laser_cut__4.stl"/>
+      </geometry>
+      <material name="laser_cut_4_material">
+        <color rgba="0.964706 0.964706 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="5.05151e-15 0.0001 -0.0259" rpy="-7.45603e-17 3.05467e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/laser_cut__4.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part lower_arm -->
+    <visual>
+      <origin xyz="5.05151e-15 0 -0.0259" rpy="-8.36913e-17 3.14674e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm.stl"/>
+      </geometry>
+      <material name="lower_arm_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="5.05151e-15 0 -0.0259" rpy="-8.36913e-17 3.14674e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part lower_arm_2 -->
+    <visual>
+      <origin xyz="4.82947e-15 4.09395e-16 -0.0257" rpy="3.34766e-17 -1.2587e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__2.stl"/>
+      </geometry>
+      <material name="lower_arm_2_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="4.82947e-15 4.09395e-16 -0.0257" rpy="3.34766e-17 -1.2587e-16 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__2.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Joint from drive_system to elbow_axle -->
+  <joint name="2" type="revolute">
+    <origin xyz="0.4 0.0470711 0.1909" rpy="1.67383e-17 -6.29348e-17 2.20219e-16"/>
+    <parent link="drive_system"/>
+    <child link="elbow_axle"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+  <!-- Joint from shoulder_tranmission_system to drive_system -->
+  <joint name="1" type="revolute">
+    <origin xyz="-0.0857444 -1.38778e-17 0.0127" rpy="5.14279e-39 3.49394e-40 -3.14807e-17"/>
+    <parent link="shoulder_tranmission_system"/>
+    <child link="drive_system"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+</robot>

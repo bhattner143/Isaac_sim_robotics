@@ -64,12 +64,45 @@ def draw_cables(meshcat, plant, plant_context, manipulator, rig,
         meshcat.SetTransform(path, RigidTransform(R, mid))
 
     # ── 1. Straight cable segments ────────────────────────────────────────────
-    for route in rig.routes:
+    #      When springs are enabled, the last segment of each route is drawn
+    #      as a zigzag spring instead of a straight cylinder.
+    from cable import spring_zigzag_points  # local to avoid circular at module level
+    springs_on = getattr(rig, "springs_enabled", False)
+
+    for ri, route in enumerate(rig.routes):
         pts  = route.world_points(plant, plant_context, manipulator)  # (N, 3)
         skip = getattr(route, "skip_chord_segments", frozenset())
+        last_seg_idx = len(pts) - 2   # index of the final segment
         for i, (p0, p1) in enumerate(zip(pts[:-1], pts[1:])):
             if i in skip:
                 continue
+            # Spring visualization for the last segment: cable—spring—cable
+            if springs_on and i == last_seg_idx:
+                spring = rig.spring_L if ri == 0 else rig.spring_R
+                if spring.enabled:
+                    sf = np.clip(spring.spring_fraction, 0.05, 0.90)
+                    sp = np.clip(spring.spring_position, sf/2, 1.0 - sf/2)
+                    t0 = sp - sf / 2   # spring start (fraction from endpoint)
+                    t1 = sp + sf / 2   # spring end
+                    # p0 = pulley exit (far end), p1 = endpoint (near end)
+                    # t measured from p1 (endpoint) toward p0 (pulley)
+                    p_spring_start = p1 + t0 * (p0 - p1)
+                    p_spring_end   = p1 + t1 * (p0 - p1)
+                    # Cable: pulley exit → spring end
+                    _place_cylinder(f"{route.meshcat_path}/seg{i:02d}_a",
+                                    p0, p_spring_end, route.meshcat_color)
+                    # Helical spring
+                    zz = spring_zigzag_points(p_spring_end, p_spring_start,
+                                              n_coils=spring.n_coils,
+                                              amplitude=spring.amplitude)
+                    spring_rgba = Rgba(0.9, 0.6, 0.0, 1.0)  # gold/orange
+                    for j, (z0, z1) in enumerate(zip(zz[:-1], zz[1:])):
+                        _place_cylinder(f"{route.meshcat_path}/spring{j:02d}",
+                                        z0, z1, spring_rgba)
+                    # Cable: spring start → endpoint
+                    _place_cylinder(f"{route.meshcat_path}/seg{i:02d}_b",
+                                    p_spring_start, p1, route.meshcat_color)
+                    continue
             _place_cylinder(f"{route.meshcat_path}/seg{i:02d}", p0, p1,
                             route.meshcat_color)
 
@@ -225,11 +258,42 @@ def visualize_cable_routing_3d(plant, plant_context, manipulator, assets_dir: st
                 f"  {cfg.label}", fontsize=7, color='k')
 
     # ── Render cable paths (one per route) ────────────────────────────────────
+    from cable import spring_zigzag_points
+    springs_on = getattr(rig, "springs_enabled", False)
     pt_icons = ['①', '②', '③', '④']
-    for route, pts in route_pts:
-        ax.plot(pts[:, 0], pts[:, 1], pts[:, 2],
-                'o-', color=route.mpl_color, linewidth=2.5, markersize=6,
-                label=route.label, zorder=6)
+    for ri, (route, pts) in enumerate(route_pts):
+        spring = (rig.spring_L if ri == 0 else rig.spring_R) if springs_on else None
+        if spring and spring.enabled:
+            sf = np.clip(spring.spring_fraction, 0.05, 0.90)
+            sp = np.clip(spring.spring_position, sf/2, 1.0 - sf/2)
+            t0 = sp - sf / 2
+            t1 = sp + sf / 2
+            p_end = pts[-1]
+            p_pul = pts[-2]
+            p_spring_start = p_end + t0 * (p_pul - p_end)
+            p_spring_end   = p_end + t1 * (p_pul - p_end)
+            # Cable: all waypoints up to pulley exit + cable to spring end
+            cable_a = np.vstack([pts[:-1], p_spring_end.reshape(1, 3)])
+            ax.plot(cable_a[:, 0], cable_a[:, 1], cable_a[:, 2],
+                    'o-', color=route.mpl_color, linewidth=2.5, markersize=6,
+                    label=route.label, zorder=6)
+            # Helical spring
+            zz = spring_zigzag_points(p_spring_end, p_spring_start,
+                                      n_coils=spring.n_coils,
+                                      amplitude=spring.amplitude)
+            ax.plot(zz[:, 0], zz[:, 1], zz[:, 2],
+                    '-', color='darkorange', linewidth=2.5, zorder=6,
+                    label=f"Spring ({spring.label})" if ri == 0 else None)
+            # Cable: spring start → endpoint
+            ax.plot([p_spring_start[0], p_end[0]],
+                    [p_spring_start[1], p_end[1]],
+                    [p_spring_start[2], p_end[2]],
+                    '-o', color=route.mpl_color, linewidth=2.5, markersize=6,
+                    zorder=6)
+        else:
+            ax.plot(pts[:, 0], pts[:, 1], pts[:, 2],
+                    'o-', color=route.mpl_color, linewidth=2.5, markersize=6,
+                    label=route.label, zorder=6)
         for pt, icon, (cfg, _) in zip(pts, pt_icons, route.segments):
             ax.text(pt[0], pt[1], pt[2], f"  {icon}{cfg.label}",
                     fontsize=7, color=route.mpl_color, zorder=7)
@@ -319,10 +383,42 @@ def visualize_cable_routing_top_view(plant, plant_context, manipulator,
                 color='k', fontweight='bold', zorder=5)
 
     # ── Cable polylines + waypoint labels ───────────────────────────────────
-    for route in rig.routes:
+    from cable import spring_zigzag_points
+    springs_on = getattr(rig, "springs_enabled", False)
+
+    for ri, route in enumerate(rig.routes):
         pts = route.world_points(plant, plant_context, manipulator)
-        ax.plot(pts[:, 0], pts[:, 1], 'o-', color=route.mpl_color,
-                linewidth=2, markersize=5, label=route.label, zorder=6)
+        last_seg_idx = len(pts) - 2  # index of final segment
+        spring = (rig.spring_L if ri == 0 else rig.spring_R) if springs_on else None
+
+        # Draw cable—spring—cable layout for the last segment
+        if spring and spring.enabled:
+            sf = np.clip(spring.spring_fraction, 0.05, 0.90)
+            sp = np.clip(spring.spring_position, sf/2, 1.0 - sf/2)
+            t0 = sp - sf / 2   # spring start (fraction from endpoint)
+            t1 = sp + sf / 2   # spring end
+            p_end = pts[-1]    # endpoint
+            p_pul = pts[-2]    # pulley exit
+            p_spring_start = p_end + t0 * (p_pul - p_end)
+            p_spring_end   = p_end + t1 * (p_pul - p_end)
+            # Cable: all waypoints up to pulley exit + cable to spring end
+            cable_a = np.vstack([pts[:-1], p_spring_end.reshape(1, 3)])
+            ax.plot(cable_a[:, 0], cable_a[:, 1], 'o-', color=route.mpl_color,
+                    linewidth=2, markersize=5, label=route.label, zorder=6)
+            # Helical spring
+            zz = spring_zigzag_points(p_spring_end, p_spring_start,
+                                      n_coils=spring.n_coils,
+                                      amplitude=spring.amplitude)
+            ax.plot(zz[:, 0], zz[:, 1], '-', color='darkorange', linewidth=2.0,
+                    zorder=6, label=f"Spring ({spring.label})" if ri == 0 else None)
+            # Cable: spring start → endpoint
+            ax.plot([p_spring_start[0], p_end[0]],
+                    [p_spring_start[1], p_end[1]], '-o', color=route.mpl_color,
+                    linewidth=2, markersize=5, zorder=6)
+        else:
+            ax.plot(pts[:, 0], pts[:, 1], 'o-', color=route.mpl_color,
+                    linewidth=2, markersize=5, label=route.label, zorder=6)
+
         for pt, (cfg, _) in zip(pts, route.segments):
             ax.annotate(f"  {cfg.label}", (pt[0], pt[1]),
                         fontsize=6.5, color=route.mpl_color, zorder=7)

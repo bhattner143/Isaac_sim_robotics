@@ -1,0 +1,7 @@
+{
+    "url": "https://cad.onshape.com/documents/fe901ef874dd1eda21c36211/w/ed3b2a5643c5258023c9ab0e/e/58577efb190db4f436db9187",
+    "output_format": "urdf",
+    "output_filename": "manipulator_hybrid_planar",
+    "assets_directory": "assets",
+    "robot_name": "manipulator_hybrid_planar"
+}
