@@ -223,8 +223,8 @@ _mount.add_argument(
     help='Passive joint spring stiffness [Nm/rad] for [link1_base, link2_link1]  (default: 0 0)',
 )
 _mount.add_argument(
-    '--no-springs', action='store_true', default=False,
-    help='Disable cable endpoint springs (default: False — springs enabled)',
+    '--no-springs', action='store_true', default=True,
+    help='Disable cable endpoint springs (default: True — springs disabled)',
 )
 
 # ── 2. Meshcat camera ────────────────────────────────────────────────────────
