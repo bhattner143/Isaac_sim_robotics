@@ -474,6 +474,73 @@
                 "clear": true
             },
             "problemMatcher": []
+        },
+        {
+            "label": "📄 LaTeX: Compile PyDrake Document",
+            "type": "shell",
+            "command": "latexmk",
+            "args": [
+                "-pdf",
+                "-interaction=nonstopmode",
+                "-f",
+                "Computed_Torque_PyDrake_Implementation.tex"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/notes_all/notes_cup_manipulator_tendon/pydrake"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "📄 LaTeX: Compile Isaac Sim Document",
+            "type": "shell",
+            "command": "latexmk",
+            "args": [
+                "-pdf",
+                "-interaction=nonstopmode",
+                "-f",
+                "Computed_Torque_IsaacSim_Implementation.tex"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/notes_all/notes_cup_manipulator_tendon/isaac-sim"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "📄 LaTeX: Compile Both Documents",
+            "dependsOn": [
+                "📄 LaTeX: Compile PyDrake Document",
+                "📄 LaTeX: Compile Isaac Sim Document"
+            ],
+            "dependsOrder": "parallel",
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "🧹 LaTeX: Clean Auxiliary Files",
+            "type": "shell",
+            "command": "latexmk",
+            "args": ["-C"],
+            "options": {
+                "cwd": "${workspaceFolder}/notes_all/notes_cup_manipulator_tendon/pydrake"
+            },
+            "group": "build",
+            "problemMatcher": []
         }
     ]
 }
