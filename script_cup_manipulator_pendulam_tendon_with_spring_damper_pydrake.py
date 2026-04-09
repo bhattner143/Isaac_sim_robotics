@@ -140,7 +140,7 @@ from script_cup_manipulator_pendulam_lqr_min_effort_2d import (
     Simulation,
 )
 
-from robots.cup_manipulator import RobotBase, CupManipulator, CartPendulum2DExtended
+
 from robots.cup_manipulator_tendon import CupManipulatorTendon, CupManipulatorIKSystem, ComputedTorqueController, create_cable_manipulator_config
 
 # ── Cable routing ─────────────────────────────────────────────────────────────
@@ -157,17 +157,7 @@ from configs.robot.robot_configs import (
     EndEffectorKinematics2DConfig,
     create_physics_config,
 )
-from configs.controller.controller_configs import (
-    MuscleDynamicsConfig,
-    ImpedanceForceConfig,
-    ZFTReferenceMassConfig,
-    FiniteHorizonLQRConfig,
-    ZFTJointReferenceIKConfig,
-    create_muscle_config,
-    create_impedance_config,
-    create_zft_config,
-    create_lqr_config,
-)
+
 
 # ============================================================================
 # COMMAND-LINE ARGUMENTS

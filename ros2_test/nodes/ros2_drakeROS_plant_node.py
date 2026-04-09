@@ -103,7 +103,7 @@ from robots.cup_manipulator_tendon import (
     CupManipulatorTendon,
     create_cable_manipulator_config,
 )
-from utils.viz_cables import draw_cables
+from project_utils.viz_cables import draw_cables
 
 # ── Constants ────────────────────────────────────────────────────────────────
 URDF_PATH = str(

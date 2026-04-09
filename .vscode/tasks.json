@@ -73,9 +73,31 @@
             "problemMatcher": []
         },
         {
-            "label": "🦾 Isaac Sim: native (local window)",
+            "label": "🦾 Isaac 5.1: native (local window)",
             "type": "shell",
-            "command": "/home/user/anaconda3/envs/env_isaacsim/bin/python",
+            "command": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
+            "args": [
+                "${workspaceFolder}/ros2_test_ubuntu/cup_manipulator_tendon/script_cup_manipulator_tendon_isaac_sim.py",
+                "--render", "native"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {}
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🦾 Isaac 6.0: native (local window)",
+            "type": "shell",
+            "command": "/home/morph-lab-ws-ubuntu-admin/Documents/isaacsim6/_build/linux-x86_64/debug/python.sh",
             "args": [
                 "${workspaceFolder}/ros2_test_ubuntu/cup_manipulator_tendon/script_cup_manipulator_tendon_isaac_sim.py",
                 "--render", "native"
@@ -94,9 +116,31 @@
             "problemMatcher": []
         },
         {
-            "label": "📡 Isaac Sim: websocket (WebRTC stream)",
+            "label": "📡 Isaac 5.1: websocket (WebRTC)",
             "type": "shell",
-            "command": "/home/user/anaconda3/envs/env_isaacsim/bin/python",
+            "command": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
+            "args": [
+                "${workspaceFolder}/ros2_test_ubuntu/cup_manipulator_tendon/script_cup_manipulator_tendon_isaac_sim.py",
+                "--render", "websocket"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {}
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "📡 Isaac 6.0: websocket (WebRTC)",
+            "type": "shell",
+            "command": "/home/morph-lab-ws-ubuntu-admin/Documents/isaacsim6/_build/linux-x86_64/debug/python.sh",
             "args": [
                 "${workspaceFolder}/ros2_test_ubuntu/cup_manipulator_tendon/script_cup_manipulator_tendon_isaac_sim.py",
                 "--render", "websocket"
@@ -115,9 +159,31 @@
             "problemMatcher": []
         },
         {
-            "label": "👻 Isaac Sim: headless (no display)",
+            "label": "👻 Isaac 5.1: headless (no display)",
             "type": "shell",
-            "command": "/home/user/anaconda3/envs/env_isaacsim/bin/python",
+            "command": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
+            "args": [
+                "${workspaceFolder}/ros2_test_ubuntu/cup_manipulator_tendon/script_cup_manipulator_tendon_isaac_sim.py",
+                "--render", "headless"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {}
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "👻 Isaac 6.0: headless (no display)",
+            "type": "shell",
+            "command": "/home/morph-lab-ws-ubuntu-admin/Documents/isaacsim6/_build/linux-x86_64/debug/python.sh",
             "args": [
                 "${workspaceFolder}/ros2_test_ubuntu/cup_manipulator_tendon/script_cup_manipulator_tendon_isaac_sim.py",
                 "--render", "headless"
@@ -136,7 +202,50 @@
             "problemMatcher": []
         },
         {
-            "label": "🔄 Onshape → URDF: manipulator_cable",
+            "label": "�️ Isaac 5.1: Scene Viz (spring-damper)",
+            "type": "shell",
+            "command": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_with_spring_damper_scene_viz_isaac_sim.py",
+                "--render", "native"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {}
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "👁️ Isaac 6.0: Scene Viz (spring-damper)",
+            "type": "shell",
+            "command": "/home/morph-lab-ws-ubuntu-admin/Documents/isaacsim6/_build/linux-x86_64/debug/python.sh",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_with_spring_damper_scene_viz_isaac_sim.py",
+                "--render", "native"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "�🔄 Onshape → URDF: manipulator_cable",
             "type": "shell",
             "command": "bash",
             "args": [
@@ -166,6 +275,195 @@
             ],
             "options": {
                 "cwd": "${workspaceFolder}/model_using_onshape_to_robot"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🧵 Newton: Franka Cloth (GL viewer)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "unset PYTHONPATH && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/robot-rl/franka_cloth_newton.py --viewer gl"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/robot-rl"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🧵 Newton: Franka Cloth (headless)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "unset PYTHONPATH && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/robot-rl/franka_cloth_newton.py --viewer null"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/robot-rl"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🧵🎮 Newton + Isaac Sim: Franka Cloth (native GUI)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/robot-rl/run_franka_cloth_sim_isaac_sim.py --render native"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/robot-rl"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🧵📡 Newton + Isaac Sim: Franka Cloth (websocket)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/robot-rl/run_franka_cloth_sim_isaac_sim.py --render websocket"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/robot-rl"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🧵👻 Newton + Isaac Sim: Franka Cloth (headless)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/robot-rl/run_franka_cloth_sim_isaac_sim.py --render headless --num-frames 200"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/robot-rl"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🦾🧲 Newton + Isaac Sim: Cup Manipulator Spring-Damper (native)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/script_cup_manipulator_pendulam_with_spring_damper_newton_isaac_sim.py --render native --q1 10 --q2 -10 --stiffness 5.0 5.0 --damping 0.5 0.5"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🦾📡 Newton + Isaac Sim: Cup Manipulator Spring-Damper (websocket)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/script_cup_manipulator_pendulam_with_spring_damper_newton_isaac_sim.py --render websocket --q1 10 --q2 -10 --stiffness 5.0 5.0 --damping 0.5 0.5"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🧠 CT Isaac Sim: Computed Torque (native)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/rl/script_cup_manipulator_computed_torque_isaac_sim.py --render native --ct-kp 10000 --ct-kd 400 --duration 10.0 --traj-shape rect"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🧠 CT Isaac Sim: Computed Torque (headless)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/rl/script_cup_manipulator_computed_torque_isaac_sim.py --render headless --ct-kp 10000 --ct-kd 400 --duration 10.0 --traj-shape rect"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
             },
             "group": "build",
             "presentation": {

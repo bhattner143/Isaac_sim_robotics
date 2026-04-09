@@ -1,0 +1,14 @@
+
+
+# TRAIN
+epoch_size: 500
+image_size: 720
+lr: 1e-4
+schedule_step: 150
+momentum: 0.9
+save_step: 50
+
+
+# PREDICT
+store_pred: True
+

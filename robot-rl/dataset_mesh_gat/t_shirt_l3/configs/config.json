@@ -1,0 +1,1 @@
+{"epoch_size": 500, "image_size": 720, "lr": 0.0001, "schedule_step": 150, "momentum": 0.9, "save_step": 50, "store_pred": true}

@@ -1,0 +1,12 @@
+{
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "python.defaultInterpreterPath": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/isaacsim6/bin/python3",
+    "python.analysis.extraPaths": [
+        "isaacsim6/_build/linux-x86_64/release/kit/python/lib/python3.12",
+        "isaacsim6/_build/linux-x86_64/release/kit/python/lib/python3.12/site-packages",
+        "isaacsim6/_build/linux-x86_64/release/python_packages",
+        "isaacsim6/_build/linux-x86_64/release/exts/isaacsim.simulation_app",
+        "isaacsim6/_build/linux-x86_64/release/kit/kernel/py",
+        "isaacsim6/_build/linux-x86_64/release/kit/plugins/bindings-python"
+    ]
+}

@@ -323,7 +323,8 @@ class CupManipulatorTendon(RobotBase):
 
     # ── Cable rig ───────────────────────────────────────────────────────────
 
-    def init_cable_rig(self, urdf_path: str = None, assets_dir: str = None) -> None:
+    def init_cable_rig(self, urdf_path: str = None, assets_dir: str = None,
+                       springs_enabled: bool = True) -> None:
         """Initialize the cable rig.  Call after the plant is built."""
         if urdf_path is None:
             urdf_path = self.config.urdf_path
@@ -331,7 +332,7 @@ class CupManipulatorTendon(RobotBase):
             assets_dir = str(Path(urdf_path).parent / "assets")
         PulleyBase._urdf_origins = _parse_urdf_part_origins(urdf_path)
         PulleyBase.assets_dir    = assets_dir
-        self.rig = CableRig()
+        self.rig = CableRig(springs_enabled=springs_enabled)
 
     def compute_tangents(self, plant, plant_context) -> None:
         """Recompute all cable tangent contacts at the current joint configuration."""

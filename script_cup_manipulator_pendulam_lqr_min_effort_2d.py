@@ -89,7 +89,7 @@ from configs.robot.robot_types import (
 
 from scipy.linalg import solve_discrete_are
 
-from utils.utils import (
+from project_utils.utils import (
     build_linearized_system_2d,
     build_linearized_for_complete_system_2d,
     check_trajectory_feasibility,
@@ -99,7 +99,7 @@ from utils.utils import (
 # ============================================================================
 # VISUALIZATION (moved to viz.py)
 # ============================================================================
-from utils.viz import (
+from project_utils.viz import (
     visualize_plant_meshcat,
     add_frames_to_meshcat,
     plot_frames_top_view,
@@ -3184,7 +3184,7 @@ def main():
         meshcat = StartMeshcat()
         print(colored(f"🌐 Meshcat: {meshcat.web_url()}\n", "green", attrs=["bold"]))
         # Set Meshcat camera using user arguments
-        from utils.viz import set_meshcat_camera_spherical
+        from project_utils.viz import set_meshcat_camera_spherical
         set_meshcat_camera_spherical(
             meshcat,
             azimuth_deg=args.meshcat_azimuth,
@@ -3502,7 +3502,7 @@ def main():
         meshcat = StartMeshcat()
         print(colored(f"🌐 Meshcat: {meshcat.web_url()}\n", "green", attrs=["bold"]))
         # Set Meshcat camera using user arguments
-        from utils.viz import set_meshcat_camera_spherical
+        from project_utils.viz import set_meshcat_camera_spherical
         set_meshcat_camera_spherical(
             meshcat,
             azimuth_deg=args.meshcat_azimuth,
@@ -3591,7 +3591,7 @@ def main():
         meshcat = StartMeshcat()
         print(colored(f"🌐 Meshcat: {meshcat.web_url()}\n", "green", attrs=["bold"]))
         # Set Meshcat camera using user arguments
-        from utils.viz import set_meshcat_camera_spherical
+        from project_utils.viz import set_meshcat_camera_spherical
         set_meshcat_camera_spherical(
             meshcat,
             azimuth_deg=args.meshcat_azimuth,

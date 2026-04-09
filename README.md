@@ -35,7 +35,9 @@ This repository demonstrates various robotics applications using NVIDIA Isaac Si
 ### Software
 - **OS**: Ubuntu 20.04/22.04/24.04 (or compatible Linux distribution)
 - **NVIDIA Driver**: Latest stable driver (535+ recommended)
-- **Python**: 3.10 or 3.11 (managed by conda)
+- **Python**: 3.11 (managed by conda)
+- **Drake**: 1.51+ (robotics toolkit, pip package name: `drake`)
+- **Isaac Sim**: 5.1.0 (local build or pip install)
 
 ---
 
@@ -77,6 +79,9 @@ conda activate env_isaacsim
 
 # Install the isaacsim Python package
 pip install isaacsim
+
+# Install Drake robotics toolkit (NOT 'pydrake' — that's an unrelated package)
+pip install drake pyyaml
 ```
 
 **What This Package Does:**
@@ -86,6 +91,23 @@ pip install isaacsim
 - Works with **both** binary installation and from-source builds
 
 **Important:** This package **requires** a full Isaac Sim installation (binary or built from source) to be present on your system. The `pip install` alone does **not** include the actual simulator - you must also complete the binary installation below.
+
+### Local Build Setup (Required for SimulationApp)
+
+If you built Isaac Sim from source, you **must** source the setup script before running any Isaac Sim scripts. Without it, `SimulationApp` will be `None`:
+
+```bash
+# Activate env and source Isaac Sim local build setup
+conda activate env_isaacsim
+source ~/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh
+
+# Or use the alias (if added to ~/.bashrc):
+isaacsim-env
+```
+
+This sets `PYTHONPATH`, `LD_LIBRARY_PATH`, `CARB_APP_PATH` etc. to point at the local build's extensions.
+
+**VS Code Integration:** The `.vscode/settings.json` and `.env.isaacsim` files inject these environment variables automatically for the integrated terminal and debug configurations.
 
 ---
 
@@ -243,10 +265,25 @@ sudo reboot
 
 ### Python Import Errors
 
-**Solution**: Ensure the environment is properly activated and isaacsim package is installed:
+**`SimulationApp` is `None` / `TypeError: 'NoneType' object is not callable`:**  
+You need to source the Isaac Sim local build setup script first:
 ```bash
-conda activate env_isaacsim
-pip install isaacsim
+source ~/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh
+# Or use: isaacsim-env
+```
+This happens when `PYTHONPATH` doesn't include `exts/isaacsim.simulation_app` from the local build.
+
+**`ModuleNotFoundError: No module named 'pydrake.all'`:**  
+You have the wrong `pydrake` package installed (a Riot Games API wrapper). Fix:
+```bash
+pip uninstall pydrake -y
+pip install drake  # correct Drake robotics toolkit
+pip install pyyaml  # required dependency
+```
+
+**`ModuleNotFoundError: No module named 'yaml'`:**  
+```bash
+pip install pyyaml
 ```
 
 ### Slow Performance
@@ -263,16 +300,17 @@ pip install isaacsim
 # Activate environment
 conda activate env_isaacsim
 
-# Launch Isaac Sim
-cd ~/isaacsim
-./isaac-sim.sh
+# Source Isaac Sim local build (required for Isaac Sim scripts)
+source ~/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh
+# Or use alias: isaacsim-env
 
-# Run with a Python script
-./isaac-sim.sh --python-script /path/to/script.py
+# Run PyDrake scripts (no source needed)
+python script_cup_manipulator_pydrake.py
+python script_cup_manipulator_pendulam_with_spring_damper_pydrake.py
 
-# Run examples from this repository
-cd ~/Documents/isaac_sim_robotics
-python test_cart_pendulum_2dof.py
+# Run Isaac Sim scripts (source required)
+python script_cart_pendulum_manipulator_controller.py
+python script_cart_pendulum_manipulator_basic_run.py
 ```
 
 ## Additional Resources

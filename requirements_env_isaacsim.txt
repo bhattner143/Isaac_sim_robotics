@@ -1,9 +1,3 @@
-absl-py==2.3.1
-action-msgs==2.0.3
-action-tutorials-interfaces==0.33.9
-# Editable install with no version control (action-tutorials-py==0.33.9)
--e /home/user/ros2_jazzy/build/action_tutorials_py
-actionlib-msgs==5.3.7
 aioboto3==15.1.0
 aiobotocore==2.24.0
 aiodns==3.1.1
@@ -12,45 +6,8 @@ aiohappyeyeballs==2.4.4
 aiohttp==3.11.11
 aioitertools==0.11.0
 aiosignal==1.3.2
-alembic==1.17.2
-# Editable install with no version control (ament-clang-format==0.17.4)
--e /home/user/ros2_jazzy/build/ament_clang_format
-# Editable install with no version control (ament-clang-tidy==0.17.4)
--e /home/user/ros2_jazzy/build/ament_clang_tidy
-ament-cmake-google-benchmark==2.5.6
-ament-cmake-test==2.5.6
-# Editable install with no version control (ament-copyright==0.17.4)
--e /home/user/ros2_jazzy/build/ament_copyright
-# Editable install with no version control (ament-cppcheck==0.17.4)
--e /home/user/ros2_jazzy/build/ament_cppcheck
-# Editable install with no version control (ament-cpplint==0.17.4)
--e /home/user/ros2_jazzy/build/ament_cpplint
-# Editable install with no version control (ament-flake8==0.17.4)
--e /home/user/ros2_jazzy/build/ament_flake8
-# Editable install with no version control (ament-index-python==1.8.3)
--e /home/user/ros2_jazzy/build/ament_index_python
-# Editable install with no version control (ament-lint==0.17.4)
--e /home/user/ros2_jazzy/build/ament_lint
-# Editable install with no version control (ament-lint-cmake==0.17.4)
--e /home/user/ros2_jazzy/build/ament_lint_cmake
-# Editable install with no version control (ament-mypy==0.17.4)
--e /home/user/ros2_jazzy/build/ament_mypy
-# Editable install with no version control (ament-package==0.16.5)
--e /home/user/ros2_jazzy/build/ament_package
-# Editable install with no version control (ament-pclint==0.17.4)
--e /home/user/ros2_jazzy/build/ament_pclint
-# Editable install with no version control (ament-pep257==0.17.4)
--e /home/user/ros2_jazzy/build/ament_pep257
-# Editable install with no version control (ament-pycodestyle==0.17.4)
--e /home/user/ros2_jazzy/build/ament_pycodestyle
-# Editable install with no version control (ament-pyflakes==0.17.4)
--e /home/user/ros2_jazzy/build/ament_pyflakes
-# Editable install with no version control (ament-uncrustify==0.17.4)
--e /home/user/ros2_jazzy/build/ament_uncrustify
-# Editable install with no version control (ament-xmllint==0.17.4)
--e /home/user/ros2_jazzy/build/ament_xmllint
 annotated-types==0.7.0
-anyio==4.12.0
+anyio==4.9.0
 asteval==1.0.6
 async-timeout==5.0.1
 attrs==25.1.0
@@ -60,381 +17,118 @@ azure-identity==1.13.0
 azure-storage-blob==12.17.0
 boto3==1.39.11
 botocore==1.39.11
-builtin-interfaces==2.0.3
-# Editable install with no version control (camera-info-manager-py==5.1.7)
--e /home/user/ros2_jazzy/build/camera_info_manager_py
-certifi==2025.11.12
-cffi==2.0.0
-chardet==5.2.0
+certifi==2025.7.14
+cffi==1.17.1
+chardet==7.4.1
 charset-normalizer==3.3.2
 click==8.1.7
-colorama==0.4.6
-colorlog==6.10.1
-commentjson==0.9.0
-composition-interfaces==2.0.3
 contourpy==1.3.1
 coverage==7.4.4
 cryptography==44.0.0
 cycler==0.11.0
-# Editable install with no version control (demo-nodes-py==0.33.9)
--e /home/user/ros2_jazzy/build/demo_nodes_py
-diagnostic-msgs==5.3.7
-# Editable install with no version control (domain-coordinator==0.12.0)
--e /home/user/ros2_jazzy/build/domain_coordinator
-drake==1.49.0
-etils==1.13.0
-example-interfaces==0.12.0
-# Editable install with no version control (examples-rclpy-executors==0.19.7)
--e /home/user/ros2_jazzy/build/examples_rclpy_executors
-# Editable install with no version control (examples-rclpy-guard-conditions==0.19.7)
--e /home/user/ros2_jazzy/build/examples_rclpy_guard_conditions
-# Editable install with no version control (examples-rclpy-minimal-action-client==0.19.7)
--e /home/user/ros2_jazzy/build/examples_rclpy_minimal_action_client
-# Editable install with no version control (examples-rclpy-minimal-action-server==0.19.7)
--e /home/user/ros2_jazzy/build/examples_rclpy_minimal_action_server
-# Editable install with no version control (examples-rclpy-minimal-client==0.19.7)
--e /home/user/ros2_jazzy/build/examples_rclpy_minimal_client
-# Editable install with no version control (examples-rclpy-minimal-publisher==0.19.7)
--e /home/user/ros2_jazzy/build/examples_rclpy_minimal_publisher
-# Editable install with no version control (examples-rclpy-minimal-service==0.19.7)
--e /home/user/ros2_jazzy/build/examples_rclpy_minimal_service
-# Editable install with no version control (examples-rclpy-minimal-subscriber==0.19.7)
--e /home/user/ros2_jazzy/build/examples_rclpy_minimal_subscriber
-# Editable install with no version control (examples-rclpy-pointcloud-publisher==0.19.7)
--e /home/user/ros2_jazzy/build/examples_rclpy_pointcloud_publisher
-# Editable install with no version control (examples-tf2-py==0.36.19)
--e /home/user/ros2_jazzy/build/examples_tf2_py
+drake==1.51.1
 fastapi==0.115.7
 filelock==3.13.1
 fonttools==4.55.3
 frozenlist==1.5.0
 fsspec==2024.6.1
-geometry-msgs==5.3.7
-glfw==2.10.0
-greenlet==3.3.0
 gunicorn==23.0.0
 h11==0.16.0
 httptools==0.6.1
 idna==3.10
 idna-ssl==1.1.0
 imageio==2.37.0
-importlib_resources==6.5.2
-interactive-markers==2.5.5
 isaacsim==5.1.0.0
-isaacsim-app==5.1.0.0
-isaacsim-asset==5.1.0.0
-isaacsim-benchmark==5.1.0.0
-isaacsim-code-editor==5.1.0.0
-isaacsim-core==5.1.0.0
-isaacsim-cortex==5.1.0.0
-isaacsim-example==5.1.0.0
-isaacsim-extscache-kit==5.1.0.0
-isaacsim-extscache-kit-sdk==5.1.0.0
-isaacsim-extscache-physics==5.1.0.0
-isaacsim-gui==5.1.0.0
 isaacsim-kernel==5.1.0.0
-isaacsim-replicator==5.1.0.0
-isaacsim-rl==5.1.0.0
-isaacsim-robot==5.1.0.0
-isaacsim-robot-motion==5.1.0.0
-isaacsim-robot-setup==5.1.0.0
-isaacsim-ros1==5.1.0.0
-isaacsim-ros2==5.1.0.0
-isaacsim-sensor==5.1.0.0
-isaacsim-storage==5.1.0.0
-isaacsim-template==5.1.0.0
-isaacsim-test==5.1.0.0
-isaacsim-utils==5.1.0.0
 isodate==0.6.1
 Jinja2==3.1.6
 jmespath==1.0.1
-joblib==1.5.3
 kiwisolver==1.4.4
-lark-parser==0.7.8
-laser-geometry==2.7.2
-# Editable install with no version control (launch==3.4.10)
--e /home/user/ros2_jazzy/build/launch
-# Editable install with no version control (launch-pytest==3.4.10)
--e /home/user/ros2_jazzy/build/launch_pytest
-# Editable install with no version control (launch-ros==0.26.11)
--e /home/user/ros2_jazzy/build/launch_ros
-# Editable install with no version control (launch-testing==3.4.10)
--e /home/user/ros2_jazzy/build/launch_testing
-# Editable install with no version control (launch-testing-examples==0.19.7)
--e /home/user/ros2_jazzy/build/launch_testing_examples
-# Editable install with no version control (launch-testing-ros==0.26.11)
--e /home/user/ros2_jazzy/build/launch_testing_ros
-# Editable install with no version control (launch-xml==3.4.10)
--e /home/user/ros2_jazzy/build/launch_xml
-# Editable install with no version control (launch-yaml==3.4.10)
--e /home/user/ros2_jazzy/build/launch_yaml
-lifecycle-msgs==2.0.3
-# Editable install with no version control (lifecycle-py==0.33.9)
--e /home/user/ros2_jazzy/build/lifecycle_py
 llvmlite==0.42.0
-logging-demo==0.33.9
-loguru==0.7.3
-lttngpy==8.2.5
-lxml==6.0.2
-Mako==1.3.10
-map-msgs==2.4.1
-MarkupSafe==2.1.3
+lxml==5.4.0
+MarkupSafe==3.0.2
 matplotlib==3.10.3
-message-filters==4.11.11
+Mosek==11.1.2
 mpmath==1.3.0
 msal==1.27.0
 msal-extensions==1.0.0
-mujoco==3.4.0
 multidict==6.1.0
-narwhals==2.15.0
-nav-msgs==5.3.7
 nest-asyncio==1.5.6
-networkx==3.6.1
+networkx==3.3
 numba==0.59.1
 numpy==1.26.0
 numpy-stl==3.2.0
-nvidia-cublas-cu12==12.6.4.1
-nvidia-cuda-cupti-cu12==12.6.80
-nvidia-cuda-nvrtc-cu12==12.6.77
-nvidia-cuda-runtime-cu12==12.6.77
-nvidia-cudnn-cu12==9.5.1.17
-nvidia-cufft-cu12==11.3.0.4
-nvidia-cufile-cu12==1.11.1.6
-nvidia-curand-cu12==10.3.7.77
-nvidia-cusolver-cu12==11.7.1.2
-nvidia-cusparse-cu12==12.5.4.2
+nvidia-cublas-cu12==12.8.3.14
+nvidia-cuda-cupti-cu12==12.8.57
+nvidia-cuda-nvrtc-cu12==12.8.61
+nvidia-cuda-runtime-cu12==12.8.57
+nvidia-cudnn-cu12==9.7.1.26
+nvidia-cufft-cu12==11.3.3.41
+nvidia-cufile-cu12==1.13.0.11
+nvidia-curand-cu12==10.3.9.55
+nvidia-cusolver-cu12==11.7.2.55
+nvidia-cusparse-cu12==12.5.7.53
 nvidia-cusparselt-cu12==0.6.3
+nvidia-lula-no-cuda==0.10.1
 nvidia-nccl-cu12==2.26.2
-nvidia-nvjitlink-cu12==12.6.85
-nvidia-nvtx-cu12==12.6.77
+nvidia-nvjitlink-cu12==12.8.61
+nvidia-nvtx-cu12==12.8.55
+nvidia-srl-base==1.3.0
+nvidia-srl-math==1.0.0
+nvidia-srl-usd==2.0.0
+nvidia-srl-usd-to-urdf==1.0.2
 oauthlib==3.2.2
-onshape-robotics-toolkit==0.2.1
-onshape_to_robot==1.7.9
 opencv-python-headless==4.11.0.86
-optuna==4.6.0
 osqp==0.6.7.post3
-# Editable install with no version control (osrf-pycommon==2.1.7)
--e /home/user/ros2_jazzy/build/osrf_pycommon
 packaging==23.0
-pandas==2.3.3
-pendulum-msgs==0.33.9
 pillow==11.3.0
 Pint==0.20.1
-plotly==6.5.1
-point-cloud-transport-py==4.0.7
+pip==26.0.1
 portalocker==2.7.0
 propcache==0.2.1
 psutil==5.9.8
-pyarrow==22.0.0
 pycares==4.8.0
-pycparser==2.23
-pydantic==2.11.10
+pycparser==2.22
+pydantic==2.11.7
 pydantic_core==2.33.2
-pydrake==0.2.1
-PyJWT==2.10.1
-PyMuPDF==1.26.7
-PyOpenGL==3.1.10
-pyparsing==3.0.9
+pydot==4.0.1
+pyparsing==3.3.2
 pyperclip==1.8.0
 pypng==0.20220715.0
 python-dateutil==2.9.0.post0
-python-dotenv==1.2.1
 python-multipart==0.0.20
-python-qt-binding==2.2.2
 python-utils==3.9.1
 pytz==2024.1
 PyYAML==6.0.2
 qdldl==0.1.7.post5
 qrcode==7.4.2
-qt-dotgraph==2.7.5
-qt-gui==2.7.5
-qt-gui-cpp==2.7.5
-qt-gui-py-common==2.7.5
-# Editable install with no version control (quality-of-service-demo-py==0.33.9)
--e /home/user/ros2_jazzy/build/quality_of_service_demo_py
-rcl-interfaces==2.0.3
-rclpy==7.1.10
-rcutils==6.7.5
-regex==2025.11.3
 requests==2.32.3
 requests-oauthlib==1.3.1
-resource-retriever==3.4.4
-rmw-dds-common==3.1.1
-# Editable install with no version control (ros2action==0.32.9)
--e /home/user/ros2_jazzy/build/ros2action
-# Editable install with no version control (ros2bag==0.26.9)
--e /home/user/ros2_jazzy/build/ros2bag
-ros2bag-mcap-cli==0.26.9
-ros2bag-sqlite3-cli==0.26.9
-# Editable install with no version control (ros2cli==0.32.9)
--e /home/user/ros2_jazzy/build/ros2cli
-ros2cli-test-interfaces==0.32.9
-# Editable install with no version control (ros2component==0.32.9)
--e /home/user/ros2_jazzy/build/ros2component
-# Editable install with no version control (ros2doctor==0.32.9)
--e /home/user/ros2_jazzy/build/ros2doctor
-# Editable install with no version control (ros2interface==0.32.9)
--e /home/user/ros2_jazzy/build/ros2interface
-# Editable install with no version control (ros2launch==0.26.11)
--e /home/user/ros2_jazzy/build/ros2launch
-# Editable install with no version control (ros2lifecycle==0.32.9)
--e /home/user/ros2_jazzy/build/ros2lifecycle
-# Editable install with no version control (ros2multicast==0.32.9)
--e /home/user/ros2_jazzy/build/ros2multicast
-# Editable install with no version control (ros2node==0.32.9)
--e /home/user/ros2_jazzy/build/ros2node
-# Editable install with no version control (ros2param==0.32.9)
--e /home/user/ros2_jazzy/build/ros2param
-# Editable install with no version control (ros2pkg==0.32.9)
--e /home/user/ros2_jazzy/build/ros2pkg
-# Editable install with no version control (ros2plugin==5.4.4)
--e /home/user/ros2_jazzy/build/ros2plugin
-# Editable install with no version control (ros2run==0.32.9)
--e /home/user/ros2_jazzy/build/ros2run
-# Editable install with no version control (ros2service==0.32.9)
--e /home/user/ros2_jazzy/build/ros2service
-# Editable install with no version control (ros2test==0.6.0)
--e /home/user/ros2_jazzy/build/ros2test
-# Editable install with no version control (ros2topic==0.32.9)
--e /home/user/ros2_jazzy/build/ros2topic
-# Editable install with no version control (ros2trace==8.2.5)
--e /home/user/ros2_jazzy/build/ros2trace
-# Editable install with no version control (rosbag2-examples-py==0.26.9)
--e /home/user/ros2_jazzy/build/rosbag2_examples_py
-rosbag2-interfaces==0.26.9
-rosbag2-performance-benchmarking-msgs==0.26.9
-rosbag2-py==0.26.9
-rosbag2-test-common==0.26.9
-rosbag2-test-msgdefs==0.26.9
-rosgraph-msgs==2.0.3
-rosidl-adapter==4.6.7
-# Editable install with no version control (rosidl-cli==4.6.7)
--e /home/user/ros2_jazzy/build/rosidl_cli
-rosidl-cmake==4.6.7
-rosidl-generator-c==4.6.7
-rosidl-generator-cpp==4.6.7
-rosidl-generator-dds-idl==0.11.1
-rosidl-generator-py==0.22.2
-rosidl-generator-rs==0.4.11
-rosidl-generator-type-description==4.6.7
-rosidl-parser==4.6.7
-# Editable install with no version control (rosidl-pycommon==4.6.7)
--e /home/user/ros2_jazzy/build/rosidl_pycommon
-# Editable install with no version control (rosidl-runtime-py==0.13.1)
--e /home/user/ros2_jazzy/build/rosidl_runtime_py
-rosidl-typesupport-c==3.2.2
-rosidl-typesupport-cpp==3.2.2
-rosidl-typesupport-fastrtps-c==3.6.3
-rosidl-typesupport-fastrtps-cpp==3.6.3
-rosidl-typesupport-introspection-c==4.6.7
-rosidl-typesupport-introspection-cpp==4.6.7
-# Editable install with no version control (rpyutils==0.4.2)
--e /home/user/ros2_jazzy/build/rpyutils
-# Editable install with no version control (rqt==1.6.3)
--e /home/user/ros2_jazzy/build/rqt
-# Editable install with no version control (rqt-action==2.2.1)
--e /home/user/ros2_jazzy/build/rqt_action/src
-# Editable install with no version control (rqt-bag==1.5.6)
--e /home/user/ros2_jazzy/build/rqt_bag/src
-# Editable install with no version control (rqt-bag-plugins==1.5.6)
--e /home/user/ros2_jazzy/build/rqt_bag_plugins/src
-# Editable install with no version control (rqt-console==2.2.2)
--e /home/user/ros2_jazzy/build/rqt_console/src
-# Editable install with no version control (rqt-graph==1.5.6)
--e /home/user/ros2_jazzy/build/rqt_graph/src
-# Editable install with no version control (rqt-gui==1.6.3)
--e /home/user/ros2_jazzy/build/rqt_gui/src
-# Editable install with no version control (rqt-gui-py==1.6.3)
--e /home/user/ros2_jazzy/build/rqt_gui_py/src
-# Editable install with no version control (rqt-msg==1.5.2)
--e /home/user/ros2_jazzy/build/rqt_msg/src
-# Editable install with no version control (rqt-plot==1.4.5)
--e /home/user/ros2_jazzy/build/rqt_plot/src
-# Editable install with no version control (rqt-publisher==1.7.3)
--e /home/user/ros2_jazzy/build/rqt_publisher/src
-rqt-py-common==1.6.3
-# Editable install with no version control (rqt-py-console==1.2.3)
--e /home/user/ros2_jazzy/build/rqt_py_console/src
-# Editable install with no version control (rqt-reconfigure==1.6.3)
--e /home/user/ros2_jazzy/build/rqt_reconfigure/src
-# Editable install with no version control (rqt-service-caller==1.2.2)
--e /home/user/ros2_jazzy/build/rqt_service_caller/src
-# Editable install with no version control (rqt-shell==1.2.3)
--e /home/user/ros2_jazzy/build/rqt_shell/src
-# Editable install with no version control (rqt-srv==1.2.3)
--e /home/user/ros2_jazzy/build/rqt_srv/src
-# Editable install with no version control (rqt-topic==1.7.5)
--e /home/user/ros2_jazzy/build/rqt_topic/src
 Rtree==1.3.0
 s3transfer==0.13.1
-scikit-learn==1.8.0
 scipy==1.15.3
-sensor-msgs==5.3.7
-# Editable install with no version control (sensor-msgs-py==5.3.7)
--e /home/user/ros2_jazzy/build/sensor_msgs_py
 sentry-sdk==2.29.1
-service-msgs==2.0.3
-shape-msgs==5.3.7
+setuptools==82.0.1
+setuptools-scm==8.2.0
 six==1.17.0
-SQLAlchemy==2.0.45
-# Editable install with no version control (sros2==0.13.6)
--e /home/user/ros2_jazzy/build/sros2
+sniffio==1.3.1
 starlette==0.45.3
-statistics-msgs==2.0.3
-std-msgs==5.3.7
-std-srvs==5.3.7
-stereo-msgs==5.3.7
 sympy==1.13.3
 termcolor==3.3.0
-# Editable install with no version control (test-launch-ros==0.26.11)
--e /home/user/ros2_jazzy/build/test_launch_ros
-test-msgs==2.0.3
-# Editable install with no version control (test-ros2trace==8.2.5)
--e /home/user/ros2_jazzy/build/test_ros2trace
-# Editable install with no version control (test-tracetools-launch==8.2.5)
--e /home/user/ros2_jazzy/build/test_tracetools_launch
-tf2-geometry-msgs==0.36.19
-tf2-kdl==0.36.19
-tf2-msgs==0.36.19
-tf2-py==0.36.19
-# Editable install with no version control (tf2-ros-py==0.36.19)
--e /home/user/ros2_jazzy/build/tf2_ros_py
-tf2-sensor-msgs==0.36.19
-# Editable install with no version control (tf2-tools==0.36.19)
--e /home/user/ros2_jazzy/build/tf2_tools
-threadpoolctl==3.6.0
 toml==0.10.2
-# Editable install with no version control (topic-monitor==0.33.9)
--e /home/user/ros2_jazzy/build/topic_monitor
-torch==2.7.0
-torchaudio==2.7.0
-torchvision==0.22.0
+torch==2.7.0+cu128
+torchaudio==2.7.0+cu128
+torchvision==0.22.0+cu128
 tornado==6.5.1
-tqdm==4.67.1
-# Editable install with no version control (tracetools-launch==8.2.5)
--e /home/user/ros2_jazzy/build/tracetools_launch
-# Editable install with no version control (tracetools-read==8.2.5)
--e /home/user/ros2_jazzy/build/tracetools_read
-# Editable install with no version control (tracetools-test==8.2.5)
--e /home/user/ros2_jazzy/build/tracetools_test
-# Editable install with no version control (tracetools-trace==8.2.5)
--e /home/user/ros2_jazzy/build/tracetools_trace
-trajectory-msgs==5.3.7
-transforms3d==0.4.2
 trimesh==4.5.1
 triton==3.3.0
-turtlesim==1.8.3
-type-description-interfaces==2.0.3
-typing-inspection==0.4.2
 typing_extensions==4.12.2
-tzdata==2025.3
-unique-identifier-msgs==2.5.0
-urllib3==2.6.2
+typing-inspection==0.4.1
+urllib3==2.5.0
 usd-core==25.11
 uvicorn==0.29.0
-visualization-msgs==5.3.7
 watchdog==4.0.0
 websockets==12.0
+wheel==0.46.3
 wrapt==1.16.0
 yarl==1.18.3
-zipp==3.23.0

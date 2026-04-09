@@ -1,6 +1,7 @@
 {
     "version": "0.2.0",
     "configurations": [
+        
         {
             "name": "🤖 LQR: Both Cart + Manip",
             "type": "debugpy",
@@ -47,6 +48,62 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "🦾 Isaac 5.1: Cart-Pendulum Controller",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/script_cart_pendulum_manipulator_controller.py",
+            "python": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
+            "args": [
+                "--mode", "coupled-motion"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env.isaacsim"
+        },
+        {
+            "name": "🦾 Isaac 6.0: Cart-Pendulum Controller",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/script_cart_pendulum_manipulator_controller.py",
+            "python": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim6/bin/python",
+            "args": [
+                "--mode", "coupled-motion"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env.isaacsim6"
+        },
+        {
+            "name": "👁️ Isaac 5.1: Scene Viz (spring-damper)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/script_cup_manipulator_pendulam_with_spring_damper_scene_viz_isaac_sim.py",
+            "python": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
+            "args": [
+                "--render", "native"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env.isaacsim"
+        },
+        {
+            "name": "👁️ Isaac 6.0: Scene Viz (spring-damper)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/script_cup_manipulator_pendulam_with_spring_damper_scene_viz_isaac_sim.py",
+            "python": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim6/bin/python",
+            "args": [
+                "--render", "native"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env.isaacsim6"
         }
     ]
 }

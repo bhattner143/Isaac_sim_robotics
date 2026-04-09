@@ -51,7 +51,7 @@ from termcolor import colored
 
 from robots.cup_manipulator import RobotBase
 from configs.robot.robot_types import ManipulatorConfig, JointConfig, Pose
-from utils.viz_cables import (
+from project_utils.viz_cables import (
     print_cable_routing_points,
     _Xw,
     draw_cables,

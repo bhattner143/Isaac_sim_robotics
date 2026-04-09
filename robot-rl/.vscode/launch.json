@@ -1,0 +1,40 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Franka Cloth (GUI)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/franka_cloth_manipulation.py",
+            "python": "${workspaceFolder}/isaacsim6/_build/linux-x86_64/release/kit/python/bin/python3",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env.isaacsim"
+        },
+        {
+            "name": "Franka Cloth (Headless Test)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/franka_cloth_manipulation.py",
+            "args": ["--headless", "--test"],
+            "python": "${workspaceFolder}/isaacsim6/_build/linux-x86_64/release/kit/python/bin/python3",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env.isaacsim"
+        },
+        {
+            "name": "Franka Cloth (Headless, 5 Episodes)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/franka_cloth_manipulation.py",
+            "args": ["--headless", "--episodes", "5"],
+            "python": "${workspaceFolder}/isaacsim6/_build/linux-x86_64/release/kit/python/bin/python3",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env.isaacsim"
+        }
+    ]
+}

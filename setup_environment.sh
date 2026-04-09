@@ -50,10 +50,12 @@ pip install \
     opencv-python-headless==4.11.0.86 \
     numpy-stl==3.2.0
 
-# ── 4. PyDrake (Drake robotics toolkit) ─────────────────────────────────────
+# ── 4. Drake robotics toolkit (provides pydrake module) ─────────────────────
+#    NOTE: The pip package is 'drake', NOT 'pydrake' (which is an unrelated package)
 echo ""
-echo "Installing PyDrake..."
-pip install pydrake
+echo "Installing Drake robotics toolkit..."
+pip install drake
+pip install pyyaml  # required by pydrake.common.yaml
 
 # ── 5. PyTorch (CUDA — for RL and learning, optional) ───────────────────────
 echo ""
@@ -65,6 +67,20 @@ echo ""
 echo "Installing USD..."
 pip install usd-core==25.11
 
+# ── 7. Isaac Sim local build setup ──────────────────────────────────────────
+# If you have a local Isaac Sim build (not just pip isaacsim), source
+# the setup script to expose SimulationApp and all extensions.
+ISAAC_SIM_BUILD="$HOME/Documents/isaacsim/_build/linux-x86_64/release"
+if [ -f "$ISAAC_SIM_BUILD/setup_conda_env.sh" ]; then
+    echo ""
+    echo "Found local Isaac Sim build at: $ISAAC_SIM_BUILD"
+    echo "Source this before running Isaac Sim scripts:"
+    echo "  source $ISAAC_SIM_BUILD/setup_conda_env.sh"
+    echo ""
+    echo "Or use the 'isaacsim-env' alias (added to ~/.bashrc):"
+    echo "  isaacsim-env"
+fi
+
 # ── Done ─────────────────────────────────────────────────────────────────────
 echo ""
 echo "============================================================"
@@ -73,9 +89,13 @@ echo ""
 echo "  Activate with:"
 echo "    conda activate $ENV_NAME"
 echo ""
-echo "  Verify Isaac Sim:"
-echo "    python -c 'import isaacsim; print(isaacsim.__version__)'"
+echo "  For Isaac Sim scripts, also run:"
+echo "    source ~/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh"
+echo "    (or just type: isaacsim-env)"
 echo ""
-echo "  Verify PyDrake:"
-echo "    python -c 'import pydrake; print(pydrake.__version__)'"
+echo "  Verify Isaac Sim:"
+echo "    python -c 'from isaacsim import SimulationApp; print(SimulationApp)'"
+echo ""
+echo "  Verify Drake (PyDrake):"
+echo "    python -c 'from pydrake.all import MultibodyPlant; print(\"Drake OK\")'"
 echo "============================================================"

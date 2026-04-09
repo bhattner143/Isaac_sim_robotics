@@ -30,6 +30,10 @@ from isaacsim.asset.importer.urdf import _urdf
 from isaacsim.core.experimental.prims import Articulation
 from pxr import UsdGeom, UsdPhysics, Gf, Usd, Vt
 
+# ArticulationView provides batched dynamics queries (M, C, g) needed for
+# computed-torque control and future GPU-parallel RL.
+from omni.isaac.core.articulations import ArticulationView
+
 # Re-use the same config types from PyDrake side
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -100,6 +104,14 @@ class CupManipulatorTendonIsaac:
     EE_FRAME_NAME = "tendon_ee"
     EE_OFFSET     = EE_XYZ_LINK2
 
+    # Pulley geometry — HTD 5M 60T belt: 60 teeth × 5 mm pitch / 2π
+    PULLEY_RADIUS = 60 * 0.005 / (2 * np.pi)  # ≈ 0.047746 m
+
+    @property
+    def r_p(self) -> float:
+        """Pulley pitch radius [m]."""
+        return self.PULLEY_RADIUS
+
     def __init__(self, config: ManipulatorConfig, enable_visualization: bool = True):
         self.config = config
         self.name = config.name
@@ -122,7 +134,53 @@ class CupManipulatorTendonIsaac:
         self._ee_xformable = None
         self._ee_prim_path: Optional[str] = None
 
+        # ArticulationView for dynamics queries (M, C, g) — set by initialize_dynamics_view()
+        self._art_view = None
+        self._av_jt1_idx: Optional[int] = None
+        self._av_jt2_idx: Optional[int] = None
+
     # ── URDF → USD → Articulation ───────────────────────────────────────────
+
+    @staticmethod
+    def _resolve_package_paths(urdf_path: str) -> str:
+        """Resolve ``package://assets/`` → absolute paths and fix USD-invalid names.
+
+        Isaac Sim's URDF importer sometimes fails to resolve package://
+        relative to the URDF file directory.  Also, USD prim names must
+        not start with a digit (SdfPath restriction), so we prefix any
+        mesh filenames/material names that start with a digit with ``m_``.
+        """
+        import re
+        urdf_abs = str(Path(urdf_path).resolve())
+        assets_dir = str(Path(urdf_abs).parent / "assets")
+        with open(urdf_abs) as f:
+            xml_text = f.read()
+        # Resolve package:// to absolute paths
+        resolved = xml_text.replace("package://assets/", assets_dir + "/")
+        # Prefix digit-starting filenames in mesh tags: 623zz.obj → m_623zz.obj
+        # We only rename the filename portion, and create a symlink for the asset
+        digit_meshes = set(re.findall(r'filename="[^"]*?/(\d[^"/]*)"', resolved))
+        for mesh_name in digit_meshes:
+            new_name = "m_" + mesh_name
+            # Create symlink so the file can be found
+            src = os.path.join(assets_dir, mesh_name)
+            dst = os.path.join(assets_dir, new_name)
+            if os.path.exists(src) and not os.path.exists(dst):
+                os.symlink(src, dst)
+            resolved = resolved.replace(mesh_name, new_name)
+        # Prefix digit-starting material/name attributes: name="623zz..." → name="m_623zz..."
+        resolved = re.sub(
+            r'name="(\d)',
+            r'name="m_\1',
+            resolved,
+        )
+        # Write resolved URDF
+        resolved_path = str(Path(urdf_abs).with_name(
+            Path(urdf_abs).stem + "_resolved.urdf"
+        ))
+        with open(resolved_path, "w") as f:
+            f.write(resolved)
+        return resolved_path
 
     def prepare_usd(self) -> None:
         """Convert URDF → USD file on disk.
@@ -137,11 +195,14 @@ class CupManipulatorTendonIsaac:
         if not Path(urdf_path).exists():
             raise FileNotFoundError(f"URDF not found: {urdf_path}")
 
+        # Resolve package:// paths to absolute paths for the URDF importer
+        resolved_urdf = self._resolve_package_paths(urdf_path)
+
         usd_path = str(Path(urdf_path).with_suffix('.usd'))
         if os.path.exists(usd_path):
             os.remove(usd_path)  # fresh conversion
 
-        if not import_urdf_to_usd(urdf_path, usd_path):
+        if not import_urdf_to_usd(resolved_urdf, usd_path):
             raise RuntimeError(f"URDF→USD conversion failed for {urdf_path}")
         self._usd_path = usd_path
         # Bake URDF colors into the USD sublayer files on disk before
@@ -354,7 +415,13 @@ class CupManipulatorTendonIsaac:
         print(colored(f"✓ Joint properties configured", 'green'))
 
     def add_joint_actuators(self):
-        """Ensure joints have DriveAPI applied (counterpart of add_joint_actuators)."""
+        """Ensure joints have DriveAPI applied (counterpart of add_joint_actuators).
+
+        For effort-based (computed-torque) control:
+        - drive type = "force"
+        - stiffness = 0  (no position spring fighting our efforts)
+        - maxForce = large  (URDF effort limit is often too low)
+        """
         self.actuator_names = [self.ACT1_NAME, self.ACT2_NAME]
         for jt_name in self.joint_names:
             jt_prim_path = self._find_joint_prim_path(jt_name)
@@ -364,8 +431,13 @@ class CupManipulatorTendonIsaac:
                     UsdPhysics.DriveAPI.Apply(jt_prim, "angular")
                 drive = UsdPhysics.DriveAPI.Get(jt_prim, "angular")
                 drive.GetTypeAttr().Set("force")
+                # Zero stiffness — no position spring for effort control
+                drive.GetStiffnessAttr().Set(0.0)
+                # Large maxForce — don't let URDF effort limit cap our torques
+                drive.GetMaxForceAttr().Set(1e4)
         print(colored(
-            f"✓ Actuators configured: {self.ACT1_NAME}, {self.ACT2_NAME}",
+            f"✓ Actuators configured (stiffness=0, maxForce=1e4): "
+            f"{self.ACT1_NAME}, {self.ACT2_NAME}",
             'green'
         ))
 
@@ -392,6 +464,79 @@ class CupManipulatorTendonIsaac:
         ))
         for i, name in enumerate(dof_names):
             print(colored(f"  [{i}] {name}", 'cyan'))
+
+    def initialize_dynamics_view(self, world) -> None:
+        """Initialize ArticulationView for dynamics queries (M, C, g).
+
+        Must be called AFTER world.reset() and initialize_state().
+        The ArticulationView wraps the same prim but provides batched
+        dynamics queries that the experimental Articulation API lacks.
+
+        Parameters
+        ----------
+        world : omni.isaac.core.World
+            The simulation world instance.
+        """
+        self._art_view = ArticulationView(
+            prim_paths_expr=self.prim_path,
+            name=f"{self.name}_dynamics_view",
+        )
+        world.scene.add(self._art_view)
+        world.reset()  # re-initialize physics to register the view
+        self._art_view.initialize(world.physics_sim_view)
+
+        # Resolve DOF indices in the ArticulationView
+        av_dof_names = list(self._art_view.dof_names)
+        # Flatten if nested
+        if av_dof_names and isinstance(av_dof_names[0], (list, tuple)):
+            av_dof_names = list(av_dof_names[0])
+        self._av_jt1_idx = None
+        self._av_jt2_idx = None
+        for i, name in enumerate(av_dof_names):
+            if self.JT1_NAME in name:
+                self._av_jt1_idx = i
+            if self.JT2_NAME in name:
+                self._av_jt2_idx = i
+
+        if self._av_jt1_idx is None or self._av_jt2_idx is None:
+            raise RuntimeError(
+                f"Dynamics view: joints [{self.JT1_NAME}, {self.JT2_NAME}] "
+                f"not found in ArticulationView DOFs: {av_dof_names}"
+            )
+        print(colored(
+            f"✓ Dynamics ArticulationView initialized: "
+            f"jt1_idx={self._av_jt1_idx}, jt2_idx={self._av_jt2_idx}",
+            'green',
+        ))
+
+    # ── Dynamics Queries (for Computed Torque) ────────────────────────────
+
+    def get_mass_matrix(self) -> np.ndarray:
+        """Return 2×2 mass matrix M(q) for the two actuated joints.
+
+        Uses ArticulationView.get_mass_matrices() which returns the full
+        (num_envs, ndof, ndof) tensor, then extracts the 2×2 block.
+        """
+        M_full = self._art_view.get_mass_matrices()  # (num_envs, ndof, ndof)
+        M = M_full[0]  # first environment
+        idx = [self._av_jt1_idx, self._av_jt2_idx]
+        return np.array(M[np.ix_(idx, idx)])
+
+    def get_coriolis_and_centrifugal(self) -> np.ndarray:
+        """Return C(q,q̇)·q̇ vector (2,) for the two actuated joints."""
+        h_c_full = self._art_view.get_coriolis_and_centrifugal_forces()  # (num_envs, ndof)
+        h_c = h_c_full[0]
+        return np.array([h_c[self._av_jt1_idx], h_c[self._av_jt2_idx]])
+
+    def get_generalized_gravity(self) -> np.ndarray:
+        """Return g(q) gravity vector (2,) for the two actuated joints."""
+        g_full = self._art_view.get_generalized_gravity_forces()  # (num_envs, ndof)
+        g = g_full[0]
+        return np.array([g[self._av_jt1_idx], g[self._av_jt2_idx]])
+
+    def get_bias_forces(self) -> np.ndarray:
+        """Return h(q, q̇) = C(q,q̇)·q̇ + g(q) — bias term for CT control."""
+        return self.get_coriolis_and_centrifugal() + self.get_generalized_gravity()
 
     def set_initial_positions(self):
         """Set initial joint angles from config.
@@ -566,6 +711,22 @@ class CupManipulatorTendonIsaac:
                 velocities[self._joint_index[joint_name]] = float(velocity)
         self.robot.set_dof_velocities(velocities)
 
+    # ── Torque application ────────────────────────────────────────────────
+
+    def set_joint_torques(self, torques: np.ndarray) -> None:
+        """Apply joint torques [tau1, tau2] in user order (q1, q2).
+
+        Uses the ArticulationView effort API for direct torque control.
+        """
+        if self._art_view is None:
+            raise RuntimeError("Call initialize_dynamics_view() first.")
+        # Build full-DOF effort vector (zeros for fixed/passive DOFs)
+        n_dof = self._art_view.num_dof
+        efforts = np.zeros((1, n_dof))
+        efforts[0, self._av_jt1_idx] = torques[0]
+        efforts[0, self._av_jt2_idx] = torques[1]
+        self._art_view.set_joint_efforts(efforts)
+
     # ── Inverse kinematics (analytical 2R) ──────────────────────────────────
 
     def compute_ik_analytical(
@@ -636,6 +797,55 @@ class CupManipulatorTendonIsaac:
             if prim.GetName() == joint_name:
                 return str(prim.GetPath())
         return None
+
+
+# ============================================================================
+# MODULE-LEVEL HELPER FUNCTIONS (pure NumPy, no class needed)
+# ============================================================================
+
+def solve_2r_ik(
+    L1: float, L2: float,
+    target_xy: np.ndarray,
+    q_seed: np.ndarray,
+) -> tuple:
+    """Analytical 2R planar IK. Returns (q_solution, success)."""
+    x, y = float(target_xy[0]), float(target_xy[1])
+    d2 = x * x + y * y
+    d = math.sqrt(d2)
+    if d > L1 + L2 - 1e-6 or d < abs(L1 - L2) + 1e-6:
+        return q_seed.copy(), False
+    cos_q2 = (d2 - L1**2 - L2**2) / (2.0 * L1 * L2)
+    cos_q2 = np.clip(cos_q2, -1.0, 1.0)
+    sin_q2 = math.sqrt(1.0 - cos_q2**2)
+    q2_a = math.atan2(sin_q2, cos_q2)
+    q2_b = math.atan2(-sin_q2, cos_q2)
+    q2 = q2_a if abs(q2_a - q_seed[1]) < abs(q2_b - q_seed[1]) else q2_b
+    q1 = math.atan2(y, x) - math.atan2(
+        L2 * math.sin(q2), L1 + L2 * math.cos(q2))
+    return np.array([q1, q2]), True
+
+
+def forward_kinematics_2r(
+    L1: float, L2: float, q1: float, q2: float,
+) -> np.ndarray:
+    """2R planar FK → [x, y]."""
+    x = L1 * math.cos(q1) + L2 * math.cos(q1 + q2)
+    y = L1 * math.sin(q1) + L2 * math.sin(q1 + q2)
+    return np.array([x, y])
+
+
+def analytical_jacobian_2r(
+    L1: float, L2: float, q1: float, q2: float,
+) -> np.ndarray:
+    """2×2 analytical Jacobian for 2R planar arm."""
+    s1 = math.sin(q1)
+    c1 = math.cos(q1)
+    s12 = math.sin(q1 + q2)
+    c12 = math.cos(q1 + q2)
+    return np.array([
+        [-L1 * s1 - L2 * s12, -L2 * s12],
+        [ L1 * c1 + L2 * c12,  L2 * c12],
+    ])
 
 
 # ============================================================================
