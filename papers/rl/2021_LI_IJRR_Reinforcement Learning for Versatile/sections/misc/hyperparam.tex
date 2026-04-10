@@ -1,0 +1,17 @@
+\begin{table}[!]
+\scriptsize
+\centering
+\caption{Hyperparameters used in PPO Training. These are consistent among different locomotion skills.}
+\label{tab:hyperparam_ppo}
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Hyperparameter} & \textbf{Value} \\ \hline
+PPO iteration batch size & 65536 \\ \hline
+PPO clip rate & 0.2 \\ \hline
+Optimization step size (both actor and critic) & $1e^{-4}$ \\ \hline
+Optimization batch size & 8192 \\ \hline
+Optimization epochs & 2 \\ \hline
+Discount factor ($\gamma$) & 0.98 \\ \hline
+GAE smoothing factor ($\lambda$) & 0.95 \\ \hline
+\end{tabular}
+\end{table}

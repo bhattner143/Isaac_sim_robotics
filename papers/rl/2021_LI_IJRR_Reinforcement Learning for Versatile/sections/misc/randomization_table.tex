@@ -1,0 +1,30 @@
+\begin{table}[]
+\scriptsize
+\caption{The range of dynamics randomization. Introducing simulated external perturbations to the robot's base or incorporating variable terrain is optional but only recommended after the robot has learned to handle general dynamics randomization. However, for highly dynamic skills like aperiodic jumping, external perturbations may not enhance robustness and could stop the robot from learning meaningful maneuvers.}
+\centering
+\label{tab:randomization}
+\begin{tabular}{cc}
+\hline
+\textbf{Parameters}              & \textbf{Range}                    \\ \hline
+\multicolumn{2}{c}{\textbf{Dynamics Randomization (General)}}        \\ \hline
+Ground Friction Coefficient             & {[}0.3, 3.0{]}                    \\
+Joint Damping Ratio              & {[}0.3, 4.0{]} Nms/rad            \\
+Spring Stiffness                 & {[}0.8, 1.2{]} $\times$ default   \\
+Link Mass                        & {[}0.5, 1.5{]} $\times$ default   \\
+Link Inertia                     & {[}0.7, 1.3{]} $\times$ default   \\
+Pelvis (Root) CoM Position   & {[}-0.1, 0.1{]} m in $q_{x,y,z}$  \\
+Other Link CoM Position      & {[}-0.05, 0.05{]} m + default     \\
+Motor PD Gains                   & {[}0.7, 1.3{]} $\times$ default   \\
+Motor Position Noise Mean        & {[}-0.002, 0.002{]} rad           \\
+Motor Velocity Noise Mean        & {[}-0.01, 0.01{]} rad/s           \\
+Gyro Rotation Noise              & {[}-0.002, 0.002{]} rad           \\
+Linear Velocity Estimation Error & {[}-0.04, 0.04{]} m/s             \\
+Communication Delay              & {[}0, 0.025{]} s                \\ \hline
+\multicolumn{2}{c}{\textbf{External Perturbation (Optional)}}        \\ \hline
+Force \& Torque                  & {[}-20, 20{]} N \& {[}-5, 5{]} Nm \\
+Elapsed Time Interval (Walking)            & {[}0.1, 3.0{]} s                \\ 
+Elapsed Time Interval (Running)            & {[}0.1, 1.0{]} s                \\ \hline
+\multicolumn{2}{c}{\textbf{Randomized Terrain (Optional)}}           \\ \hline
+Terrain Type                     & Waved, Slopes, Stairs, Steps      \\ \hline
+\end{tabular}
+\end{table}

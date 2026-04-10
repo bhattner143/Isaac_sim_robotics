@@ -1,0 +1,74 @@
+\section{Introduction}\label{sec:intro}
+Human environments are diverse and predominantly tailored for bipedal locomotion, and therefore the overarching goal in the bipedal robot community has been to develop robots capable of reliably operating within these environments.
+This paper aims to address one of the bottlenecks in achieving this objective: developing a solution for the control of diverse, agile, and robust legged locomotion skills, such as walking, running, and jumping for high-dimensional human-sized bipedal robots. 
+
+Although research on bipedal robot locomotion has been ongoing for decades (e.g., \cite{Raibert-1984-15614}), developing a general framework capable of achieving robust control for diverse locomotion skills remains an open problem. 
+The challenges arise from the complexity of the underactuated dynamics of bipedal robots and the distinct contact plan associated with each locomotion skill.  
+First, given the floating base and resulting underactuated dynamics, bipedal robots rely on contacts with the environment in order to move. 
+The consistent (and hard-to-model) contacts lead to discontinuities in the trajectories, requiring contact mode planning and stabilization during mode transitions.
+However, due to the high dimensionality and nonlinearity of bipedal robots, leveraging its full-order dynamics model for motion planning and control is computationally expensive and intractable for online applications.
+Second, the diverse nature of bipedal locomotion skills, whether periodic or aperiodic, presents significant challenges to the development of a simple and general framework.
+For instance, running, unlike walking, introduces more complexity due to a repeated flight phase where the robot is underactuated. % and needs to regulate angular momentum and impact forces upon landing. 
+For periodic skills such as walking or running, we can achieve \textit{orbital stability} \citep{westervelt2003hybrid}, by allowing for small corrections over multiple gait cycles. 
+However, aperiodic motions, such as jumping, lack this inherent stability, which again poses additional challenges due to the requirement of finite-time stability~\citep{goswami2009planar}, which is further compounded by a large impact force upon landing. 
+
+In this work, we address the aforementioned challenges by leveraging reinforcement learning (RL) to create controllers for robots that feature high-dimensional, nonlinear dynamics in the real world. 
+These controllers can leverage the robot's proprioceptive information to adapt to the robot's uncertain dynamics, which may be potentially time-varying due to wear and tear.
+These controllers are able to generalize to new environments and settings, exhibiting robust behaviors to unexpected scenarios by utilizing the agility of bipedal robots.
+Furthermore, our framework provides a general recipe for reproducing a variety of bipedal locomotion skills.
+
+
+
+
+
+\subsection{Objective of this Work}
+The high-dimensionality and nonlinearity of a torque-controlled human-sized bipedal robot may at first seem like a daunting obstacle for developing effective controllers.
+However, these characteristics can also be advantageous by enabling complex agile maneuvers through the robot's high-dimensional dynamics.
+Our objective is to develop a general control framework for such bipedal robots to unlock their full potential. 
+The goal of this framework is to enable a range of dynamic bipedal locomotion skills in the real world with a limited prescription on the resulting maneuvers. The skills we consider are shown in Fig.~\ref{fig:intro}, which include robust standing, walking, running, and jumping. These skills can also be used to perform a diverse repertoire of tasks, including walking at various velocities and heights, running at different speeds and directions, and jumping to various targets, all while maintaining robustness during real-world deployment.
+To achieve this, we leverage model-free RL, which allows the robot to learn through trial-and-error on the system's full-order dynamics.
+In addition to real-world experiments, we also provide an in-depth analysis of the benefits of using RL for legged locomotion control and offer a detailed study into how to effectively structure the learning process to harness these advantages, such as adaptivity and robustness. 
+
+
+
+
+
+\subsection{Terminology}
+First, we will establish the terminology we will use to describe various aspects of \emph{legged locomotion} in this paper. 
+The term \textit{skill} is used to characterize a particular type of locomotion, which includes behaviors such as walking, running, and jumping. 
+The robot can then leverage those skills to perform various \textit{tasks}, which are defined by a given goal. 
+For example, these tasks can include following different target velocities while walking, turning at different angles while running, or leaping towards different target locations while jumping. We use the term \textit{versatile policy} to describe a control policy that can accomplish various tasks using one or more locomotion skills.
+
+\subsection{Contributions}
+This work advances the field of legged locomotion control for bipedal robots, with the following key contributions:
+
+\textbf{Development of a new framework for general bipedal locomotion control:} 
+We introduce a general RL framework for bipedal robots that is effective across a wide range of locomotion skills, spanning periodic skills such as walking and running, aperiodic skills such as jumping, and stationary skills such as standing. The resulting controllers can be directly deployed on a real robot without any additional tuning or training on the physical system. 
+
+
+% \textbf{Novel RL-based control policy architecture:} 
+\textbf{Novel design choices for RL-based control policy:} We present a new dual-history architecture for non-recurrent RL policies, which integrates both the long and short input/output (I/O) history with explicit length of the robot, for RL-based control. When combined with the proposed training strategy that trains the base policy with the short history jointly with the long history encoder, this architecture demonstrates state-of-the-art performance in learning dynamic bipedal locomotion control, offering consistent benefits across various locomotion skills, which are validated in both simulation and real world experiments, as detailed in Sec.~\ref{sec:policy_structure} and discussed in Sec.~\ref{subsec:dual_history_advantages}. 
+
+
+\textbf{Empirically investigating adaptivity in RL controllers:} In the control theory community, there have been notable efforts in bridging adaptive control and RL, like~\cite{annaswamy2023adaptive}. In this work, we conduct a detailed empirical study to investigate the adaptivity of the control policy developed through RL. We show that the adaptivity from RL includes not only time-invariant shifts in the dynamics but also time-variant changes like contact events. We validated this not only in simulation, as described in Sec.~\ref{subsec:adaptivity}, but also by several real-world (zero-shot-transferred) experiments such as in-place walking with minimal drift and targeted jumping using a bipedal robot as detailed in Sec.~\ref{sec:experiments}.
+
+
+
+\textbf{Improving robustness in RL controllers:} Our study introduces a new dimension of robustness in RL-based control policies. Beyond the commonly-used dynamics randomization in robotics~\citep{peng2018sim}, we demonstrate that \emph{task randomization}, which trains the policy on a wide range of tasks, significantly enhances robustness by enabling task generalization. This approach, distinct from dynamics randomization, provides the robot with disturbance compliance, which is demonstrated in both simulation and real-world experiments in Sec.~\ref{sec:multi_skill}.
+
+
+\textbf{Extensive real-world validation and demonstrations of novel bipedal locomotion capabilities:}
+Our system is able to reproduce a wide variety of locomotion skills using Cassie, a human-sized bipedal robot, in the real world as detailed in Sec.~\ref{sec:experiments}. Cassie can track varying commands with negligible tracking errors and significant robustness to unexpected disturbances, including walking (Figs.~\ref{fig:variable_cmd},~\ref{subfig:push_recovery_rl}), running (Figs.~\ref{fig:400run},~\ref{fig:run_perturb}), and jumping (Figs.~\ref{fig:jump_snapshot_timeline},~\ref{fig:jump_perturb}). Additionally, we demonstrate novel capabilities for bipedal robots, such as robust standing recovery using different skills (Fig.~\ref{fig:robust_standing}), robust walking (Figs.~\ref{fig:walking_terrain},~\ref{fig:walking_compliance}) with control performance being consistent over a long time frame (Fig.~\ref{fig:variable_cmd}), completing a 400-meter dash using a running controller (Fig.~\ref{fig:400run}), and performing diverse bipedal jumps (Figs.~\ref{fig:jump_snapshot_timeline},~\ref{fig:various_jump}) including standing long and high jumps (Fig.~\ref{fig:jump_snapshot_timeline}). The
+experiments are shown in the supplementary videos provided in Table~\ref{tab:video_list}.
+
+This paper builds on our preliminary work presented at Robotics: Science and System~\citep{li2023robust}, which focused on bipedal jumping. We expanded our RL framework to encompass a broader range of skills, proving its applicability to both aperiodic skills like jumping and periodic skills such as walking and running. The effectiveness of this framework is consistently demonstrated across these skills through extensive real-world experiments. Furthermore, the added ablation study and benchmarks further explore the design decisions in our framework, shedding light on the crucial elements that enhance adaptivity and robustness in RL-based locomotion control.
+
+We hope this work could serve as a milestone towards creating robust, versatile, and dynamic bipedal locomotion control in the real world, providing insights and guidance for future applications of RL for legged locomotion control and other complex systems.  
+
+\input{sections/misc/video_table.tex}
+
+
+
+
+
+

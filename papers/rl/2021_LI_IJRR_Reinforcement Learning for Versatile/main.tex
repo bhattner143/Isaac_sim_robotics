@@ -1,0 +1,88 @@
+\pdfoutput=1
+\documentclass[letterpaper, 10 pt, journal, twoside]{ieeetran}
+\let\labelindent\relax
+\usepackage[numbers]{natbib}
+\usepackage{url}
+\usepackage{enumitem}
+\usepackage[font={small}]{caption}
+\usepackage{subcaption}
+\usepackage{textcomp}
+\usepackage{mathtools, nccmath}
+\usepackage{graphicx}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{tikz}
+\usepackage{arydshln}
+\usepackage{multirow}
+\usepackage{bm}
+\usepackage{epstopdf}
+\usepackage{balance}
+\setcounter{secnumdepth}{3}
+\usepackage{etoolbox}
+
+\newtheorem{prop}{Proposition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{remark}{Remark}
+\newtheorem{definition}{Definition}
+\newcommand*\circled[1]{\tikz[baseline=(char.base)]{
+            \node[shape=circle,draw,inner sep=0.25pt] (char) {#1};}}
+
+
+
+
+\newcommand{\insertfig}{%
+  \makebox[0pt]{\includegraphics[width=\linewidth]{figures/intro_allthree.pdf}\label{fig:intro}} \\
+  \small{Fig.~1: Cassie, a torque-controlled human-sized bipedal robot, performs various locomotion skills by using controllers developed through our framework. We present a unified RL framework that is able to train robust and agile controllers for a diverse range of highly dynamic skills, such as (a) walking, (b) running, and (c) jumping. The control policies developed by the proposed dual-history policy architecture and training system can adapt to changes in the robot dynamics, thereby enabling the direct transfer of learned policies to a real robot after training only in simulation without further real-world tuning. More experimental results can be best seen in the supplementary videos which are summarized in Table~I.
+  }
+}
+
+
+\makeatletter
+\apptocmd{\@maketitle}{~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\insertfig}{}{} % hack to make the caption aligned to left
+\makeatother
+\makeatletter
+\newcommand\notsotiny{\@setfontsize\notsotiny\@vipt\@viiipt}
+\makeatother
+
+
+
+\begin{document}
+\title{Reinforcement Learning for Versatile, Dynamic, and Robust Bipedal Locomotion Control}
+\author{Zhongyu Li$^1$, Xue Bin Peng$^2$, Pieter Abbeel$^1$, Sergey Levine$^1$, Glen Berseth$^{3,4}$, Koushil Sreenath$^1$\\
+\normalsize{$^1$University of California Berkeley~~~~$^2$Simon Fraser University~~~~$^3$Universit\'e de Montr\'eal~~~~$^4$Mila – Quebec AI Institute}
+\thanks{Email: zhongyu\_li@berkeley.edu; koushils@berkeley.edu}
+}
+
+\maketitle
+\input{sections/abstract.tex}
+\input{sections/introduction.tex}
+\input{sections/review.tex}
+\input{sections/overview.tex}
+\input{sections/background.tex}
+\input{sections/controller.tex}
+\input{sections/training.tex}
+\input{sections/policy_structure.tex}
+\input{sections/adaptivity.tex}
+\input{sections/multi_skill.tex}
+\input{sections/experiment.tex}
+\input{sections/discussion.tex}
+\input{sections/conclusion.tex}
+
+
+
+\section*{Acknowledgments}
+This work was in part supported by NSF Grant CMMI-1944722, The AI Institute, and Canadian Institute for Advanced Research (CIFAR).
+The authors thank Xuxin Cheng for the help in the initial development of this work. The authors thank Daniel Wong for the design of running shoes for Cassie. The authors would also like to thank Bike Zhang, Jiaming Chen, Lizhi Yang, Xiaoyu Huang, Yiming Ni, Yufeng Chi, Akshay Thirugnanam, Yuanzhuo Li, Dr. Jun Zeng, and Dr. Ayush Agrawal for their help with the experiments. 
+
+\balance
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+\pagebreak
+
+\input{sections/appendix.tex}
+
+\end{document}

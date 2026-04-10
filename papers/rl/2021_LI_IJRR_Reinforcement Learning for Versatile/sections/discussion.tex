@@ -1,0 +1,127 @@
+\section{How to Train Your Bipedal Robot: A Discussion}\label{sec:discussion}
+After detailing our methodology, analysis, and experiments on robust, dynamic, and versatile control policies for a spectrum of bipedal locomotion skills via RL, we now turn to a discussion of the key lessons learned throughout this development. 
+Our objective is to provide valuable and generally applicable insights that could steer future research in the use of RL for locomotion control in complex dynamic systems, particularly in bipedal and humanoid robots.
+
+The following section is structured as follows: (1) We first discuss the importance of utilizing the robot's I/O history, and how to effectively use it (by using a dual-history policy to learn direct adaptive control) in Sec.~\ref{subsec:diss_history}. (2) In Sec.~\ref{subsec:diss_robustness}, we show that while properly using robot's I/O history empowers the controller with adaptivity, the robustness of the controller can be improved by task randomization. (3) In Sec.~\ref{subsec:diss_general}, we provide several “bonuses" that RL can bring forth, such as motion inference and optimization, as well as contact planning. We wrap up this discussion with a small debate on general versus task-specific control policies. 
+
+\subsection{How to Use the Robot's History?}\label{subsec:diss_history}
+\paragraph{Robot's Long I/O History is Important}
+In existing RL-based locomotion control literature, there is no convergence on how to use the robot's history: short or long, history of only state feedback or of state and action pair. 
+Our research demonstrates the clear benefits of providing a long history of both robot's inputs and outputs, especially in the case of high-dimensional highly nonlinear systems like bipedal robots.  
+This approach is grounded in the robot's full-order dynamics \eqref{eq:full_order_dynamics}, suggesting that a sequence of I/O history can be more informative in identifying the dynamic system to control.
+This assertion is supported by our ablation study (Fig.~\ref{fig:dynrand_three}), where policies incorporating a longer I/O history outperformed those with shorter history or states-only long history in handling randomized dynamics parameters in realizing different locomotion skills. 
+Additionally, analyzing the latent embedding from the long I/O history encoder (Fig.~\ref{fig:latent_vis}) revealed that it could implicitly capture information such as contact events, external forces, and changes in system dynamics parameters, and more.
+This finding is intriguing, as it shows that optimization by model-free RL, with a proper utilization of robot's I/O, can learn to extract vital information for dynamic control. 
+
+
+\paragraph{Short History Complements Long History}\label{subsec:dual_history_advantages}
+While a long I/O history can improve control performance, its effectiveness is limited without proper formulation. 
+Our ablation study (Fig.~\ref{fig:dynrand_three}) shows that using only a long I/O history does not outperform policies with a short history, aligned with the report from \cite{singh2023learning}.
+We discover that to fully exploit the benefits of long history, it's effective to provide a short I/O history directly to the base MLP, bypassing the long history encoder, termed as \emph{dual history} approach.
+This modification markedly improves learning performance across various locomotion skills (Fig.~\ref{fig:dynrand_three}) and outperforms other approaches in real-world experiments (Fig.~\ref{fig:bm_realworld}). 
+While long history has been introduced in RL-based locomotion control in prior work, the complementary use of short history is a novel approach. 
+Many previous efforts lack this addition to the base policy, potentially overlooking a critical element that is the \emph{recent} I/O history for controlling complex robots in \textit{real time}. 
+When only using long I/O history, recent events may become obfuscated in the latent embedding after the long-history encoding, and this can be addressed by incorporating an \emph{explicit} short I/O history alongside the long-history encoder. 
+This explicit recent I/O feedback can also help with the non-Markovian property when we opt to use a long robot I/O history.
+Furthermore, while the long history is better for system identification and state estimation, the short-term features are better for denoising the high-frequency estimates from the long-history encoder.
+Although this approach might not be essential for simpler systems like stationary robotic arms~\citep{peng2018sim} or quadrupedal robots~\citep{lee2020learning} as observed in prior studies, for more complex dynamic systems like the bipedal robots in our work, the benefits of this dual history approach are clearly pronounced.
+Additionally, while the dual-history approach could boost the learning using non-recurrent policy that is trained to leverage the history sequence with an explicit length, we found it is hard to aid the training of recurrent policy in terms of the bipedal locomotion control. Details are presented in Appendix~\ref{appendix:lstm_tcn}.
+
+
+
+\paragraph{Are We Learning A Robust or Adaptive Controller?}
+Adaptivity in RL is not a new concept, and there are notable efforts from the control theory community to bridge adaptive control with RL, like~\cite{annaswamy2023adaptive}. 
+On the other hand, many studies on RL-based locomotion control have demonstrated robustness in real-world applications, attributed by some to the robustness of the policy trained with dynamics randomization and by others to the adaptivity in RL.  
+Many in this community are curious about which attribute actually plays a critical role. 
+This curiosity motivated us to conduct an extensive empirical study in this work to investigate both the adaptivity and robustness of the RL policy. 
+We show that in the RL-based controller, these two aspects can originate from different sources: adaptivity can arise from the proper use of the robot's I/O history, while robustness can be introduced by task randomization. 
+Dynamics randomization occupies a middle ground: in order to be robust to different dynamics, the policy can be trained with randomized dynamics to learn to effectively utilize the history (if provided) in adapting to the dynamics shifts. 
+
+
+
+
+\paragraph{What Do We Want to Learn, Direct or Indirect Adaptive Control?}
+Recognizing the value of properly employing long I/O history, we provide a discussion about an alternative method: using the history to estimate selected environmental parameters for control. 
+This approach, known as the Teacher-Student (TS) training strategy~\citep{lee2020learning} or RMA~\citep{kumar2021rma}, can be seen as an RL-version of \emph{indirect} adaptive control. 
+However, for real-time dynamic locomotion control, our findings suggest that a \emph{direct} adaptive control method, which integrates long I/O history directly into the controller without explicitly estimating model parameters, yields better performance, supported by the results in Sec.~\ref{sec:policy_structure}.
+The underlying reason behind this becomes clearer when considering the capabilities of the history encoder (Fig.~\ref{fig:latent_vis}) obtained by our proposed method. 
+It not only adapts to time-invariant modeling parameters but also captures crucial information deemed important by the robot, like time-variant contact events. 
+This contrasts with TS or RMA methods, which are limited to estimating modeling parameters and might encounter estimation errors or failures in challenging tasks like bipedal running (Fig.~\ref{fig:dynrand_three}). 
+Compared to TS and RMA which separate training for the base control policy and history encoder, end-to-end training without expert supervision gives the robot more freedom to explore and exploit useful information. 
+
+
+
+\subsection{Versatility Improves Robustness}\label{subsec:diss_robustness}
+Besides the adaptivity brought by the proper use of the robot's long I/O history, another key benefit of using RL for locomotion control is robustness. 
+When policies are trained with \emph{dynamics randomization}, they can stay robust to environmental changes, like during the sim-to-real transfer. 
+However, our research reveals that the robustness of RL policies extends beyond this, with \emph{task randomization} emerging as another key strategy.
+
+Our ablation study (Fig.~\ref{fig:bm_single_sim}) supports this. 
+While dynamics randomization expands the range of trajectories a robot is trained on within a specific task, it doesn't dramatically alter the training distribution. 
+For instance, extensive randomization in a standing policy doesn't equip the robot with new locomotion skills like walking or jumping for recovery (Figs.~\ref{fig:robust_standing},~\ref{fig:robust_standing_run_jump}). 
+Task randomization, however, imparts robustness differently. 
+By training across diverse tasks, such as varying walking speeds or jumping targets, the robot learns to generalize and exploit these learned tasks, aiding recovery even without specific dynamics randomization, as demonstrated in Fig.~\ref{fig:bm_single_sim}.
+Interestingly, the robot's response to disturbances differs based on the source of robustness. 
+With extensive dynamics randomization, it tends to adhere to the commanded task, whereas using a versatile policy trained with task randomization, it shows more \emph{compliance} to external disturbances, deviating from its given command.
+
+Although some previous RL-based locomotion research unintentionally achieved versatile policies and attributed their success of robustness primarily to dynamics randomization, our study distinguishes the sources of robustness. 
+We recommend additional task randomization in future RL applications for robust locomotion control.
+
+
+
+
+
+\subsection{Exploring What RL Can Enable for Legged Locomotion}\label{subsec:diss_general}
+In this subsection, we aim to offer broader insights into the potential (and limitations) of RL for controlling complex dynamic systems. 
+
+
+\paragraph{Trajectory Optimization and Motion Inference}
+By using RL for controlling high-dimensional bipedal robots, reference motions are often used to achieve natural gaits, as demonstrated in our work. 
+While there are prior attempts using trajectory optimization based on robot dynamics model to obtain a reference motion, like~\cite{bogdanovic2022model} and the walking policy in this work, we also show that such a “pre-optimization" could be unnecessary for RL-based control.
+For example, our work with bipedal running and jumping, using only kinematically feasible retargeted human motion and animation, shows that robots can learn to stay close to reference motions and maintain dynamic stability through trial and error, as long as the action space is not corrupted by the added reference motion (as the residual approach in Fig.~\ref{fig:dynrand_three}).
+This indicates the ability of RL to jointly learn trajectory optimization and real-time control. 
+Furthermore, our work demonstrates that RL also enables robots to infer motions beyond the provided references. 
+For example, the robot can learn to vary running or jumping maneuvers from single reference motions, achieved by task randomization and goal-conditioned policy.
+However, using a single reference motion has its limits. 
+For instance, if we only provide a reference forward jumping motion, it becomes challenging for the robot to learn a backward jump based solely on task completion reward. 
+Therefore, selecting an effective single reference motion may require it to be relatively unbiased, such as the jumping-in-place motion used in this work.
+
+
+
+\paragraph{Motion (and Contact) Planning}
+In our real-world experiments (Sec.~\ref{sec:experiments}), we observed numerous instances where the robot demonstrated the ability to perform a sequence of varied motions with varying contact sequences for recovery. 
+For example, when perturbed from a standing position, the robot exerted a variety of different walking gaits in order to return to a stand, all without requiring an online motion or contact sequence scheduler (Fig.~\ref{subfig:stand_recover_by_walk}). 
+This reflects a longer-horizon motion planning capability, distinct from its real-time locomotion control occurring at 33 Hz.
+This is further supported by jumping experiments like Figs.~\ref{subfig:jump_flat_multiaxes},~\ref{subfig:jump_inplace_perturb}. 
+These observations indicate that RL policies can autonomously develop contact sequences for different tasks during deployment when provided with the unvaried reference motion.
+This capability also suggests that specifying a contact sequence to the policy can be less advantageous, as the (legged) robot will have less freedom to explore more optimal contact patterns for enhanced stability and robustness.
+\emph{In short, the advantage of utilizing RL for legged locomotion control where contact is crucial is in the ability to control without explicitly considering contact.} 
+
+
+
+
+
+\paragraph{The Possibility of Learning a Unified Control Policy} 
+Given that all the policies developed in this work use the same control architecture and training procedure, it is possible to obtain an unified policy for different skills.
+This possibility is further supported given that in all dynamic walking, running, and jumping policies, we have combined them with a distinguished skill: the stationary standing. 
+For example, the policy that realized the transition among running and standing skills shows the potential to learn different skills (such as slower speed walking) within this spectrum.   
+Adding the standing skill with the other is realized by using a carefully designed MDP and an additional substage for the new skill training as introduced in Appendix~\ref{appendix:transition_to_stand}. 
+However, if using this relatively simple method, it is challenging to keep adding different new skills as the robot may suffer from the catastrophic forgetting problem. 
+
+Using an adversarial motion prior (AMP) as in~\cite{peng2021amp} could potentially help to obtain a unified control policy for diverse locomotion skills without specifically tuning motion tracking rewards. However, applying AMP to aggressive real-world bipedal locomotion remains a challenge. GAN-styled methods are prone to mode-collapse, and can struggle to imitate aggressive motions that occur over brief periods. The actor policy can “cheat" the discriminator by mimicking a parts of a jump, without performing the motion in its entirety. This is further compounded by the large sim-to-real gap for bipedal robots.  
+
+Another potential way to develop such a unified policy can be done by continual RL to keep learning new skills like \cite{liu2023continual} or imitation learning from offline datasets collected by skill-specific policies like \cite{huang2024diffuseloco}. 
+However, increasing the robustness and overcoming the sim-to-real gap using these methods for bipedal robots is still an open question. A practical way could be learning to transition among different pre-trained skill-specific policies, such as \cite{lee2018composing}. 
+In either way, this proposed method for skill-specific policies in this work serves as a solid starting point.
+
+
+
+
+\paragraph{Generalization versus Precision}
+In our research, we have showcased many examples of RL's generalization capabilities in dynamic locomotion control, spanning various tasks and dynamics parameters. 
+While control precision has not been a primary focus, it becomes evident in skills like bipedal jumping. 
+In these tasks, the robot successfully jumps to specified targets (Sec.~\ref{subsec:exp_jumping}), requiring precise translational velocity at take-off for accurate landing. 
+However, attaining perfect precise control using one policy that handles a wide variety of tasks and dynamics variations remains an open question. For example, it is challenging to track a specific sagittal velocity with minor errors in fast-running tasks in the real world (Fig.~\ref{subfig:run_100_log}).
+Yet, the benefits of a generalized locomotion control policy, like foundation models, lie in providing a solid starting point for further fine-tuning on specific downstream tasks, like precision control.
+On the flip side, a controller optimized for precision might be restricted to the finetuned task.
+We present these trade-offs for readers to consider, highlighting the balance between generalization and precision in RL-based dynamic locomotion control.

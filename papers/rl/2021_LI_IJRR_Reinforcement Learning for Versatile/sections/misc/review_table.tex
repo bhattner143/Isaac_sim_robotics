@@ -1,0 +1,45 @@
+\begin{table*}[]
+\centering
+\tiny
+\caption{Comparison of our work with prior studies on implementing real-world locomotion controllers for the bipedal robot Cassie. Our work provides an introduction to a general control framework to realize diverse periodic and aperiodic bipedal locomotion skills including robust walking and standing, fast running, and versatile jumping in the real world.}
+\label{tab:cassie_work}
+\begin{tabular}{ccccccc}
+\hline
+\multicolumn{7}{c}{\scriptsize{\textbf{Walking Skill}}} \\ \hline
+\textbf{Previous Literature} & \textbf{Implementation} & \textbf{Variable Velocity} & \textbf{Variable Height} & \textbf{Consistency over Time} & \textbf{Consistent Perturbation} & \textbf{Change of Terrain} \\ \hline
+\cite{gong2019feedback}& HZD, Model: Full-order & \textbf{Yes} & No & No & No & No \\
+\cite{li2020animated,yang2022bayesian} & HZD, Model: Full-order & \textbf{Yes} & \textbf{Yes} & No & No & No \\
+\cite{reher2021control} & HZD, Model: Full-order & \textbf{Yes} & No & Not demonstrated & Not demonstrated & No \\
+\cite{xie2020learning} & RL, Model-free & \textbf{Yes} & No & Not demonstrated & Not demonstrated & No \\
+\cite{siekmann2020learning} & RL, Model-free & Forward walking only & No & Not demonstrated & Not demonstrated & No \\
+\cite{li2021reinforcement} & RL, Model-free & \textbf{Yes} & \textbf{Yes} & Not demonstrated & \textbf{Yes (untrained)} & No \\
+\cite{siekmann2021sim} & RL, Model-free & \textbf{Yes} & No & Not demonstrated & Not demonstrated & \textbf{Yes (small, trained)} \\
+\cite{siekmann2021blind} & RL, Model-free & \textbf{Yes} & No & Not demonstrated & Not demonstrated & \textbf{Yes (trained)} \\
+\cite{dao2022sim} & RL, Model-free & Forward walking only & No & Not demonstrated & \textbf{Yes (trained)} & No \\
+\cite{yu2022dynamic} & RL, Model-free & Sharp turn only & No & Not demonstrated & Not demonstrated & No \\
+\cite{gong2022zero} & OC, Model: ALIP & \textbf{Yes} & No & Not demonstrated & Not demonstrated & \textbf{Yes (unmodeled)} \\
+\cite{xiong20223} & OC, Model: H-LIP & \textbf{Yes} & \textbf{Yes} & Not demonstrated & Not demonstrated & \textbf{Yes (small, unmodeled)} \\
+\cite{agrawal2022model} & OC, Model: Centrodial & \textbf{Yes} & No & Not demonstrated & Not demonstrated & \textbf{Yes (small, unmodeled)} \\
+\textbf{Ours} & RL, Model-free & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes (untrained)} & \textbf{Yes (small, untrained)} \\ \hline
+% \multicolumn{7}{l}{some note}   \\ \hline
+\multicolumn{7}{c}{\scriptsize{\textbf{Running Skill}}} \\ \hline
+\textbf{Previous Literature} & \textbf{Implementation} & \textbf{Controlled Velocity} & \textbf{Transition from/to Standing} & \textbf{100m Dash Finish Time} & \textbf{400m Dash Finish Time} & \textbf{Uneven Terrain} \\ \hline
+\cite{siekmann2021sim} & RL$\ddagger$ & No & Not demonstrated & Not demonstrated & Not demonstrated & Yes (small, trained) \\
+\cite{yang2023impact} & OC$\ddagger$ & \textbf{Yes} & Not demonstrated & Not demonstrated & Not demonstrated & No \\
+\cite{crowley2023optimizing} & RL with noticeable flight phase & No & Only transit from standing & \textbf{24.73s} & Not capable of turning & No \\
+\textbf{Ours} & RL with noticeable flight phase & \textbf{Yes, w/ sharp turn (untrained)} & \textbf{Yes} & 27.06s & \textbf{2 min 34 sec} & \textbf{Yes (large, trained)} \\
+\multicolumn{7}{l}{$\ddagger$ Although being termed as running, the demonstrated flight phase, foot clearance during flight, and speed in the real world are not comparable to the rest of the work listed here.}   \\ \hline
+\multicolumn{7}{c}{\scriptsize{\textbf{Jumping Skill}}} \\ \hline
+\multirow{2}{*}{\textbf{Previous Literature}} & \multirow{2}{*}{\textbf{Implementation}} & \multirow{2}{*}{\textbf{Targeted Landing}} & \multirow{2}{*}{\textbf{Apex Foot Clearance}} & \multirow{2}{*}{\textbf{Longest Flight Phase}} & \multicolumn{2}{c}{\textbf{Maximum Leap Distance}} \\ \cline{6-7} 
+ &  &  &  &  & \multicolumn{2}{c}{\textbf{(Forward, Backward, Lateral, Turning, Elevation)}} \\ \hline
+\cite{xiong2018bipedal} & Aperiodic Hop by OC$\ddagger$ & No & 0.18m & 0.42s & \multicolumn{2}{c}{In-place} \\ %(0.5m*, 0, 0, 0, 0)
+\cite{yang2021impact} & Aperiodic Hop by OC$\ddagger$ & No & 0.15m* & 0.33s* & \multicolumn{2}{c}{In-place} \\ %(0.3m*, 0, 0, 0, 0)
+\cite{siekmann2021sim} & Periodic Hop by RL$\ddagger$ & No & 0.16m* & 0.33s* & \multicolumn{2}{c}{Tracking a forward speed} \\ %(0.5m*, 0, 0, 0, 0.15m*)
+\cite{yang2023impact} & Aperiodic Jump by OC & No & 0.42m* & 0.33s* & \multicolumn{2}{c}{(0, 0, 0, 0, 0.41m)} \\
+\textbf{Ours} & Aperiodic Jump by RL & \textbf{Yes} & \textbf{0.47m} & \textbf{0.58s} & \multicolumn{2}{c}{\textbf{(1.4m, -0.3m, $\pm$0.3m, $\pm$55$^\circ$, 0.44m)}} \\
+\multicolumn{7}{l}{$\ddagger$ The demonstrated flight phase, apex foot clearance, and the resulting impacts upon landing are not comparable with the rest, so we use “hop" to distinguish from a “jump".} \\ 
+\multicolumn{7}{l}{* Not provided in the paper and the listed value is roughly estimated from the accompanying video.} \\
+% \multicolumn{7}{l}{$\dagger$ Using separate task-specific control policies.}\\
+\hline
+\end{tabular}
+\end{table*}

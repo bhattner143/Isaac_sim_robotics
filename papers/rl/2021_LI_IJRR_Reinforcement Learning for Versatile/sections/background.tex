@@ -1,0 +1,75 @@
+\section{Background}\label{sec:background}
+In this section, we introduce Cassie, our main experimental platform, along with its dynamics model. 
+We then frame the bipedal locomotion control problem as a Partially Observable Markov Decision Process (POMDP), laying the groundwork for training policies with RL. We also emphasize the importance of incorporating the robot's input and output (I/O) history in feedback control from both model-based control and model-free RL perspectives.
+
+
+\subsection{Cassie Robot Model}
+\subsubsection{Floating-base Coordinates}\label{subsec:states}
+As illustrated in Fig.~\ref{fig:controller}, Cassie is a human-sized bipedal robot, standing at a height of 1.1 m and weighing 31 kg.
+On both the Left and Right (L/R) legs are 7 joints, consisting of the abduction $q_1$, rotation $q_2$, thigh $q_3$, knee $q_4$, shin $q_5$, tarsus $q_6$, and toe pitch $q_7$. This results in a total of 14 joints ($\mathbf{q}_j \in \mathbb{R}^{14}$).
+Among those, $q^{L/R}_{1,2,3,4,7}$ are \emph{actuated} by motors (which is denoted as $\mathbf{q}_m \in \mathbb{R}^{10}$), while the shin and tarsus joints ($q^{L/R}_{5,6}$) are \emph{passive} and connected by leaf springs, as annotated in Fig.~\ref{fig:controller}. 
+Cassie has a floating base $\mathbf{q}_b$ with 6 Degree-of-Freedoms~(DoFs) which are translational positions $q_{x,y,z}$ and rotational positions $q_{\phi,\theta,\psi}$. 
+The generalized coordinates of the full system $\mathbf{q}$ can be represented as $\mathbf{q}=[\mathbf{q}_b, \mathbf{q}_j] \in \mathbb{R}^{20}$. 
+\paragraph{The observable states}
+Since the robot is a second-order mechanical system, we can denote the robot's states as its generalized coordinates $\mathbf{q}$ and their time derivatives $\dot{\mathbf{q}}$. 
+However, there is only a part of states we can \emph{reliably} measure or estimate using the robot's onboard sensors. 
+We denote observable states as $\mathbf{o}\in \mathbb{R}^{26}$ and it contains motors positions and their velocities ($\mathbf{q}_m$, $\dot{\mathbf{q}}_m$), which can be respectively measured and estimated by the joint encoders. The base orientation ${q}_{\phi,\theta,\psi}$ can be measured by an IMU, and base linear velocity $\dot{q}_{x,y,z}$ can be estimated by an EKF as used in~\citep{xie2020learning}.
+
+
+
+\subsubsection{Full-order Dynamics Model}~\label{subsec:full_order_dynamics}
+Cassie has a floating-base, a total of $n=20$ DoFs, and $n_a=10$ actuated joints, Its dynamics equation can be obtained by the Euler-Lagrange method:
+\begin{equation}\label{eq:full_order_dynamics}
+    \mathbf{M}(\mathbf{q})\ddot{\mathbf{q}} + \mathbf{C}(\mathbf{q}, \dot{\mathbf{q}})\dot{\mathbf{q}} + \mathbf{G}(\mathbf{q}) = \mathbf{B}\bm{\tau} + \bm{\kappa}_{\text{sp}}(\mathbf{q},\dot{\mathbf{q}}) + \bm{\zeta}_{\text{ext}},
+\end{equation}\noindent 
+where $\mathbf{M} \in \mathbb{R}^{n\times n}$, $\mathbf{C} \in \mathbb{R}^{n\times n}$, and $\mathbf{G}\in \mathbb{R}^{n}$ denote the generalized mass matrix, centrifugal and Coriolis matrix, and generalized gravity, respectively.  
+The right-hand side of \eqref{eq:full_order_dynamics} contains the system inputs which includes generalized control input (motor torques) $\bm{\tau}\in\mathbb{R}^{n_a}$ (distributed by $\mathbf{B}\in \mathbb{R}^{n\times n_a}$), state-dependent spring torques $\bm{\kappa}_{\text{sp}}(\mathbf{q},\dot{\mathbf{q}})$, and generalized external force $\bm{\zeta}_{\text{ext}}$.
+The $\bm{\zeta}_{\text{ext}}$ groups all the external forces applied from the environment, including foot contact wrenches denoted as $\mathbf{J}^T_{c} \mathbf{F}_c$ and any joint-level friction or perturbation wrenches added to the robot. 
+Specifically, for the contact wrenches, $\mathbf{J}_c(\mathbf{q}) \in \mathbb{R}^{n_c\times n}$ is the contact Jacobian and the dimension of contact wrenches ($n_c$) will vary when the robot has a different number of support legs with the ground (ranging from no stance leg to two stance legs). 
+
+
+\subsubsection{System Identification and Adaptive Control}
+For locomotion control of bipedal robots like Cassie, we can borrow ideas from system identification and adaptive control, which can adapt to changes in the dynamics of the robot. One approach is to leverage a sequence of the past system's input and output (I/O history) to identify the system parameters and change the control law over time, see \cite[Ch. 9]{landau2011adaptive}. 
+For example, given the dynamical system (bipedal robot) governed by \eqref{eq:full_order_dynamics}, by utilizing a sequence of robot's input ($\bm{\tau}$) and robot's output ($\mathbf{o}$), with an assumption that the system states ($\mathbf{q}$ and their time derivatives) can be approximated by a sequence of $\mathbf{o}$ as derived in \cite{lim2023proprioceptive}, the modeling parameters in $\mathbf{M}$, $\mathbf{C}$, $\mathbf{G}$, $\bm{\kappa}$ and external forces $\bm{\zeta}_{\text{ext}}$ can be identified and therefore the control strategy in \eqref{eq:full_order_dynamics} can be adjusted accordingly. 
+There are two main design choices in adaptive control: \emph{indirect} and \emph{direct} methods. 
+In the \emph{indirect} approach, system parameters are first explicitly estimated (see~\cite{ljung1998system}) and the control law is indirectly adjusted based on the identified parameters. 
+In contrast, the \emph{direct} approach alters the control law directly based on the system's I/O history. 
+While both methods have their advantages and disadvantages as discussed in~\cite{annaswamy2023adaptive}, the \emph{indirect} approach may struggle with unknown system parameters or the ones that are challenging to identify. 
+Therefore, in this paper, we choose to develop a control policy through model-free RL by learning from the bipedal robot's I/O history to directly adapt to changes in the robot's full-order model \eqref{eq:full_order_dynamics}. 
+Our method is designed to align with the \emph{direct} adaptive control category in contrast to the strategies like Teacher-Student~\citep{lee2020learning} or RMA~\citep{kumar2021rma} that need to estimate pre-selected system parameters, which can be viewed as \emph{indirect} methods.
+
+
+
+
+
+\subsection{RL Preliminaries}
+\subsubsection{Legged Locomotion Control as a POMDP}
+The locomotion control on bipedal robots can be formulated as a Partially Observable Markov Decision Process (POMDP). 
+At each timestep $t$, the environment is at state $\mathbf{s}_t$, the agent (\textit{i.e.}, the robot) makes an observation $\mathbf{o}_t$ from the environment, takes an action $\mathbf{a}_{t}$ and interacts with the environment, the environment transits to a new state $\mathbf{s}_{t+1}$, and the agent receives a reward $r_t$.  
+Such a process will repeat until the end of the episode of length $T$. 
+In a POMDP, the robot only has access to partial information of the environment, \textit{e.g.,} the bipedal robot can only access the observable states $\mathbf{o}$ instead of the full environment states, which include the full coordinates $\mathbf{q}$ and their time derivatives as explained in Sec.~\ref{subsec:states}.
+In a POMDP, the observation $\mathbf{o}_t$ is obtained by the observation function $O(\mathbf{o}_{t} | \mathbf{s}_{t}, \mathbf{a}_{t-1})$ conditioned on both the current environment state and action the agent has taken.
+The RL objective is to maximize the expected return, $\mathbb{E}[\sum^T_{t=0} \gamma^t r_t]$, by finding an optimal policy $\pi^*$ that selects an action $\mathbf{a}_t$ at each time step.
+The expected return is the sum of discounted rewards collected by the agent throughout an episode, with $\gamma$ representing a discount factor.
+
+
+\subsubsection{Solving POMDP with I/O History}
+Solving a POMDP can be formulated as finding the optimal policy $\pi^*$ that maps the \emph{process history} to the optimal action. 
+The \emph{process history} at timestep $t$ contains the entire history of the agent's observations and actions, \textit{i.e.}, $\{<\mathbf{o}_t,\mathbf{a}_{t-1}>, <\mathbf{o}_{t-1},\mathbf{a}_{t-2}>, \dots, <\mathbf{o}_1,\mathbf{a}_{0}>\}$~\citep{spaan2012partially}. 
+In the control context, it is the robot's I/O history. 
+One method is to update the belief state from the process history with Bayesian filters at each timestep, and then transform the POMDP into a belief state MDP. 
+Alternatives can be to formulate a Finite State Controller (FSC) that contains the memory of agent's past observations and actions through \emph{internal states} to constitute and optimize a policy graph \cite[Ch. 4]{spaan2012partially}.
+While the full history is needed to find an optimal policy, it is computationally intractable. 
+Instead, a finite memory can be kept in the FSC and the POMDP can be solved \emph{approximately} (see \cite{meuleau2013learning}).
+In all of these methods, the robot's process history (\textit{i.e.}, I/O history) is utilized for solving a POMDP. 
+Therefore, we choose to train a policy that has a finite memory (with a fixed length $h$) of robot's I/O pair, \textit{i.e.},  $\pi(\mathbf{a}_t | \mathbf{o}_{t:t-h},\mathbf{a}_{t-1:t-h-1})$. 
+Furthermore, in this work, to enable the robot to accomplish a variety of goals, we parameterize tasks using commands $\mathbf{c}$, and the policy $\pi(\mathbf{a}_t | \mathbf{o}_{t:t-h},\mathbf{a}_{t-1:t-h-1}, \mathbf{c}_t)$ is now conditioned on both the robot's I/O history and the given command $\mathbf{c}_t$. 
+
+
+
+
+\subsubsection{Task Parameterization}~\label{subsec:command}
+Different locomotion tasks are parameterized by a command and this parameterization may vary for different locomotion skills. 
+For the walking skill, the command $\mathbf{c}_{\text{walk}} \in \mathbb{R}^4$ is defined as $[\dot{q}^d_{x,y}, q^d_{z,\psi}]$, which specifies the desired walking velocity in sagittal $\dot{q}^d_x$ and lateral $\dot{q}^d_y$ directions, desired walking height $q^d_z$, and desired turning yaw angle $q^d_{\psi}$, respectively. 
+For the running skill, the command is represented by $\mathbf{c}_{\text{run}}=[\dot{q}^d_{x,y}, q^d_{\psi}] \in \mathbb{R}^3$. 
+For jumping, the command $\mathbf{c}_{\text{jump}} \in \mathbb{R}^4$ is defined as $[q^d_{x,y,\psi}, e^d_z]$, which specifies the target planar position $q^d_{x,y}$, turned angle $q^d_{\psi}$, and change of elevation $e^d_z$ in the vertical jump direction after the robot lands. 

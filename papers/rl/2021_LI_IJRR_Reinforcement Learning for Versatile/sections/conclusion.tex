@@ -1,0 +1,14 @@
+\section{Conclusion and Future Work}\label{sec:conclusion}
+In conclusion, this work presents a comprehensive study on using deep reinforcement learning to develop versatile, robust, and dynamic locomotion controllers for bipedal robots. 
+This work introduces a dual-history approach that integrates the robot's input/output (I/O) history into RL-based controllers and highlights its significance. 
+We demonstrate the adaptivity and robustness of the proposed RL-based controller, particularly underscoring how a well-designed long I/O history encoder can adapt to both time-invariant dynamics changes and time-variant events such as varying contacts. 
+Additionally, task randomization, which encourages the robot to explore a broader range of scenarios by accomplishing different tasks, significantly enhances robustness, complementing the robustness achieved through traditional dynamics randomization.
+The proposed method is validated thoroughly on the bipedal robot Cassie, successfully realizing versatile and robust walking, running, and jumping skills in the real world. 
+These experiments include several state-of-the-art results, including walking control with consistent performance over a long timespan (459 days), versatile running capabilities demonstrated in a 400-meter dash and across challenging terrains, and a large repertoire of jumping tasks including the furthest 1.4-meter forward jump and 0.44-meter high jump.
+
+
+In the future, we hope this method can be extended to humanoid robots that can also leverage upper-body motions for agility and stability. 
+Additionally, integrating depth vision directly into the locomotion controller can be realized in a straightforward way where an additional depth encoder can work alongside the robot's I/O history encoder in our proposed control architecture.  
+We encourage the readers to also try this setup for visual control on their bipedal robots. 
+With the advancements made in this work, we think a large portion of practical problems in realizing effective locomotion control for human-sized bipedal robots can be addressed. 
+For the bipedal robotics community, an exciting direction would be the combination of bipedal locomotion and bimanual manipulation to tackle long-horizon loco-manipulation tasks, opening new possibilities in the field.

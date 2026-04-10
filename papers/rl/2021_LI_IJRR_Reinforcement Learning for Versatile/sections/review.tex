@@ -1,0 +1,88 @@
+\section{Related Work}\label{sec:review}
+Locomotion control for a bipedal robot requires solving a problem that tightly couples motion planning and control of the robot's whole body. 
+Previous efforts can be broadly categorized into two main approaches: (1) model-based optimal control~(OC), and (2) model-free reinforcement learning~(RL). 
+While this work is based on RL, the following review gives equal attention to relevant studies from both model-based OC and model-free RL domains. 
+We hope it can provide a succinct survey of the recent trends in legged locomotion control, which could be informative for readers from both perspectives, with a primary focus on bipedal robots.
+In the specific case of Cassie, which serves as the experimental platform in this work, we provide an overview of the most related work for its locomotion control in Table~\ref{tab:cassie_work}.
+
+
+\input{sections/misc/review_table}
+
+
+\subsection{Model-based Optimal Control for Bipedal Robots}
+Locomotion control for bipedal robots can be formulated as an optimal control (OC) problem~\cite[Eq.~(1)]{wensing2022optimization}, with the robot's dynamics model appearing as a motion constraint. 
+To manage the computational complexity of solving constrained optimization problems, this method often employs a cascaded optimization framework, starting with generating long horizon reference trajectories to low-level motion control and immediate reactive control, with progressively higher control rates and different modeling choices at each stage.
+
+\subsubsection{Choice of Models}
+The robot's full-order dynamics and contact models can be leveraged to optimize for a bipedal robot's trajectory and corresponding inputs for a specific behavior~\citep{hereid2019rapid,fevre2020rapid,marcucci2016two}.
+However, given that bipedal robots typically have high-dimensional nonlinear dynamics, the use of detailed models is generally limited to offline optimization. 
+Notably, the Hybrid Zero Dynamics (HZD) method \citep{westervelt2003hybrid} uses the bipedal robot's full-order model to design attractive periodic gaits offline with online feedback controllers to enforce the virtual constraints~\citep{hereid2018dynamic,reher2021control,gong2019feedback}. 
+For online trajectory optimization, reduced-order models that simplify robot dynamics are necessary. 
+Various reduced-order models, such as centroidal dynamics \citep{orin2013centroidal}, the linear inverted pendulum (LIP) \citep{kajita20013d}) and its variants like SLIP \citep{rummel2010stable}, ALIP \citep{gong2022zero}, H-LIP \citep{xiong20223}, are used for online optimization of reduced-order  dynamics, like the Center of Mass (CoM) and/or Center of Pressure (CoP) \citep{vukobratovic2004zero,pratt2012capturability,fernbach2020c}. These models also enable trajectory tracking control~\citep{kuindersma2014efficiently,daneshmand2021variable,gong2022zero}.
+Reactive controllers, like whole-body control (WBC, \cite{sentis2006whole}), translate these reduced-order states to joint-level inputs, operating as a fast-solving QP that considers various constraints \emph{without} unrolling the full-order dynamics over a horizon like~\cite{moro2019whole,bouyarmane2011using,wensing2016improved}.
+However, such a cascaded OC method does not fully utilize the robot's potential agility due to the limitations of reduced-order models and/or the inability of online controllers to re-plan whole-body maneuvers.
+Our work overcomes these limitations by directly learning on the robot's full-order dynamics and approximately solving the OC problem by model-free RL. The resulting controllers are able to leverage the full agility potential of the underlying system.
+
+\subsubsection{Contact Planning}
+Legged robots require making and breaking contact with the environment. 
+The resulting velocity jumps at contact make the robot's trajectory non-smooth.
+This makes it challenging to solve an OC problem that decides each leg's contact mode throughout the movement \citep{posa2014direct}.
+To simplify this, many studies, including most of the above-mentioned work, pre-define fixed contact sequences for specific locomotion skills, such as walking \citep{caron2019stair, hereid2019rapid, xiong20223}, running \citep{takenaka2009realrunning,sreenath2013embedding,ma2017bipedal}, and jumping \citep{goswami2009planar,chignoli2021humanoid,qi2023vertical}.
+However, pre-defined handcrafted contact sequences may not be optimal. For instance, different jumping tasks might require varying contact schedules, like extended flight times for longer jumps. 
+Consequently, there are efforts to integrate contact planning with trajectory optimization by computationally expensive mixed-integer programming~\citep{deits2014footstep,ibanez2014emergence}.
+There are also attempts to avoid using explicit discrete variables, which results in contact-implicit methods, by enforcing complementarity constraints~\citep{dai2014whole,posa2014direct,drnach2021robust} or utilizing a bilevel optimization~\citep{landry2022bilevel,zhu2021contact,cleac2021fast}.  
+However, given the high-dimensional nonlinear dynamics of bipedal robots, contact explicit or implicit planning is still limited to offline optimization.
+As we will see, our method enables choosing contact plans in real-time for deployment in the real world. 
+
+
+\subsubsection{Scalability to Different Locomotion Skills}
+The scalability of model-based OC across various bipedal locomotion skills and tasks is a significant challenge, largely due to the task-specific nature of robot models and control frameworks ~\cite{meduri2023biconmp}. 
+For example, extending the HZD approach used for controlling 2D bipedal walking~\citep{sreenath2011compliant} to running~\citep{sreenath2013embedding} or 3D walking~\citep{da20162d} requires considerable efforts in finding appropriate periodic gaits and then designing specific controllers to stabilize them. Furthermore, HZD's reliance on the stability of periodic gaits limits its extension to aperiodic skills like jumping. 
+This limitation is also observed in LIP-based methods, where separate frameworks and models are required for walking~\citep{takenaka2009realwalking} and running~\citep{takenaka2009realrunning} while jumping skills are excluded due to LIP's assumption of an approximately constant CoM height as in \cite{boroujeni2021unified}. 
+Although in-place jumps have been achieved through other carefully engineered cascaded OC frameworks over different jumping phases, such as~\cite{xiong2018bipedal,kojima2019robot,qi2023vertical}, for each different jumping task, these require starting from scratch with offline trajectory optimization, often overlooking lateral or turning motions.
+Furthermore, it is very challenging to develop a single model-based controller capable of managing diverse \emph{targeted} bipedal jumping tasks in the real world. This is because besides accomplishing a jump, the controller also needs to quickly adapt to the dynamics of the robot hardware and produce an accurate translational velocity at the take-off to land at the targets located at different places, as shown in this work.\footnote{While there are attempts from industry (like Boston Dynamics as patented in~\cite{deits2022robot}) using model-based OC that tackled similar problems, detailed reports are limited. As a research paper, our focus is on published findings.}
+The model-based OC community, as seen in works like~\cite{yang2023impact}, is making promising strides toward developing general tracking controllers that are invariant to impact. 
+These could potentially handle different contact sequences like walking, running, and jumping, but still rely on \emph{task-specific} optimized trajectories.
+
+
+
+\subsection{Model-free Reinforcement Learning on Legged Locomotion Control}
+Recent developments in deep RL have brought about exciting progress in creating locomotion controllers for quadrupedal robots in the real world, such as~\cite{margolisyang2022rapid,chen2022learning,feng2023genloco,fu2023deep}. 
+However, due to the inherently less stable nature of bipedal robots, methods successful with quadrupeds might not directly apply to bipedal systems, as an example seen in~\cite{kumar2022adapting}. 
+Therefore, within the bipedal robotics community, there are different strategies to employ RL tailored to the challenges of high dimensional nonlinearity.
+
+
+\subsubsection{Control Policy Structure}
+In RL-based locomotion control, the structure of the control policy is largely influenced by how observations are formulated, particularly through the use of robot states-only history (with no robot's input history) or I/O history (with both the robot's input and output).
+For quadrupedal robots, there is no consensus on the history length to use: it ranges from a short I/O history of 1 to 15 timesteps~\citep{hwangbo2019learning,escontrela2022adversarial,huang2022creating} to longer sequences over 50 timesteps involving states-only history~\citep{lee2020learning,miki2022learning,shao2021learning} or I/O history~\citep{kumar2021rma}. 
+The policy (neural network) architecture is chosen depending on the history length, with MLPs suited for shorter histories and recurrent units needed for longer sequences. 
+Real-world deployments on quadrupedal robots have shown comparable performance across these varying history lengths.
+For bipedal robots, a trend toward longer history lengths is observed, evolving from a single timestep state feedback with a need of residual action~\citep{xie2018feedback,xie2020learning,rodriguez2021deepwalk,castillo2022reinforcement}, to a short I/O history~\citep{li2021reinforcement}, to a longer sequence of states-only history~\citep{siekmann2020learning} or I/O history~\citep{kumar2022adapting,radosavovic2023learning}. 
+While utilizing long history for robotic control as suggested by \cite{peng2018sim} is a common strategy, most prior ablation studies focus on contrasting long histories with immediate state or I/O feedback through MLPs, like \cite{peng2018sim,lee2020learning,kumar2021rma,siekmann2020learning}, with less exploration into shorter I/O histories. 
+A recent study, \cite{singh2023learning}, reported that, short state histories yield better learning performance than a longer history in bipedal humanoid robot control, aligning with our finding in this work. 
+This raises a question: while long histories are expected to enhance performance in RL-based control, how can their benefits be fully utilized? 
+Our study presents an effective solution: a dual-history approach. 
+
+
+
+\subsubsection{Sim-to-real Transfer}
+There are some attempts using RL to directly collect data and train on the robot hardware, such as \cite{haarnoja2019learning,wu2023daydreamer,smith2023demonstrating}, and there are also alternatives on leveraging a pre-training stage in simulation and finetuning on hardware like \cite{peng2020learning,smith2022legged,westenbroek2022lyapunov}, most of which are deployed on small-sized quadrupedal robots.
+However, for human-sized bipedal robots, performing hardware rollouts is expensive, making it more appealing to directly transfer diverse dynamic bipedal skills from simulation to hardware.
+Achieving zero-shot transfer needs extensive dynamics randomization in simulation as suggested by \cite{peng2018sim,peng2020learning}. 
+There are two primary approaches to training policies under randomized dynamics: (1) end-to-end training with a history of robot measurements or I/O, which has been applied to bipedal robots like \cite{siekmann2020learning,siekmann2021sim,li2021reinforcement}, and (2) policy distillation where, with separated training stages, an expert policy with access to privileged environmental information supervises the training of a student policy with proprioceptive feedback. This method, initially developed for small servo-controlled bipedal robots in \cite{yu2019sim}, has been adapted to quadrupeds using strategies like Teacher-Student (TS, \cite{lee2020learning}) or RMA~\citep{kumar2021rma}, and is prevalent in quadrupedal robot community (\textit{e.g.}, \cite{fu2021minimizing,ji2022concurrent,margolis2023walk}). Though policy distillation offers advantages in quadrupedal locomotion controls~\citep{kumar2021rma}, its extension to torque-controlled bipedal robots benefits from an additional finetuning stage like \cite{kumar2022adapting}.
+In this work, we demonstrate that end-to-end training is a more effective approach for developing controllers for bipedal robots encompassing a variety of dynamic locomotion skills.
+
+\subsubsection{Scalability to Different Locomotion Skills}
+Leveraging RL to learn diverse locomotion skills or tasks with a single policy poses a challenge that arises from the need to optimize multiple objectives for different tasks, as noted in \cite{kalashnikov2021mt}. 
+Initially, efforts in this field focused on single skills with fixed tasks, like just walking forward in \cite{peng2020learning,siekmann2020learning,kumar2021rma}.
+In developing a single-skill policy capable of multiple tasks, methods that provide varying commands for tracking different walking velocities without specifying reference motions have been considered, like \cite{hwangbo2019learning,fu2021minimizing,cheng2023legs}. 
+While this method is viable for quadruped robots, it demands extensive reward tuning and may not suit bipedal robots due to their higher dimensionality.
+For bipedal robots, approaches such as providing parameterized reference motions~\citep{li2021reinforcement} or using policy distillation from task-specific policies~\citep{xie2020learning} have been considered. 
+Some methods also involve commanding periodic contact sequences, resulting in diverse but periodic bipedal gaits like \cite{siekmann2021sim}. 
+However, the prescriptive contact sequence restricts the robot's potential to optimize its contact strategy for improved stability. 
+Additionally, limitations arise when such a policy attempts to accomplish specific tasks, leading to follow-up works that require specialized training for distinct behaviors. 
+This includes requiring hand-tuned strategies for transitioning between fast straight running and standing~\citep{crowley2023optimizing}, load carrying \citep{dao2022sim}, or sharp turns during walking \citep{yu2022dynamic}.
+There are other attempts that sought to create a single policy that can perform diverse skills, regardless of periodicity, for bipedal humanoids using adversarial motion priors as developed in \cite{peng2021amp} in simulation. 
+While this has seen success in transfer to real quadrupeds like \cite{escontrela2022adversarial,wu2023learning,li2023learning}, it is still an open question if more dynamic bipedal skills can be transferred to the real world due to larger sim-to-real gaps.
+In light of these challenges, our work strikes a balance in versatility for bipedal robots.
+We focus on developing skill-specific control policies that can perform a diverse set of tasks while maintaining a general framework suitable for developing different skills.

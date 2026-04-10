@@ -1,0 +1,123 @@
+\begin{table*}[!htp]
+\centering
+\scriptsize
+\caption{The components $\mathbf{r}$ and their respective weights $\mathbf{w}$ in the reward function used for training the bipedal robot across various skills and training stages. A nominal weight vector is provided for different components, with adjustments necessary based on the skill and stage of training, primarily influenced by task diversity (training for single goal versus diverse goals) and the existence of a flight phase. The reward tuning process is relatively streamlined, as only 24 out of 72 reward terms vary across the three different bipedal locomotion skills over multi-stage training. Blank cells indicates no change on the corresponding nominal value.}
+\label{tab:reward}
+\begin{tabular}{|cccccccc|}
+\hline
+\multicolumn{1}{|c|}{\multirow{3}{*}{\textbf{Reward Component} $\mathbf{r}$}} &
+  \multicolumn{7}{c|}{\textbf{Weight} $\mathbf{w}$} \\ \cline{2-8} 
+\multicolumn{1}{|c|}{} &
+  \multicolumn{1}{c|}{\multirow{2}{*}{\textbf{Nominal Value}}} &
+  \multicolumn{2}{c|}{\textbf{Walking Skill}} &
+  \multicolumn{2}{c|}{\textbf{Running Skill}} &
+  \multicolumn{2}{c|}{\textbf{Jumping Skill}} \\ \cline{3-8} 
+\multicolumn{1}{|c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{\textbf{Stage 1}} &
+  \multicolumn{1}{c|}{\textbf{Stage 2, 3}} &
+  \multicolumn{1}{c|}{\textbf{Stage 1}} &
+  \multicolumn{1}{c|}{\textbf{Stage 2, 3}} &
+  \multicolumn{1}{c|}{\textbf{Stage 1}} &
+  \textbf{Stage 2, 3} \\ \hline
+\multicolumn{8}{|c|}{\textbf{Motion Tracking}} \\ \hline
+\multicolumn{1}{|c|}{Motion position: $r(\mathbf{q}_m, \mathbf{q}^r_m(t))$} &
+  \multicolumn{1}{c|}{15} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  -7.5 \\ \hline
+\multicolumn{1}{|c|}{Pelvis height: $r(q_z, q^r_z(t)+\delta_z)$} &
+  \multicolumn{1}{c|}{5} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  -2 \\ \hline
+\multicolumn{1}{|c|}{Foot height: $r(\mathbf{e}_z, \mathbf{e}^r_z(t)+\delta_z)$} &
+  \multicolumn{1}{c|}{10} &
+  \multicolumn{1}{c|}{-7} &
+  \multicolumn{1}{c|}{-7} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  {} \\ \hline
+\multicolumn{8}{|c|}{\textbf{Task Completion}} \\ \hline
+\multicolumn{1}{|c|}{Pelvis position: $r(q_{x,y}, q^d_{x,y})$} &
+  \multicolumn{1}{c|}{7.5} &
+  \multicolumn{1}{c|}{-1.5} &
+  \multicolumn{1}{c|}{-1.5} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{+5.5} &
+  +7.5 \\ \hline
+\multicolumn{1}{|c|}{Pelvis velocity: $r(\dot{q}_{x,y}, \dot{q}^d_{x,y})$} &
+  \multicolumn{1}{c|}{15} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{-15} &
+  -2.5 \\ \hline
+\multicolumn{1}{|c|}{Pelvis orientation: $r(\cos(q_{\phi,\theta,\psi}, [0,0,q^d_\psi]), 1)$} &
+  \multicolumn{1}{c|}{10} &
+  \multicolumn{1}{c|}{-2.5} &
+  \multicolumn{1}{c|}{+2.5} &
+  \multicolumn{1}{c|}{-5} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{+2.5} &
+  {} \\ \hline
+\multicolumn{1}{|c|}{Pelvis angular rate: $r(\dot{q}_{\phi,\theta,\psi}, [0,0,\dot{q}^d_\psi])$} &
+  \multicolumn{1}{c|}{3} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{+4.5} &
+  \multicolumn{1}{c|}{} &
+  +7 \\ \hline
+\multicolumn{8}{|c|}{\textbf{Smoothing}} \\ \hline
+\multicolumn{1}{|c|}{Foot Impact: $r(F_z, 0)$} &
+  \multicolumn{1}{c|}{10} &
+  \multicolumn{1}{c|}{-7} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{-5} &
+  {} \\ \hline
+\multicolumn{1}{|c|}{Torque: $r(\bm{\tau}, 0)$} &
+  \multicolumn{1}{c|}{3} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  {} \\ \hline
+\multicolumn{1}{|c|}{Motor velocity: $r(\dot{\mathbf{q}}_m, 0)$} &
+  \multicolumn{1}{c|}{0} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{+3} &
+  \multicolumn{1}{c|}{} &
+  {} \\ \hline
+\multicolumn{1}{|c|}{Joint acceleration: $r(\ddot{\mathbf{q}}, 0)$} &
+  \multicolumn{1}{c|}{3} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  -3 \\ \hline
+\multicolumn{1}{|c|}{Change of action: $r(\mathbf{a}_t, \mathbf{a}_{t+1})$} &
+  \multicolumn{1}{c|}{3} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{} &
+  \multicolumn{1}{c|}{+2} &
+  \multicolumn{1}{c|}{+2} &
+  \multicolumn{1}{c|}{-3} &
+  +7 \\ \hline
+\end{tabular}
+\end{table*}
