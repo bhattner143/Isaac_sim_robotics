@@ -5,7 +5,7 @@ gearbox) unless the attribute name ends in ``_motor`` (rotor / motor side).
 
 Usage::
 
-    from robots.motor import get_motor, MOTOR_CHOICES, AK80_8_KV60_Config
+    from actuators.motor import get_motor, MOTOR_CHOICES, AK80_8_KV60_Config
 
     motor = get_motor("AK80_8_KV60_Config")   # default-instantiated
     print(motor.peak_torque_joint)             # 18.0 Nm

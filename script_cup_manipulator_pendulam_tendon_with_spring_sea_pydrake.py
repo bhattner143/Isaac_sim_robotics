@@ -98,13 +98,14 @@ from pydrake.all import (
     UnitInertia,
     Parser,
 )
-from pydrake.multibody.tree import MultibodyForces, RevoluteSpring
+from pydrake.multibody.tree import RevoluteSpring
 
 sys.path.insert(0, str(Path(__file__).parent))
 from robots.cup_manipulator_tendon import (
     CupManipulatorTendon,
     create_cable_manipulator_config,
 )
+from controller.controller import SEACableController
 from project_utils.viz_cables import draw_cables
 
 # ─── Constants ────────────────────────────────────────────────────────────────
@@ -123,7 +124,7 @@ parser = argparse.ArgumentParser(
 )
 
 _sea = parser.add_argument_group("SEA cable model  (joint 2)")
-_sea.add_argument("--spring-stiffness", type=float, default=200.0,
+_sea.add_argument("--spring-stiffness", type=float, default=3.0,
                   metavar="K_S",
                   help="Cable spring stiffness k_s [N/m].  Lower → more lag.")
 _sea.add_argument("--cable-damping",    type=float, default=2.0,
@@ -174,224 +175,6 @@ _traj.add_argument("--traj-v-corner",     type=float, default=0.05)
 _traj.add_argument("--traj-corner-blend", type=float, default=0.35)
 
 args = parser.parse_args()
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# SEACableController — LeafSystem
-# ════════════════════════════════════════════════════════════════════════════
-
-class SEACableController(LeafSystem):
-    r"""Computed-torque outer-loop + first-order series-elastic cable for joint 2.
-
-    Topology
-    ────────
-    Joint 1 (shoulder): CT inverse dynamics → τ₁ applied directly (rigid).
-    Joint 2 (elbow):
-        CT inverse dynamics → τ₂_des
-            l_m_des  = r_p·q₂ + τ₂_des / (k_s·r_p)      ← steady-state inversion
-            dl_m/dt  = ω_m · (l_m_des − l_m)              ← first-order motor servo
-            δ        = l_m − r_p·q₂                        ← spring extension  [m]
-            F_cable  = max(k_s·δ + b_c·(l̇_m − r_p·q̇₂), 0) ← cable force (pull-only)
-            τ₂       = r_p · F_cable                       ← applied joint torque
-
-    Discrete state
-    ───────────────
-        l_m  [m]  — motor-side cable displacement (wound on drum)
-
-    Input ports
-    ────────────
-        desired_ee_pos  [2]   — reference EE position  [m]
-        ee_vel_ref      [2]   — reference EE velocity  [m/s]
-        ee_acc_ref      [2]   — reference EE acceleration [m/s²]
-        plant_state     [n]   — from plant.get_state_output_port()
-
-    Output ports
-    ─────────────
-        actuation     [2]   — [τ₁, τ₂] → plant.get_actuation_input_port()
-        diagnostics   [8]   — [l_m, l_m_des, δ, F_cable, τ₁_des, τ₂_des, T_green, T_red]
-        joint_positions [2] — [q₁_des, q₂_des]  from IK
-    """
-
-    def __init__(
-        self,
-        plant:       MultibodyPlant,
-        manipulator: CupManipulatorTendon,
-        k_s:         float = 200.0,
-        b_c:         float = 2.0,
-        omega_m:     float = 30.0,
-        Kp:          float = 10000.0,
-        Kd:          float = 400.0,
-        tau_max:     float = 10.0,
-        dt:          float = _DT,
-    ):
-        super().__init__()
-        self._plant    = plant
-        self._manip    = manipulator
-        self._k_s      = float(k_s)
-        self._b_c      = float(b_c)
-        self._omega_m  = float(omega_m)
-        self._Kp       = float(Kp)
-        self._Kd       = float(Kd)
-        self._tau_max  = float(tau_max)
-        self._dt       = float(dt)
-        self._r_p      = manipulator.PULLEY_RADIUS
-
-        # Link lengths (constant URDF geometry)
-        self._L1, self._L2 = manipulator.ik.get_link_lengths(plant)
-
-        # Velocity-vector indices for [q1, q2] in Drake's nv-vector
-        j1 = manipulator.get_joint_by_name(plant, CupManipulatorTendon.JT1_NAME)
-        j2 = manipulator.get_joint_by_name(plant, CupManipulatorTendon.JT2_NAME)
-        self._v_idx = [j1.velocity_start(), j2.velocity_start()]
-        self._nv    = plant.num_velocities()
-
-        # Internal plant context — for CalcInverseDynamics only, never integrated
-        self._plant_ctx = plant.CreateDefaultContext()
-        self._forces    = MultibodyForces(plant)
-
-        # IK warm-start seed
-        self._last_q_des = np.zeros(2)
-
-        # Per-timestep cache (keyed on context time)
-        self._t_cache = -np.inf
-        self._cache   = None  # (tau_des, l_m_des, q, q_dot, q_des)
-
-        # ── Discrete state: l_m ──────────────────────────────────────────────
-        self._l_m_idx = self.DeclareDiscreteState(1)
-        self.DeclarePeriodicDiscreteUpdateEvent(dt, 0.0, self._update_motor)
-
-        # ── Ports ────────────────────────────────────────────────────────────
-        nstate = plant.num_multibody_states()
-        self._ee_port  = self.DeclareVectorInputPort("desired_ee_pos", 2)
-        self._vel_port = self.DeclareVectorInputPort("ee_vel_ref",     2)
-        self._acc_port = self.DeclareVectorInputPort("ee_acc_ref",     2)
-        self._st_port  = self.DeclareVectorInputPort("plant_state",    nstate)
-
-        self.DeclareVectorOutputPort("actuation",       2, self._calc_actuation)
-        self.DeclareVectorOutputPort("diagnostics",     8, self._calc_diagnostics)
-        self.DeclareVectorOutputPort("joint_positions", 2, self._calc_joint_positions)
-
-    # ── Per-timestep CT + motor-target solve (cached) ────────────────────────
-
-    def _solve(self, context):
-        """IK → feedforward CT → motor target.  Cached per timestep."""
-        t = context.get_time()
-        if t == self._t_cache and self._cache is not None:
-            return self._cache
-
-        state  = self._st_port.Eval(context)
-        ee_des = self._ee_port.Eval(context)
-        ee_vel = self._vel_port.Eval(context)
-        ee_acc = self._acc_port.Eval(context)
-
-        # Sync internal plant context
-        self._plant.SetPositionsAndVelocities(self._plant_ctx, state)
-        q     = self._manip.get_positions_user_order(self._plant, self._plant_ctx)
-        q_dot = self._manip.get_velocities_user_order(self._plant, self._plant_ctx)
-
-        # Analytical 2R IK (warm-started from last solution)
-        seed = self._last_q_des if np.any(self._last_q_des != 0) else q
-        q_des, ok = self._manip.ik._solve_2r_core(self._L1, self._L2, ee_des, seed)
-        if ok:
-            self._last_q_des = q_des.copy()
-        else:
-            q_des = self._last_q_des.copy()
-
-        # Feedforward via analytical 2R Jacobian at q_des
-        c1  = np.cos(q_des[0]);           s1  = np.sin(q_des[0])
-        c12 = np.cos(q_des[0]+q_des[1]);  s12 = np.sin(q_des[0]+q_des[1])
-        J = np.array([
-            [-self._L1*s1 - self._L2*s12, -self._L2*s12],
-            [ self._L1*c1 + self._L2*c12,  self._L2*c12],
-        ])
-        J_inv      = np.linalg.pinv(J)
-        q_dot_ref  = J_inv @ ee_vel
-        q_ddot_ref = J_inv @ ee_acc
-
-        # PD + feedforward desired acceleration
-        a_des_user = (q_ddot_ref
-                      + self._Kp * (q_des - q)
-                      + self._Kd * (q_dot_ref - q_dot))
-
-        # Map to Drake nv-vector order
-        vdot_des = np.zeros(self._nv)
-        vdot_des[self._v_idx[0]] = a_des_user[0]
-        vdot_des[self._v_idx[1]] = a_des_user[1]
-
-        # Computed torque: τ = M·a + C·v + g
-        self._forces.SetZero()
-        tau_full = self._plant.CalcInverseDynamics(
-            self._plant_ctx, vdot_des, self._forces,
-        )
-        tau_des = np.array([tau_full[self._v_idx[0]], tau_full[self._v_idx[1]]])
-
-        # Motor target cable position  (steady-state spring inversion)
-        #   τ₂ = k_s · r_p · δ  →  δ_ss = τ₂_des / (k_s · r_p)
-        #   l_m_des = r_p · q₂ + δ_ss
-        l_m_des = self._r_p * q[1] + tau_des[1] / (self._k_s * self._r_p)
-
-        self._t_cache = t
-        self._cache   = (tau_des, l_m_des, q, q_dot, q_des)
-        return self._cache
-
-    def _spring_force(self, l_m, l_m_des, q, q_dot):
-        """Compute cable force F, spring extension δ, and motor velocity l̇_m.
-
-        Returns (F_cable, delta, l_m_dot, T_green, T_red).
-        """
-        delta     = l_m - self._r_p * q[1]
-        l_m_dot   = self._omega_m * (l_m_des - l_m)   # motor velocity
-        delta_dot = l_m_dot - self._r_p * q_dot[1]
-        F_raw = self._k_s * delta + self._b_c * delta_dot
-        # Decompose into two cable tensions (cables can only pull)
-        T_green = float(max(F_raw,  0.0))   # retracting side
-        T_red   = float(max(-F_raw, 0.0))   # extending side
-        F_cable = T_green - T_red            # net (= F_raw clamped if both > 0)
-        # Cable can only pull — net force is non-negative
-        F_cable = float(max(F_raw, 0.0))
-        return F_cable, delta, l_m_dot, T_green, T_red
-
-    # ── Discrete update: first-order motor position servo ─────────────────
-
-    def _update_motor(self, context, discrete_state):
-        """Euler-step motor cable: l_m ← l_m + dt·ω_m·(l_m_des − l_m)."""
-        l_m = context.get_discrete_state(self._l_m_idx).value()[0]
-        _, l_m_des, _, _, _ = self._solve(context)
-        l_m_new = l_m + self._dt * self._omega_m * (l_m_des - l_m)
-        discrete_state.get_mutable_vector(self._l_m_idx).SetFromVector(
-            np.array([l_m_new]),
-        )
-
-    # ── Output port callbacks ─────────────────────────────────────────────
-
-    def _calc_actuation(self, context, output):
-        tau_des, l_m_des, q, q_dot, _ = self._solve(context)
-        l_m = context.get_discrete_state(self._l_m_idx).value()[0]
-        F_cable, _, _, _, _ = self._spring_force(l_m, l_m_des, q, q_dot)
-        tau_out = np.array([
-            tau_des[0],                  # J1: CT direct drive (rigid)
-            self._r_p * F_cable,         # J2: cable spring
-        ])
-        output.SetFromVector(np.clip(tau_out, -self._tau_max, self._tau_max))
-
-    def _calc_diagnostics(self, context, output):
-        tau_des, l_m_des, q, q_dot, _ = self._solve(context)
-        l_m = context.get_discrete_state(self._l_m_idx).value()[0]
-        F_cable, delta, _, T_green, T_red = self._spring_force(l_m, l_m_des, q, q_dot)
-        output.SetFromVector(np.array([
-            l_m,          # [0]  motor cable displacement       [m]
-            l_m_des,      # [1]  desired motor cable position   [m]
-            delta,        # [2]  spring extension δ             [m]
-            F_cable,      # [3]  cable tension (net)            [N]
-            tau_des[0],   # [4]  CT desired τ₁                  [Nm]
-            tau_des[1],   # [5]  CT desired τ₂                  [Nm]
-            T_green,      # [6]  retracting cable tension       [N]
-            T_red,        # [7]  extending cable tension        [N]
-        ]))
-
-    def _calc_joint_positions(self, context, output):
-        _, _, _, _, q_des = self._solve(context)
-        output.SetFromVector(q_des)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -678,8 +461,13 @@ def run_simulation(
             return
         _ctx = simulator.get_mutable_context()
         _pc  = plant.GetMyMutableContextFromRoot(_ctx)
+        # Read spring extension δ from controller diagnostics
+        _ctrl_ctx = ctrl.GetMyMutableContextFromRoot(_ctx)
+        _diag = ctrl.GetOutputPort("diagnostics").Eval(_ctrl_ctx)
+        _delta = _diag[2]  # spring extension δ [m]
         manipulator.compute_tangents(plant, _pc)
-        draw_cables(meshcat, plant, _pc, manipulator, _rig)
+        draw_cables(meshcat, plant, _pc, manipulator, _rig,
+                    spring_extension=_delta)
 
     # ── 9. Run ───────────────────────────────────────────────────────────────
     wn   = np.sqrt(args.ct_kp)

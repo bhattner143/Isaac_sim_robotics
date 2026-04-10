@@ -1,0 +1,736 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts,mathtools}
+\usepackage{bm}
+\usepackage{physics}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, fit, shapes.geometric, calc, decorations.pathmorphing, backgrounds, decorations.markings}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[most]{tcolorbox}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{graphicx}
+\usepackage{float}
+
+% ============================================================================
+% COLOR PALETTE (matching Computed_Torque_PyDrake_Implementation.tex)
+% ============================================================================
+\definecolor{drakeblue}{RGB}{30,90,180}
+\definecolor{drakecyan}{RGB}{0,150,180}
+\definecolor{drakegreen}{RGB}{40,140,60}
+\definecolor{darkred}{RGB}{180,30,30}
+\definecolor{resultbg}{RGB}{230,255,230}
+\definecolor{resultbar}{RGB}{40,140,60}
+\definecolor{warnbg}{RGB}{255,245,220}
+\definecolor{warnbar}{RGB}{200,140,0}
+\definecolor{lightgray}{RGB}{245,245,245}
+\definecolor{seaorange}{RGB}{220,120,20}
+\definecolor{springgold}{RGB}{200,160,40}
+
+% --- Equation-after-code box ---
+\definecolor{eqboxbg}{RGB}{236,244,255}
+\definecolor{eqboxbar}{RGB}{45,95,165}
+\definecolor{eqboxlabel}{RGB}{35,80,145}
+
+\newtcolorbox{codemath}{%
+    enhanced,
+    breakable,
+    colback=eqboxbg,
+    colframe=eqboxbar,
+    boxrule=0pt,
+    leftrule=3.5pt,
+    arc=0pt,
+    outer arc=0pt,
+    top=8pt,
+    bottom=8pt,
+    left=10pt,
+    right=10pt,
+    before skip=4pt,
+    after skip=10pt,
+    before upper={\noindent\textcolor{eqboxlabel}{\sffamily\bfseries\small%
+        \raisebox{0.3pt}{$\blacktriangleright$}~Equations implemented by the above code}\par\medskip},
+}
+
+% --- Result highlight box ---
+\newtcolorbox{resultbox}[1][]{%
+    enhanced,
+    breakable,
+    colback=resultbg,
+    colframe=resultbar,
+    boxrule=0pt,
+    leftrule=4pt,
+    arc=0pt,
+    outer arc=0pt,
+    top=8pt,
+    bottom=8pt,
+    left=10pt,
+    right=10pt,
+    before skip=6pt,
+    after skip=10pt,
+    title={\textcolor{resultbar}{\sffamily\bfseries {\large $\checkmark$}~Key Result} #1},
+}
+
+% --- Warning box ---
+\newtcolorbox{warnbox}[1][]{%
+    enhanced,
+    breakable,
+    colback=warnbg,
+    colframe=warnbar,
+    boxrule=0pt,
+    leftrule=4pt,
+    arc=0pt,
+    outer arc=0pt,
+    top=8pt,
+    bottom=8pt,
+    left=10pt,
+    right=10pt,
+    before skip=6pt,
+    after skip=10pt,
+    title={\textcolor{warnbar}{\sffamily\bfseries {\large $\triangle$}~Important} #1},
+}
+
+% --- Architecture box ---
+\newtcolorbox{archbox}[1][]{%
+    enhanced,
+    breakable,
+    colback=blue!3,
+    colframe=drakeblue,
+    boxrule=0.8pt,
+    arc=3pt,
+    outer arc=3pt,
+    top=8pt,
+    bottom=8pt,
+    left=10pt,
+    right=10pt,
+    before skip=8pt,
+    after skip=10pt,
+    title={\textcolor{drakeblue}{\sffamily\bfseries #1}},
+}
+
+% --- Python code style ---
+\definecolor{pybg}{RGB}{248,252,248}
+\definecolor{pyframe}{RGB}{160,190,160}
+\definecolor{pykw}{RGB}{0,110,0}
+\definecolor{pycmt}{RGB}{100,100,100}
+\definecolor{pystr}{RGB}{160,32,240}
+
+\lstdefinestyle{python}{
+    language=Python,
+    basicstyle=\small\ttfamily,
+    keywordstyle=\color{pykw}\bfseries,
+    commentstyle=\color{pycmt}\itshape,
+    stringstyle=\color{pystr},
+    backgroundcolor=\color{pybg},
+    frame=single,
+    rulecolor=\color{pyframe},
+    framesep=4pt,
+    xleftmargin=6pt,
+    xrightmargin=6pt,
+    breaklines=true,
+    breakatwhitespace=false,
+    showstringspaces=false,
+    tabsize=4,
+    captionpos=b,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    aboveskip=8pt,
+    belowskip=4pt,
+    morekeywords={np,self,True,False,None,float},
+}
+\lstset{style=python}
+
+% ============================================================================
+% HEADER / FOOTER
+% ============================================================================
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textcolor{seaorange}{\textbf{SEA Cable --- PyDrake Implementation}}}
+\fancyhead[R]{\small\textcolor{gray}{Cup Manipulator Tendon}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{seaorange}\leaders\hrule height \headrulewidth\hfill}}
+
+% ============================================================================
+% COMMANDS
+% ============================================================================
+\newcommand{\rp}{r_{\mathrm{p}}}
+\newcommand{\bq}{\bm{q}}
+\newcommand{\bdq}{\dot{\bm{q}}}
+\newcommand{\bddq}{\ddot{\bm{q}}}
+\newcommand{\btau}{\bm{\tau}}
+\newcommand{\bM}{\bm{M}}
+\newcommand{\bh}{\bm{h}}
+\newcommand{\bJ}{\bm{J}}
+\newcommand{\lm}{l_{\mathrm{m}}}
+\newcommand{\lmd}{\dot{l}_{\mathrm{m}}}
+\newcommand{\ks}{k_{\mathrm{s}}}
+\newcommand{\bc}{b_{\mathrm{c}}}
+\newcommand{\wm}{\omega_{\mathrm{m}}}
+
+\title{%
+    \textcolor{seaorange}{\rule{\linewidth}{1.5pt}}\\[0.4cm]
+    {\Huge\bfseries Series Elastic Actuator (SEA)}\\[0.15cm]
+    {\Huge\bfseries Cable Model}\\[0.3cm]
+    {\Large\textcolor{drakecyan}{Cable-Driven 2R Planar Manipulator --- PyDrake Implementation}}\\[0.2cm]
+    \textcolor{seaorange}{\rule{\linewidth}{1.5pt}}
+}
+\author{Isaac Sim Robotics Project}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+% ============================================================================
+\section*{Key Results at a Glance}
+% ============================================================================
+
+\begin{resultbox}
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{New physics layer}: Series elastic spring between joint-2 big pulley and link-2 anchor
+    \item \textbf{Antagonistic cables}: Both green and red cables can transmit force (push + pull)
+    \item \textbf{Physically motivated}: Models steel cable elasticity + explicit compliance element
+    \item \textbf{Tunable compliance}: $\ks$ from 20\,N/m (very soft) to 5000+\,N/m (near-rigid)
+    \item \textbf{Motor model}: First-order position servo with bandwidth $\wm$ [rad/s]
+    \item \textbf{Dynamic visualization}: Meshcat spring coil stretches in real-time with $\delta$
+    \item \textbf{Comparison mode}: \texttt{--compare} overlays compliant vs.\ rigid on the same plot
+\end{itemize}
+\end{resultbox}
+
+\tableofcontents
+\newpage
+
+% ============================================================================
+\section{Motivation: Why Add Cable Compliance?}
+\label{sec:motivation}
+% ============================================================================
+
+The \textbf{Computed-Torque (CT) controller} described in the companion document (\texttt{Computed\_Torque\_PyDrake\_Implementation.tex}) treats the cable as a \textbf{rigid, inextensible tendon}.  Joint torque $\tau_2$ is applied instantaneously---there is no delay, no elasticity, and no cable dynamics.
+
+In the real robot, the cable path is:
+
+\begin{center}
+\textbf{Motor drum} $\;\longrightarrow\;$ \textbf{Steel cable} $\;\longrightarrow\;$ \textbf{Big Pulley} $\;\longrightarrow\;$ \textbf{SPRING} $\;\longrightarrow\;$ \textbf{Link\,2 anchor}
+\end{center}
+
+The spring (which may be an explicit compliance element or the intrinsic belt/cable elasticity) introduces:
+\begin{enumerate}[leftmargin=2em]
+    \item \textbf{Torque lag}: The joint torque depends on spring extension, not directly on the motor command.
+    \item \textbf{Energy storage}: The spring stores elastic energy, causing oscillations if underdamped.
+    \item \textbf{Motor--joint decoupling}: The motor and joint move at different rates; the spring absorbs the difference.
+\end{enumerate}
+
+This document describes the \texttt{script\_cup\_manipulator\_sea\_cable\_pydrake.py} implementation, which adds a \textbf{Series Elastic Actuator (SEA)} model to joint~2 while keeping joint~1 as rigid direct-drive.
+
+
+% ============================================================================
+\section{Physical Model}
+\label{sec:physics}
+% ============================================================================
+
+\subsection{Physical Cable Routing}
+
+\begin{archbox}{Real-World Cable Topology (Joint 2)}
+\begin{center}
+\begin{tikzpicture}[
+    >=Stealth,
+    block/.style={rectangle, draw=#1, thick, fill=#1!8,
+                  minimum height=0.9cm, minimum width=2.4cm, align=center, font=\small},
+    spring/.style={decorate, decoration={coil, aspect=0.3, segment length=3mm, amplitude=3mm}},
+    cable/.style={line width=1.5pt, #1},
+    arr/.style={-Stealth, thick, #1},
+]
+    \node[block=drakeblue] (motor)  {Motor\\{\tiny drum}};
+    \node[block=darkred, right=2.5cm of motor] (pulley) {Big Pulley\\{\tiny $\rp = 47.7$\,mm}};
+    \node[block=springgold, right=2.0cm of pulley] (spring) {\textbf{Spring}\\{\tiny $\ks$, $\bc$}};
+    \node[block=drakegreen, right=2.0cm of spring] (link2)  {Link\,2\\{\tiny anchor}};
+
+    \draw[cable=drakeblue] (motor.east) -- (pulley.west)
+        node[midway, above, font=\tiny] {cable};
+    \draw[arr=darkred] (pulley.east) -- (spring.west)
+        node[midway, above, font=\tiny] {cable};
+    \draw[spring, thick, springgold] (spring.east) -- (link2.west)
+        node[midway, above, font=\tiny] {spring};
+
+    % Labels
+    \node[below=0.4cm of motor, font=\small, text=drakeblue] {$\lm$ [m]};
+    \node[below=0.4cm of pulley, font=\small, text=darkred] {$q_2$ [rad]};
+    \node[below=0.4cm of spring, font=\small, text=springgold] {$\delta = \lm - \rp q_2$};
+\end{tikzpicture}
+\end{center}
+\end{archbox}
+
+\subsection{State Variables}
+
+The SEA model adds \textbf{one new state variable} to the system:
+
+\begin{table}[H]
+\centering
+\caption{SEA state variable (joint~2 cable).}
+\begin{tabular}{clcl}
+\toprule
+\textbf{Symbol} & \textbf{Description} & \textbf{Units} & \textbf{Drake storage} \\
+\midrule
+$\lm$ & Motor-side cable displacement (paid out by drum) & m & Discrete state \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The spring extension is a \emph{derived} quantity:
+\begin{equation}
+\boxed{\delta = \lm - \rp \, q_2}
+\label{eq:delta}
+\end{equation}
+where $\rp$ is the big pulley radius and $q_2$ is the joint angle.  Positive $\delta$ means the spring is stretched (motor has paid out more cable than the joint has consumed).
+
+
+\subsection{Spring--Damper Force}
+
+The cable force is a linear spring--damper:
+\begin{equation}
+\boxed{F_{\mathrm{raw}} = \ks \, \delta + \bc \, \dot{\delta}}
+\label{eq:Fraw}
+\end{equation}
+where:
+\begin{align}
+    \dot{\delta} &= \lmd - \rp \, \dot{q}_2
+    \label{eq:delta_dot} \\
+    \lmd &= \wm \, (\lm^{\mathrm{des}} - \lm)
+    \qquad \text{(first-order motor servo)}
+    \label{eq:motor_velocity}
+\end{align}
+
+
+\subsection{Antagonistic Cable Decomposition}
+\label{sec:antagonistic}
+
+The joint has \textbf{two cables} routed in opposite directions around the big pulley:
+
+\begin{itemize}[leftmargin=2em]
+    \item \textbf{Green cable} (retracting): wraps \emph{Drive $\to$ IdlerR $\to$ BigPulley $\to$ EndL}
+    \item \textbf{Red cable} (extending): wraps \emph{Drive $\to$ IdlerL $\to$ BigPulley $\to$ EndR}
+\end{itemize}
+
+Cables can only \emph{pull} (tension $T \geq 0$).  The net cable force $F_{\mathrm{raw}}$ is decomposed:
+
+\begin{equation}
+\boxed{
+    T_{\mathrm{green}} = \max(F_{\mathrm{raw}},\; 0), \qquad
+    T_{\mathrm{red}} = \max(-F_{\mathrm{raw}},\; 0)
+}
+\label{eq:tensions}
+\end{equation}
+
+The \textbf{net signed cable force} applied to the joint is:
+\begin{equation}
+    F_{\mathrm{cable}} = T_{\mathrm{green}} - T_{\mathrm{red}} = F_{\mathrm{raw}}
+\label{eq:Fnet}
+\end{equation}
+
+\begin{warnbox}
+\textbf{Antagonistic means bidirectional.}  Unlike a single-cable system (which can only pull), the two-cable antagonistic arrangement allows the cable drive to produce \emph{both positive and negative} joint torque.  When $F_{\mathrm{raw}} > 0$ the green cable is taut and the red is slack; when $F_{\mathrm{raw}} < 0$ the red cable is taut and the green is slack.  Only one cable carries load at any instant (no pre-tension model).
+\end{warnbox}
+
+
+\subsection{Joint Torque}
+
+The cable force maps to joint-2 torque through the pulley radius:
+\begin{equation}
+\boxed{\tau_2 = \rp \cdot F_{\mathrm{cable}}}
+\label{eq:tau2}
+\end{equation}
+
+Joint~1 receives its torque directly from the CT controller (rigid direct-drive):
+\begin{equation}
+    \tau_1 = \tau_{1,\mathrm{des}}
+\label{eq:tau1}
+\end{equation}
+
+
+% ============================================================================
+\section{Motor Model}
+\label{sec:motor}
+% ============================================================================
+
+The motor is modeled as a \textbf{first-order position servo}---a bandwidth-limited system that tracks a desired cable displacement:
+
+\begin{equation}
+\boxed{\lmd = \wm \, (\lm^{\mathrm{des}} - \lm)}
+\label{eq:motor_servo}
+\end{equation}
+
+This is discretized via forward Euler at each simulation timestep:
+\begin{equation}
+    \lm[k+1] = \lm[k] + \Delta t \cdot \wm \, (\lm^{\mathrm{des}}[k] - \lm[k])
+\label{eq:motor_discrete}
+\end{equation}
+
+The desired motor cable position is computed by \textbf{steady-state spring inversion}:
+\begin{equation}
+\boxed{\lm^{\mathrm{des}} = \rp \, q_2 + \frac{\tau_{2,\mathrm{des}}}{\ks \, \rp}}
+\label{eq:lm_des}
+\end{equation}
+
+\begin{codemath}
+At steady state ($\dot{\delta} = 0$):
+\begin{align*}
+    \tau_{2,\mathrm{des}} &= \rp \cdot \ks \cdot \delta_{\mathrm{ss}} \\
+    \delta_{\mathrm{ss}} &= \frac{\tau_{2,\mathrm{des}}}{\ks \, \rp} \\
+    \lm^{\mathrm{des}} &= \rp \, q_2 + \delta_{\mathrm{ss}}
+\end{align*}
+This means the motor must displace beyond the joint position by exactly the spring extension needed to produce the commanded torque.
+\end{codemath}
+
+
+\subsection{Effect of Parameters}
+
+\begin{table}[H]
+\centering
+\caption{Parameter effects on SEA behaviour.}
+\begin{tabular}{ccl}
+\toprule
+\textbf{Parameter} & \textbf{Range} & \textbf{Effect} \\
+\midrule
+$\ks$ high (5000+\,N/m) & stiff & Small $\delta_{\mathrm{ss}}$ $\to$ fast torque $\to$ near-rigid \\
+$\ks$ low (20--50\,N/m)  & soft  & Large $\delta_{\mathrm{ss}}$ $\to$ slow torque $\to$ high lag \\
+$\wm$ high (100+\,rad/s)  & fast motor & Tracks $\lm^{\mathrm{des}}$ quickly $\to$ less lag \\
+$\wm$ low (5--10\,rad/s)  & slow motor & Can't keep up $\to$ more lag at high speed \\
+$\bc$ high & heavy damping & Suppresses oscillation, adds velocity-dependent drag \\
+$\bc$ low  & light damping & Allows spring oscillation at natural frequency \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The SEA introduces a \textbf{fundamental bandwidth limit}: even with perfect CT, the closed-loop cannot be faster than the cable spring natural frequency:
+\begin{equation}
+    \omega_{\mathrm{spring}} = \sqrt{\frac{\ks \, \rp^2}{I_2}}
+\end{equation}
+where $I_2$ is the reflected inertia at joint~2.
+
+
+% ============================================================================
+\section{Control Architecture}
+\label{sec:control}
+% ============================================================================
+
+\subsection{Two-Layer Architecture}
+
+\begin{archbox}{SEA Control Loop}
+\begin{center}
+\begin{tikzpicture}[
+    node distance=0.6cm and 1.2cm,
+    block/.style={rectangle, draw=#1, thick, fill=#1!8,
+                  minimum height=1cm, minimum width=3cm, align=center, font=\small},
+    arr/.style={-Stealth, thick, #1},
+    port/.style={font=\tiny, text=gray},
+]
+    \node[block=drakeblue] (ref) {\textbf{Trajectory}\\{\tiny $\bm{p}, \dot{\bm{p}}, \ddot{\bm{p}}$}};
+    \node[block=drakegreen, right=1cm of ref] (ct) {\textbf{CT Controller}\\{\tiny IK + Inv.\,Dyn.}};
+    \node[block=seaorange, right=1cm of ct] (sea) {\textbf{SEA Cable}\\{\tiny Spring + Motor}};
+    \node[block=darkred, right=1cm of sea] (plant) {\textbf{Plant}\\{\tiny 2 joints}};
+
+    \draw[arr=drakeblue] (ref) -- (ct) node[midway, above, port] {EE refs};
+    \draw[arr=drakegreen] (ct) -- (sea) node[midway, above, port] {$\tau_{1,2}^{\mathrm{des}}$};
+    \draw[arr=seaorange] (sea) -- (plant) node[midway, above, port] {$[\tau_1, \tau_2^{\mathrm{SEA}}]$};
+    \draw[arr=darkred] (plant.south) -- ++(0,-0.6) -| (ct.south)
+        node[pos=0.25, below, port] {$[\bq, \dot{\bq}]$};
+
+    % Joint 1 shortcut
+    \draw[arr=drakegreen, dashed] (ct.north) -- ++(0,0.5) -| (plant.north)
+        node[pos=0.3, above, port] {$\tau_1$ (direct, rigid)};
+\end{tikzpicture}
+\end{center}
+\end{archbox}
+
+\subsection{Per-Timestep Algorithm}
+
+At each simulation step ($\Delta t = 2$\,ms), the \texttt{SEACableController} executes:
+
+\begin{enumerate}[leftmargin=2em]
+    \item \textbf{Read plant state} $(q_1, q_2, \dot{q}_1, \dot{q}_2)$
+    \item \textbf{Analytical 2R IK}: $\bm{p}_{\mathrm{ref}} \to (q_{1}^{\mathrm{des}}, q_{2}^{\mathrm{des}})$
+    \item \textbf{Differential IK}: $\dot{\bm{p}}_{\mathrm{ref}} \xrightarrow{\bJ^{-1}} \dot{\bq}_{\mathrm{ref}}$, \quad $\ddot{\bm{p}}_{\mathrm{ref}} \xrightarrow{\bJ^{-1}} \ddot{\bq}_{\mathrm{ref}}$
+    \item \textbf{PD + feedforward}: $\bm{a}_{\mathrm{des}} = \ddot{\bq}_{\mathrm{ref}} + K_p(\bq_{\mathrm{des}} - \bq) + K_d(\dot{\bq}_{\mathrm{ref}} - \dot{\bq})$
+    \item \textbf{Inverse dynamics}: $\btau_{\mathrm{des}} = \bM(\bq)\,\bm{a}_{\mathrm{des}} + \bh(\bq, \dot{\bq})$
+    \item \textbf{Motor target} (steady-state inversion): $\lm^{\mathrm{des}} = \rp \, q_2 + \tau_{2,\mathrm{des}} / (\ks \, \rp)$
+    \item \textbf{Motor update} (Euler step): $\lm \gets \lm + \Delta t \cdot \wm \cdot (\lm^{\mathrm{des}} - \lm)$
+    \item \textbf{Spring force}: $\delta = \lm - \rp q_2$, \quad $F = \ks \delta + \bc \dot{\delta}$
+    \item \textbf{Tension decomposition}: $T_{\mathrm{green}} = \max(F, 0)$, \quad $T_{\mathrm{red}} = \max(-F, 0)$
+    \item \textbf{Apply torque}: $\tau_1 = \tau_{1,\mathrm{des}}$ (rigid), \quad $\tau_2 = \rp \cdot (T_{\mathrm{green}} - T_{\mathrm{red}})$
+\end{enumerate}
+
+Steps 1--6 are the standard CT pipeline (identical to the rigid-tendon controller).  Steps 7--10 are the SEA cable layer.
+
+
+% ============================================================================
+\section{Drake Implementation}
+\label{sec:drake}
+% ============================================================================
+
+\subsection{Source File}
+
+\texttt{script\_cup\_manipulator\_sea\_cable\_pydrake.py} ($\sim$1100 lines) is a \textbf{self-contained} simulation script.  Unlike the multi-file CT implementation, the entire SEA model lives in one file for clarity.
+
+\begin{table}[H]
+\centering
+\caption{Key classes and functions.}
+\begin{tabular}{p{5.5cm}p{8cm}}
+\toprule
+\textbf{Name} & \textbf{Role} \\
+\midrule
+\texttt{SEACableController}     & Drake \texttt{LeafSystem}. CT outer-loop + SEA cable model. Discrete state $\lm$. \\
+\texttt{\_build\_rect\_trajectory} & C$^2$ rectangular EE trajectory with speed-profiled corners. \\
+\texttt{\_build\_move\_to\_start}  & Cubic-Hermite approach preamble. \\
+\texttt{run\_simulation()}        & Build, wire, run, collect logs for one SEA config. \\
+\texttt{plot\_sea\_results()}     & 3$\times$3 diagnostic panel + EE path overlay. \\
+\texttt{main()}                   & CLI dispatch, optional \texttt{--compare} mode. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{SEACableController --- LeafSystem}
+
+\begin{lstlisting}[caption={Core spring force computation (antagonistic cable model).}]
+def _spring_force(self, l_m, l_m_des, q, q_dot):
+    delta     = l_m - self._r_p * q[1]           # spring extension
+    l_m_dot   = self._omega_m * (l_m_des - l_m)  # motor velocity
+    delta_dot = l_m_dot - self._r_p * q_dot[1]
+    F_raw = self._k_s * delta + self._b_c * delta_dot
+    # Antagonistic decomposition
+    T_green = max(F_raw,  0.0)   # retracting cable
+    T_red   = max(-F_raw, 0.0)   # extending cable
+    F_cable = T_green - T_red    # net signed force = F_raw
+    return F_cable, delta, l_m_dot, T_green, T_red
+\end{lstlisting}
+
+\begin{codemath}
+\begin{align}
+    \delta &= \lm - \rp \, q_2 \tag{spring extension} \\
+    \dot{\delta} &= \lmd - \rp \, \dot{q}_2 \tag{extension rate} \\
+    F_{\mathrm{raw}} &= \ks \, \delta + \bc \, \dot{\delta} \tag{spring--damper} \\
+    F_{\mathrm{cable}} &= T_{\mathrm{green}} - T_{\mathrm{red}} = F_{\mathrm{raw}} \tag{net antagonistic force}
+\end{align}
+\end{codemath}
+
+\begin{lstlisting}[caption={Motor update (discrete) and torque application.}]
+def _update_motor(self, context, discrete_state):
+    l_m = context.get_discrete_state(self._l_m_idx).value()[0]
+    _, l_m_des, _, _, _ = self._solve(context)
+    l_m_new = l_m + self._dt * self._omega_m * (l_m_des - l_m)
+    discrete_state.get_mutable_vector(self._l_m_idx).SetFromVector(
+        np.array([l_m_new]))
+
+def _calc_actuation(self, context, output):
+    tau_des, l_m_des, q, q_dot, _ = self._solve(context)
+    l_m = context.get_discrete_state(self._l_m_idx).value()[0]
+    F_cable, _, _, _, _ = self._spring_force(l_m, l_m_des, q, q_dot)
+    tau_out = np.array([
+        tau_des[0],            # J1: rigid direct drive
+        self._r_p * F_cable,   # J2: SEA cable spring
+    ])
+    output.SetFromVector(np.clip(tau_out, -self._tau_max, self._tau_max))
+\end{lstlisting}
+
+\begin{codemath}
+\begin{align}
+    \lm[k+1] &= \lm[k] + \Delta t \cdot \wm \cdot (\lm^{\mathrm{des}} - \lm[k]) \tag{motor servo} \\
+    \tau_1 &= \tau_{1,\mathrm{des}} \tag{rigid J1} \\
+    \tau_2 &= \rp \cdot F_{\mathrm{cable}} \tag{SEA J2}
+\end{align}
+\end{codemath}
+
+
+\subsection{Diagnostics Output Port}
+
+The controller exposes an 8-element diagnostics vector for logging:
+
+\begin{table}[H]
+\centering
+\caption{Diagnostics vector layout.}
+\begin{tabular}{clcl}
+\toprule
+\textbf{Index} & \textbf{Name} & \textbf{Symbol} & \textbf{Units} \\
+\midrule
+0 & Motor cable displacement & $\lm$ & m \\
+1 & Desired motor position & $\lm^{\mathrm{des}}$ & m \\
+2 & Spring extension & $\delta$ & m \\
+3 & Net cable force & $F_{\mathrm{cable}}$ & N \\
+4 & CT desired $\tau_1$ & $\tau_{1,\mathrm{des}}$ & Nm \\
+5 & CT desired $\tau_2$ & $\tau_{2,\mathrm{des}}$ & Nm \\
+6 & Green cable tension & $T_{\mathrm{green}}$ & N \\
+7 & Red cable tension & $T_{\mathrm{red}}$ & N \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+\section{Spring Visualization}
+\label{sec:viz}
+% ============================================================================
+
+The Meshcat 3D visualization draws the cable routing with pulleys, straight cable segments, and a helical spring coil on the last segment of each cable route.
+
+\subsection{Dynamic Spring Length}
+
+The spring visualization dynamically reflects the actual physics state.  The helper function \texttt{draw\_cables()} in \texttt{project\_utils/viz\_cables.py} accepts a \texttt{spring\_extension} parameter:
+
+\begin{lstlisting}[caption={Dynamic spring fraction from physics state.}]
+def draw_cables(meshcat, plant, plant_context, manipulator, rig,
+                cable_radius=0.0005, n_arc_pts=32,
+                spring_extension=0.0):
+    # ...
+    # In the last cable segment:
+    rest_len   = spring.rest_length
+    actual_len = rest_len + abs(spring_extension)
+    sf = np.clip(actual_len / seg_len, 0.05, 0.90)
+\end{lstlisting}
+
+\begin{codemath}
+The visual spring fraction of the cable segment is:
+\[
+    f_{\mathrm{spring}} = \mathrm{clamp}\!\left(\frac{L_{\mathrm{rest}} + |\delta|}{L_{\mathrm{segment}}},\; 0.05,\; 0.90\right)
+\]
+When $\delta = 0$ (no tension), the spring is at its rest fraction.  Under load, $|\delta| > 0$ and the coil visually stretches, with the remaining segment drawn as straight cable on each side.
+\end{codemath}
+
+\subsection{Real-Time Update}
+
+During each simulation visualization tick, the spring extension $\delta$ is read from the controller's diagnostics port and passed to the drawing function:
+
+\begin{lstlisting}[caption={Visualization tick with live spring extension.}]
+def _viz_tick():
+    _ctx = simulator.get_mutable_context()
+    _pc  = plant.GetMyMutableContextFromRoot(_ctx)
+    _ctrl_ctx = ctrl.GetMyMutableContextFromRoot(_ctx)
+    _diag = ctrl.GetOutputPort("diagnostics").Eval(_ctrl_ctx)
+    _delta = _diag[2]   # spring extension delta [m]
+    manipulator.compute_tangents(plant, _pc)
+    draw_cables(meshcat, plant, _pc, manipulator, _rig,
+                spring_extension=_delta)
+\end{lstlisting}
+
+
+% ============================================================================
+\section{Comparison: Rigid vs.\ Compliant Tendon}
+\label{sec:comparison}
+% ============================================================================
+
+\subsection{Rigid Tendon (Standard CT)}
+
+In the rigid-tendon model (companion document):
+\begin{itemize}[leftmargin=2em]
+    \item $\tau_2 = \tau_{2,\mathrm{des}}$ --- torque applied instantaneously
+    \item No spring state, no motor dynamics
+    \item Cable tensions are post-hoc logging: $T = \tau_2 / \rp$
+\end{itemize}
+
+\subsection{SEA Tendon (This Document)}
+
+\begin{itemize}[leftmargin=2em]
+    \item $\tau_2 = \rp \cdot F_{\mathrm{cable}}$ --- torque mediated by spring + motor
+    \item One additional state ($\lm$), one additional ODE (motor servo)
+    \item Cable tensions are \emph{physically meaningful}: they determine the actual force
+    \item Torque lag increases with softer spring (lower $\ks$) or slower motor (lower $\wm$)
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{Rigid vs.\ SEA comparison.}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Property} & \textbf{Rigid Tendon} & \textbf{SEA Cable} \\
+\midrule
+Joint-2 torque source & CT output directly & Spring force $\times$ $\rp$ \\
+Cable dynamics & None & $\dot{\lm} = \wm(\lm^{\mathrm{des}} - \lm)$ \\
+Spring state & N/A & $\delta = \lm - \rp q_2$ \\
+Antagonistic cables & Post-hoc only & Physics: bidirectional \\
+Torque bandwidth & Infinite & Limited by $\ks$, $\wm$ \\
+Tracking accuracy & Best possible & Degrades with soft spring \\
+Extra parameters & 0 & 3 ($\ks$, $\bc$, $\wm$) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+\section{Command-Line Interface}
+\label{sec:cli}
+% ============================================================================
+
+\begin{lstlisting}[language=bash, style=python, caption={Example usage.}]
+# Default spring (k_s=20 N/m), default CT gains
+python script_cup_manipulator_sea_cable_pydrake.py
+
+# Very soft spring (high lag)
+python script_cup_manipulator_sea_cable_pydrake.py --spring-stiffness 30
+
+# Stiff spring (near-rigid, matches CT-only behaviour)
+python script_cup_manipulator_sea_cable_pydrake.py --spring-stiffness 5000
+
+# Overlay compliant vs rigid on the same plot
+python script_cup_manipulator_sea_cable_pydrake.py --compare
+
+# Custom CT gains + fast motor
+python script_cup_manipulator_sea_cable_pydrake.py \
+    --spring-stiffness 200 --motor-bandwidth 60 \
+    --ct-kp 400 --ct-kd 80
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{SEA-specific CLI arguments.}
+\begin{tabular}{llll}
+\toprule
+\textbf{Flag} & \textbf{Symbol} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\texttt{--spring-stiffness} & $\ks$ & 20.0 N/m & Cable spring stiffness \\
+\texttt{--cable-damping}    & $\bc$ & 2.0 N$\cdot$s/m & Cable dashpot damping \\
+\texttt{--motor-bandwidth}  & $\wm$ & 30.0 rad/s & Motor position servo bandwidth \\
+\texttt{--compare}          & ---   & off & Run compliant + rigid, overlay plots \\
+\texttt{--compare-rigid-ks} & ---   & 5000 N/m & Stiffness for ``rigid'' comparison \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+\section{Summary of Equations}
+\label{sec:summary}
+% ============================================================================
+
+\begin{resultbox}
+\textbf{Complete SEA Cable Model (Joint 2):}
+
+\begin{align}
+    \text{Spring extension:}\quad
+        & \delta = \lm - \rp \, q_2 \\[4pt]
+    \text{Motor servo:}\quad
+        & \lmd = \wm \, (\lm^{\mathrm{des}} - \lm) \\[4pt]
+    \text{Motor target:}\quad
+        & \lm^{\mathrm{des}} = \rp \, q_2 + \frac{\tau_{2,\mathrm{des}}}{\ks \, \rp} \\[4pt]
+    \text{Spring--damper:}\quad
+        & F_{\mathrm{raw}} = \ks \, \delta + \bc \, (\lmd - \rp \dot{q}_2) \\[4pt]
+    \text{Tensions:}\quad
+        & T_{\mathrm{green}} = \max(F_{\mathrm{raw}}, 0), \quad
+          T_{\mathrm{red}} = \max(-F_{\mathrm{raw}}, 0) \\[4pt]
+    \text{Joint torque:}\quad
+        & \tau_2 = \rp \cdot (T_{\mathrm{green}} - T_{\mathrm{red}})
+          = \rp \cdot F_{\mathrm{raw}}
+\end{align}
+
+\textbf{Joint 1:}\quad $\tau_1 = \tau_{1,\mathrm{des}}$ \quad (rigid direct drive, unchanged from CT)
+
+\medskip
+\textbf{Visualization:}\quad Spring coil length $= L_{\mathrm{rest}} + |\delta|$ \quad (proportional to tension)
+\end{resultbox}
+
+
+\end{document}

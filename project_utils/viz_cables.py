@@ -45,8 +45,18 @@ def _Xw(plant, manipulator, plant_context, body_name):
     return X.rotation().matrix(), X.translation()
 
 def draw_cables(meshcat, plant, plant_context, manipulator, rig,
-                cable_radius: float = 0.0005, n_arc_pts: int = 32) -> None:
-    """Draw both tendon cables in Meshcat: straight segments and pulley wrap arcs."""
+                cable_radius: float = 0.0005, n_arc_pts: int = 32,
+                spring_extension: float = 0.0) -> None:
+    """Draw both tendon cables in Meshcat: straight segments and pulley wrap arcs.
+
+    Parameters
+    ----------
+    spring_extension : float
+        Current spring extension δ [m] from the SEA controller.  When non-zero
+        the helical spring visualization stretches/compresses proportionally:
+            visual_length = rest_length + |δ|
+        so the coil spacing in Meshcat matches the actual physics state.
+    """
 
     # ── Shared cylinder-placement helper ─────────────────────────────────────
     def _place_cylinder(path, p0, p1, rgba):
@@ -80,7 +90,19 @@ def draw_cables(meshcat, plant, plant_context, manipulator, rig,
             if springs_on and i == last_seg_idx:
                 spring = rig.spring_L if ri == 0 else rig.spring_R
                 if spring.enabled:
-                    sf = np.clip(spring.spring_fraction, 0.05, 0.90)
+                    seg_len = float(np.linalg.norm(p0 - p1))
+                    # Dynamic spring length: only the taut cable stretches.
+                    # ri==0 → green cable (taut when δ > 0, F_raw > 0)
+                    # ri==1 → red   cable (taut when δ < 0, F_raw < 0)
+                    rest_len   = spring.rest_length
+                    route_ext  = max(spring_extension, 0.0) if ri == 0 \
+                                 else max(-spring_extension, 0.0)
+                    actual_len = rest_len + route_ext
+                    # Fraction of segment occupied by the spring (clamped)
+                    if seg_len > 1e-6:
+                        sf = np.clip(actual_len / seg_len, 0.05, 0.90)
+                    else:
+                        sf = 0.30
                     sp = np.clip(spring.spring_position, sf/2, 1.0 - sf/2)
                     t0 = sp - sf / 2   # spring start (fraction from endpoint)
                     t1 = sp + sf / 2   # spring end

@@ -141,7 +141,8 @@ from script_cup_manipulator_pendulam_lqr_min_effort_2d import (
 )
 
 
-from robots.cup_manipulator_tendon import CupManipulatorTendon, CupManipulatorIKSystem, ComputedTorqueController, create_cable_manipulator_config
+from robots.cup_manipulator_tendon import CupManipulatorTendon, CupManipulatorIKSystem, create_cable_manipulator_config
+from controller.controller import ComputedTorqueController
 
 # ── Cable routing ─────────────────────────────────────────────────────────────
 from project_utils.viz_cables import (
