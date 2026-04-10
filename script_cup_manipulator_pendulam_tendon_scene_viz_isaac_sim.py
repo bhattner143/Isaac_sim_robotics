@@ -37,11 +37,12 @@ Usage:
 """
 
 # ============================================================================
-# PRE-PARSE --render BEFORE SimulationApp (must be absolutely first)
+# PRE-PARSE --render / --verbose BEFORE SimulationApp
 # SimulationApp() must be the very first Isaac Sim call, so we cannot use
 # argparse here — manually scan sys.argv instead.
 # ============================================================================
 import sys
+import os
 
 _RENDER_CHOICES = ("native", "websocket", "headless")
 _render_mode = "native"  # default
@@ -53,19 +54,20 @@ for _i, _arg in enumerate(sys.argv):
             sys.exit(1)
         break
 
-# ============================================================================
-# SUPPRESS ISAAC SIM STARTUP WARNINGS
-# ============================================================================
-# CARB_LOG_LEVEL=error silences carb-level warnings (crashdumps, PCIe,
-# deprecated omni.isaac.* namespaces).  Set to "warn" to re-enable.
-import os
-os.environ.setdefault("CARB_LOG_LEVEL", "error")
-import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
+# Add project root to path (needed for project_utils import before SimulationApp)
+from pathlib import Path
+_PROJECT_ROOT = str(Path(__file__).resolve().parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 # ============================================================================
-# MUST BE FIRST — Isaac Sim requirement
+# QUIET STARTUP — suppress Isaac Sim extension/GPU/warning noise
+# Use --verbose to see original Isaac Sim output.
 # ============================================================================
+from project_utils.log_isaacsim import IsaacSimLogger
+_log = IsaacSimLogger.from_argv()
+_log.suppress()
+
 from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({
@@ -97,13 +99,13 @@ if _render_mode == "websocket":
     enable_extension("omni.kit.livestream.webrtc")
 
     _connect_ip = _tailscale_ip if _tailscale_ip else "localhost"
-    print("\n" + "=" * 60)
-    print("  WebRTC streaming enabled (omni.kit.livestream.webrtc)")
-    print(f"  Port          : 49100")
+    _log.print("\n" + "=" * 60)
+    _log.print("  WebRTC streaming enabled (omni.kit.livestream.webrtc)")
+    _log.print(f"  Port          : 49100")
     if _tailscale_ip:
-        print(f"  Tailscale IP  : {_tailscale_ip}")
-    print(f"  Mac client    : connect to  {_connect_ip} : 49100")
-    print("=" * 60 + "\n")
+        _log.print(f"  Tailscale IP  : {_tailscale_ip}")
+    _log.print(f"  Mac client    : connect to  {_connect_ip} : 49100")
+    _log.print("=" * 60 + "\n")
 
 # ============================================================================
 # IMPORTS (after SimulationApp)
@@ -112,17 +114,13 @@ import argparse
 import queue
 import threading
 import numpy as np
-from pathlib import Path
 
 import omni.usd
 from omni.isaac.core import World
 from pxr import UsdGeom, UsdLux, Gf
 from termcolor import colored
 
-# Add project root to path
-PROJECT_ROOT = str(Path(__file__).resolve().parent)
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+_log.restore()  # ← normal output resumes here
 
 from robots.cup_manipulator_tendon_isaac import (
     CupManipulatorTendonIsaac,
@@ -131,6 +129,12 @@ from robots.cup_manipulator_tendon_isaac import (
 
 # ── Cable FK (headless Drake plant for cable tangent computation) ─────────────
 from cable import DrakeCablePlant
+
+# ── USD cable rendering (Isaac Sim counterpart of project_utils.viz_cables) ──
+from project_utils.viz_cables_isaacsim import (
+    draw_cables_usd,
+    update_cables_usd,
+)
 
 
 # ============================================================================
@@ -146,6 +150,10 @@ def parse_args():
         choices=_RENDER_CHOICES,
         default=_render_mode,
         help='Render mode: native (local window) | websocket (Omniverse Streaming Client, port 49100) | headless (no display)',
+    )
+    parser.add_argument(
+        '--verbose', action='store_true', default=False,
+        help='Show full Isaac Sim startup output (default: quiet)',
     )
     parser.add_argument(
         '--q1', type=float, default=10.0,
@@ -217,90 +225,8 @@ def update_ee_marker(stage, position: np.ndarray):
         ))
 
 
-# ============================================================================
-# USD CABLE RENDERING
-# ============================================================================
-
-_CABLE_ROOT = "/World/Cables"
-_CABLE_RADIUS = 0.0005  # 0.5 mm
-
-
-def _usd_cylinder(stage, path: str, p0: np.ndarray, p1: np.ndarray, color_rgb):
-    """Create or update a thin cylinder prim between two world-frame points."""
-    diff = p1 - p0
-    length = float(np.linalg.norm(diff))
-    if length < 1e-9:
-        return
-    mid = (p0 + p1) * 0.5
-
-    # Orientation: cylinder default axis is Z; rotate to align with diff
-    z_hat = diff / length
-    tmp = np.array([0., 1., 0.]) if abs(z_hat[0]) > 0.9 else np.array([1., 0., 0.])
-    x_hat = np.cross(tmp, z_hat)
-    x_hat /= np.linalg.norm(x_hat)
-    y_hat = np.cross(z_hat, x_hat)
-    # 4×4 row-major for USD (rows = basis vectors + translation)
-    mat = Gf.Matrix4d(
-        float(x_hat[0]), float(x_hat[1]), float(x_hat[2]), 0.0,
-        float(y_hat[0]), float(y_hat[1]), float(y_hat[2]), 0.0,
-        float(z_hat[0]), float(z_hat[1]), float(z_hat[2]), 0.0,
-        float(mid[0]),   float(mid[1]),   float(mid[2]),   1.0,
-    )
-
-    prim = stage.GetPrimAtPath(path)
-    if prim.IsValid():
-        # Update existing
-        cyl = UsdGeom.Cylinder(prim)
-        cyl.GetHeightAttr().Set(length)
-        xf = UsdGeom.Xformable(prim)
-        xf.ClearXformOpOrder()
-        xf.AddTransformOp().Set(mat)
-    else:
-        # Create new
-        cyl = UsdGeom.Cylinder.Define(stage, path)
-        cyl.GetRadiusAttr().Set(_CABLE_RADIUS)
-        cyl.GetHeightAttr().Set(length)
-        cyl.GetDisplayColorAttr().Set([Gf.Vec3f(*[float(c) for c in color_rgb])])
-        xf = UsdGeom.Xformable(cyl.GetPrim())
-        xf.ClearXformOpOrder()
-        xf.AddTransformOp().Set(mat)
-
-
-def draw_cables_usd(stage, drake_cable: DrakeCablePlant):
-    """Draw all cable segments and wrap arcs as USD Cylinder prims."""
-    # Straight segments between waypoints
-    for route, pts in drake_cable.get_cable_world_points():
-        skip = getattr(route, "skip_chord_segments", frozenset())
-        color = _route_color(route)
-        base = f"{_CABLE_ROOT}/{route.meshcat_path.replace('/', '_').strip('_')}"
-        for i, (p0, p1) in enumerate(zip(pts[:-1], pts[1:])):
-            if i in skip:
-                continue
-            _usd_cylinder(stage, f"{base}/seg{i:02d}", p0, p1, color)
-
-    # Wrap arcs
-    for label, color, arc_pts in drake_cable.get_wrap_arcs():
-        base = f"{_CABLE_ROOT}/wrap_{label}"
-        for i, (p0, p1) in enumerate(zip(arc_pts[:-1], arc_pts[1:])):
-            _usd_cylinder(stage, f"{base}/arc{i:02d}", p0, p1, color)
-
-    print(colored("✓ Cables drawn", 'green'))
-
-
-def _route_color(route):
-    """Extract RGB tuple from a CableRoute's mpl_color string."""
-    if "green" in route.mpl_color.lower():
-        return (0.1, 0.85, 0.1)
-    return (0.9, 0.1, 0.1)
-
-
-def update_cables_usd(stage, drake_cable: DrakeCablePlant):
-    """Update existing cable USD prims after joint angles changed."""
-    # Remove old cable prim tree and redraw
-    cable_prim = stage.GetPrimAtPath(_CABLE_ROOT)
-    if cable_prim.IsValid():
-        stage.RemovePrim(_CABLE_ROOT)
-    draw_cables_usd(stage, drake_cable)
+# USD cable rendering moved to project_utils/viz_cables_isaacsim.py
+# Imported above: draw_cables_usd, update_cables_usd
 
 
 # ============================================================================
@@ -530,7 +456,7 @@ def main():
     except KeyboardInterrupt:
         pass
 
-    simulation_app.close()
+    _log.close(simulation_app)
     print("[Isaac Sim] Simulation closed.")
 
 

@@ -465,7 +465,7 @@ class CupManipulatorTendonIsaac:
         for i, name in enumerate(dof_names):
             print(colored(f"  [{i}] {name}", 'cyan'))
 
-    def initialize_dynamics_view(self, world) -> None:
+    def initialize_dynamics_view(self, world, *, reset: bool = True) -> None:
         """Initialize ArticulationView for dynamics queries (M, C, g).
 
         Must be called AFTER world.reset() and initialize_state().
@@ -476,13 +476,28 @@ class CupManipulatorTendonIsaac:
         ----------
         world : omni.isaac.core.World
             The simulation world instance.
+        reset : bool
+            If True (default), call world.reset() and finalize immediately.
+            Set False for multi-robot batching: call once per robot, then
+            do a single world.reset() followed by finalize_dynamics_view()
+            on each robot.
         """
+        _view_name = self.prim_path.lstrip("/").replace("/", "_") + "_dyn_view"
         self._art_view = ArticulationView(
             prim_paths_expr=self.prim_path,
-            name=f"{self.name}_dynamics_view",
+            name=_view_name,
         )
         world.scene.add(self._art_view)
-        world.reset()  # re-initialize physics to register the view
+        if reset:
+            world.reset()  # re-initialize physics to register the view
+            self.finalize_dynamics_view(world)
+
+    def finalize_dynamics_view(self, world) -> None:
+        """Finalize ArticulationView after a world.reset().
+
+        Called automatically by initialize_dynamics_view(reset=True).
+        For multi-robot batching, call manually after a single world.reset().
+        """
         self._art_view.initialize(world.physics_sim_view)
 
         # Resolve DOF indices in the ArticulationView

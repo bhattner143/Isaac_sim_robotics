@@ -227,7 +227,7 @@ The spring (which may be an explicit compliance element or the intrinsic belt/ca
     \item \textbf{Motor--joint decoupling}: The motor and joint move at different rates; the spring absorbs the difference.
 \end{enumerate}
 
-This document describes the \texttt{script\_cup\_manipulator\_sea\_cable\_pydrake.py} implementation, which adds a \textbf{Series Elastic Actuator (SEA)} model to joint~2 while keeping joint~1 as rigid direct-drive.
+This document describes the \texttt{script\_cup\_manipulator\_pendulam\_tendon\_with\_spring\_sea\_pydrake.py} implementation, which adds a \textbf{Series Elastic Actuator (SEA)} model to joint~2 while keeping joint~1 as rigid direct-drive.
 
 
 % ============================================================================
@@ -476,7 +476,7 @@ Steps 1--6 are the standard CT pipeline (identical to the rigid-tendon controlle
 
 \subsection{Source File}
 
-\texttt{script\_cup\_manipulator\_sea\_cable\_pydrake.py} ($\sim$1100 lines) is a \textbf{self-contained} simulation script.  Unlike the multi-file CT implementation, the entire SEA model lives in one file for clarity.
+\texttt{script\_cup\_manipulator\_pendulam\_tendon\_with\_spring\_sea\_pydrake.py} ($\sim$900 lines) is a \textbf{self-contained} simulation script.  Unlike the multi-file CT implementation, the entire SEA model lives in one file for clarity.
 
 \begin{table}[H]
 \centering
@@ -667,19 +667,19 @@ Extra parameters & 0 & 3 ($\ks$, $\bc$, $\wm$) \\
 
 \begin{lstlisting}[language=bash, style=python, caption={Example usage.}]
 # Default spring (k_s=20 N/m), default CT gains
-python script_cup_manipulator_sea_cable_pydrake.py
+python script_cup_manipulator_pendulam_tendon_with_spring_sea_pydrake.py
 
 # Very soft spring (high lag)
-python script_cup_manipulator_sea_cable_pydrake.py --spring-stiffness 30
+python script_cup_manipulator_pendulam_tendon_with_spring_sea_pydrake.py --spring-stiffness 30
 
 # Stiff spring (near-rigid, matches CT-only behaviour)
-python script_cup_manipulator_sea_cable_pydrake.py --spring-stiffness 5000
+python script_cup_manipulator_pendulam_tendon_with_spring_sea_pydrake.py --spring-stiffness 5000
 
 # Overlay compliant vs rigid on the same plot
-python script_cup_manipulator_sea_cable_pydrake.py --compare
+python script_cup_manipulator_pendulam_tendon_with_spring_sea_pydrake.py --compare
 
 # Custom CT gains + fast motor
-python script_cup_manipulator_sea_cable_pydrake.py \
+python script_cup_manipulator_pendulam_tendon_with_spring_sea_pydrake.py \
     --spring-stiffness 200 --motor-bandwidth 60 \
     --ct-kp 400 --ct-kd 80
 \end{lstlisting}
@@ -691,7 +691,7 @@ python script_cup_manipulator_sea_cable_pydrake.py \
 \toprule
 \textbf{Flag} & \textbf{Symbol} & \textbf{Default} & \textbf{Description} \\
 \midrule
-\texttt{--spring-stiffness} & $\ks$ & 20.0 N/m & Cable spring stiffness \\
+\texttt{--spring-stiffness} & $\ks$ & 3.0 N/m & Cable spring stiffness \\
 \texttt{--cable-damping}    & $\bc$ & 2.0 N$\cdot$s/m & Cable dashpot damping \\
 \texttt{--motor-bandwidth}  & $\wm$ & 30.0 rad/s & Motor position servo bandwidth \\
 \texttt{--compare}          & ---   & off & Run compliant + rigid, overlay plots \\
@@ -702,13 +702,389 @@ python script_cup_manipulator_sea_cable_pydrake.py \
 
 
 % ============================================================================
+\section{Computed Torque Controller --- Inner Layer}
+\label{sec:ct}
+% ============================================================================
+
+The SEA cable model (Section~\ref{sec:physics}) sits \emph{between} the controller and the plant.  The \textbf{Computed Torque (CT)} controller is the inner layer that decides what torque \emph{should} be applied.  This section documents the complete CT pipeline as implemented in the \texttt{\_solve()} method of \texttt{SEACableController}.
+
+\subsection{Inverse Kinematics: Task Space $\to$ Joint Space}
+
+Given an end-effector reference position $\bm{p}_{\mathrm{ref}} = [x, y]^T$, the controller solves the analytical 2R inverse kinematics:
+
+\begin{equation}
+\boxed{
+    q_2 = \pm\arccos\!\left(\frac{x^2 + y^2 - L_1^2 - L_2^2}{2\,L_1\,L_2}\right),\qquad
+    q_1 = \arctan2(y, x) - \arctan2\!\bigl(L_2 \sin q_2,\; L_1 + L_2 \cos q_2\bigr)
+}
+\label{eq:ik}
+\end{equation}
+
+Key implementation details:
+\begin{itemize}[leftmargin=2em]
+    \item \textbf{Warm-starting}: The previous IK solution seeds the next iteration to maintain branch consistency (no elbow flips between timesteps).
+    \item \textbf{Workspace clamping}: Target points outside the reachable annulus $r \in [|L_1 - L_2|,\; L_1 + L_2]$ are projected onto the nearest reachable boundary.
+    \item \textbf{Fallback}: If IK fails, the last-known-good solution is held.
+\end{itemize}
+
+\begin{lstlisting}[caption={IK warm-start in SEACableController.\_solve().}]
+seed = self._last_q_des if np.any(self._last_q_des != 0) else q
+q_des, ok = self._manip.ik._solve_2r_core(self._L1, self._L2, ee_des, seed)
+if ok:
+    self._last_q_des = q_des.copy()
+else:
+    q_des = self._last_q_des.copy()   # hold last known good
+\end{lstlisting}
+
+
+\subsection{Differential IK: Velocity \& Acceleration References}
+
+The end-effector velocity and acceleration references are mapped to joint space via the analytical Jacobian:
+
+\begin{equation}
+    \bJ(\bq_{\mathrm{des}}) = \begin{bmatrix}
+        -L_1 s_1 - L_2 s_{12} & -L_2 s_{12} \\[2pt]
+        L_1 c_1 + L_2 c_{12}  &  L_2 c_{12}
+    \end{bmatrix}
+\label{eq:jacobian}
+\end{equation}
+
+where $s_1 = \sin q_1$, $c_1 = \cos q_1$, $s_{12} = \sin(q_1 + q_2)$, $c_{12} = \cos(q_1 + q_2)$.  The joint-space references are:
+
+\begin{equation}
+\boxed{
+    \dot{\bq}_{\mathrm{ref}} = \bJ^{-1} \dot{\bm{p}}_{\mathrm{ref}}, \qquad
+    \ddot{\bq}_{\mathrm{ref}} = \bJ^{-1} \ddot{\bm{p}}_{\mathrm{ref}}
+}
+\label{eq:diff_ik}
+\end{equation}
+
+\begin{warnbox}
+$\bJ^{-1}$ is computed via pseudo-inverse (\texttt{np.linalg.pinv}).  Near kinematic singularities ($\det \bJ \approx 0$), the inverse degrades gracefully; however, very large joint velocities can still occur.  The torque clamp ($\tau_{\max}$) prevents damage.
+\end{warnbox}
+
+
+\subsection{PD + Feedforward Desired Acceleration}
+
+The controller computes a desired joint acceleration that combines \textbf{feedforward} (reference acceleration) with \textbf{feedback} (PD error correction):
+
+\begin{equation}
+\boxed{
+    \bm{a}_{\mathrm{des}} = \ddot{\bq}_{\mathrm{ref}}
+        + K_p \, (\bq_{\mathrm{des}} - \bq)
+        + K_d \, (\dot{\bq}_{\mathrm{ref}} - \dot{\bq})
+}
+\label{eq:a_des}
+\end{equation}
+
+Because the system is feedback-linearized (see next section), the closed-loop error dynamics become a decoupled linear 2nd-order system:
+
+\begin{equation}
+    \ddot{\bm{e}} + K_d \, \dot{\bm{e}} + K_p \, \bm{e} = \bm{0}
+    \qquad\Longrightarrow\qquad
+    \text{poles at } -\zeta\omega_n \pm \omega_n\sqrt{\zeta^2 - 1}
+\label{eq:error_dynamics}
+\end{equation}
+
+\begin{table}[H]
+\centering
+\caption{CT gain interpretation (second-order error dynamics).}
+\begin{tabular}{ccl}
+\toprule
+\textbf{Gain} & \textbf{Relation} & \textbf{Meaning} \\
+\midrule
+$K_p$ [s$^{-2}$] & $\omega_n = \sqrt{K_p}$ & Natural frequency: $K_p = 100 \to \omega_n = 10$ rad/s \\
+$K_d$ [s$^{-1}$] & $\zeta = K_d / (2\sqrt{K_p})$ & Damping ratio: $K_d = 40, K_p = 100 \to \zeta = 2.0$ (overdamped) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{\texorpdfstring{Inverse Dynamics: $\btau = \bM \bm{a} + \bh$}{Inverse Dynamics: tau = M a + h}}
+
+Drake's \texttt{CalcInverseDynamics} computes the joint torques needed to achieve $\bm{a}_{\mathrm{des}}$:
+
+\begin{equation}
+\boxed{
+    \btau_{\mathrm{des}} = \bM(\bq) \, \bm{a}_{\mathrm{des}} + \bh(\bq, \dot{\bq})
+}
+\label{eq:inv_dyn}
+\end{equation}
+
+where $\bM(\bq)$ is the $2 \times 2$ mass matrix and $\bh(\bq, \dot{\bq})$ is the bias vector (Coriolis + gravity).
+
+\begin{lstlisting}[caption={Computed torque: inverse dynamics via Drake.}]
+# Map user-order [q1, q2] acceleration to Drake velocity-vector order
+vdot_des = np.zeros(self._nv)
+vdot_des[self._v_idx[0]] = a_des_user[0]
+vdot_des[self._v_idx[1]] = a_des_user[1]
+
+# tau = M(q) * a_des + h(q, qdot)
+self._forces.SetZero()
+tau_full = self._plant.CalcInverseDynamics(
+    self._plant_ctx, vdot_des, self._forces,
+)
+tau_des = np.array([tau_full[self._v_idx[0]], tau_full[self._v_idx[1]]])
+\end{lstlisting}
+
+\begin{codemath}
+Drake's \texttt{CalcInverseDynamics(ctx, vdot, external\_forces)} computes:
+\[
+    \btau = \bM(\bq) \, \ddot{\bq} + \bm{C}(\bq, \dot{\bq})\,\dot{\bq} + \bm{g}(\bq)
+\]
+With \texttt{external\_forces} set to zero, the full nonlinear dynamics (mass, Coriolis, gravity) are cancelled, and the plant behaves as a double integrator under the desired acceleration.
+\end{codemath}
+
+
+\subsection{Motor Target: Steady-State Inversion}
+
+After computing $\tau_{2,\mathrm{des}}$, the controller calculates the motor cable position needed to produce that torque at steady state:
+
+\begin{equation}
+\boxed{
+    \lm^{\mathrm{des}} = \rp \, q_2 + \frac{\tau_{2,\mathrm{des}}}{\ks \, \rp}
+}
+\label{eq:motor_target_ct}
+\end{equation}
+
+\begin{lstlisting}[caption={Motor target from desired torque (steady-state spring inversion).}]
+l_m_des = self._r_p * q[1] + tau_des[1] / (self._k_s * self._r_p)
+\end{lstlisting}
+
+\begin{codemath}
+At steady state ($\dot{\delta} = 0$, $\lm = \lm^{\mathrm{des}}$):
+\begin{align*}
+    \delta_{\mathrm{ss}} &= \frac{\tau_{2,\mathrm{des}}}{\ks \, \rp} \\
+    \lm^{\mathrm{des}} &= \rp \, q_2 + \delta_{\mathrm{ss}}
+\end{align*}
+The motor must wind the cable past the joint-angle position by exactly the spring deflection needed.
+\end{codemath}
+
+
+\subsection{Per-Timestep Cache}
+
+Both \texttt{ComputedTorqueController} and \texttt{SEACableController} cache the full solve result per simulation timestep.  Since Drake evaluates output ports lazily (actuation, diagnostics, and joint\_positions may each trigger \texttt{\_solve()}), caching avoids 3$\times$ redundant IK + inverse-dynamics calls:
+
+\begin{lstlisting}[caption={Timestep-keyed cache avoids redundant solves.}]
+def _solve(self, context):
+    t = context.get_time()
+    if t == self._t_cache and self._cache is not None:
+        return self._cache
+    # ... full IK + CT + motor-target computation ...
+    self._t_cache = t
+    self._cache = (tau_des, l_m_des, q, q_dot, q_des)
+    return self._cache
+\end{lstlisting}
+
+
+% ============================================================================
+\section{Trajectory Generation}
+\label{sec:trajectory}
+% ============================================================================
+
+The simulation uses $C^2$-continuous EE trajectories in task space.
+
+\subsection{Rectangular Trajectory with Speed Profiling}
+
+\texttt{\_build\_rect\_trajectory()} creates a looping rectangular path with \textbf{velocity profiling}: the EE slows down at corners and speeds up on straight segments.
+
+\begin{enumerate}[leftmargin=2em]
+    \item \textbf{Arc-length parameterization}: $N$ uniformly-spaced points along the rectangle perimeter $P = 2(W + H)$.
+    \item \textbf{Corner detection}: For each sample, compute the minimum arc-length distance to any corner.
+    \item \textbf{Speed blend}: Hermite interpolation between $v_{\mathrm{corner}}$ and $v_{\mathrm{max}}$:
+    \[
+        v(s) = v_{\mathrm{corner}} + (v_{\mathrm{max}} - v_{\mathrm{corner}})\,t^2(3 - 2t),
+        \qquad t = \mathrm{clamp}\!\left(\frac{d_{\mathrm{corner}}(s)}{d_{\mathrm{blend}}},\; 0,\; 1\right)
+    \]
+    \item \textbf{Non-uniform timestamps}: Integrate $dt = ds / v(s)$ via trapezoidal rule, then rescale to match the desired lap duration.
+    \item \textbf{$C^2$ cubic spline}: Drake's \texttt{CubicWithContinuousSecondDerivatives} produces position, velocity, and acceleration that are all continuous.
+    \item \textbf{Workspace clamping}: Points outside the reachable annulus are projected inward to $0.97\,r_{\mathrm{max}}$.
+\end{enumerate}
+
+\begin{table}[H]
+\centering
+\caption{Rectangle trajectory CLI parameters.}
+\begin{tabular}{llll}
+\toprule
+\textbf{Flag} & \textbf{Default} & \textbf{Units} & \textbf{Description} \\
+\midrule
+\texttt{--traj-x-range}      & $0.30,\; 0.55$ & m     & X bounds $[x_{\min}, x_{\max}]$ \\
+\texttt{--traj-y-range}      & $-0.12,\; 0.12$ & m    & Y bounds $[y_{\min}, y_{\max}]$ \\
+\texttt{--traj-N}            & 80              & ---   & Waypoints per lap \\
+\texttt{--traj-v-max}        & 0.10            & m/s   & Straight-segment speed \\
+\texttt{--traj-v-corner}     & 0.02            & m/s   & Corner speed \\
+\texttt{--traj-corner-blend} & 0.3             & ---   & Fraction of $\min(W,H)$ for blend zone \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{Move-to-Start Preamble}
+
+Before the looping trajectory begins, a \textbf{cubic-Hermite approach} moves the EE from its initial position to the first waypoint:
+
+\begin{equation}
+    \bm{p}(t) = \mathrm{CubicHermite}\!\bigl(
+        [0, T_{\mathrm{move}}],\;
+        [\bm{p}_{\mathrm{start}}, \bm{p}_{\mathrm{end}}],\;
+        [\bm{0}, \dot{\bm{p}}_{\mathrm{end}}]
+    \bigr)
+\end{equation}
+
+The EE starts from rest ($\dot{\bm{p}} = 0$) and arrives at the first waypoint with the velocity that the looping trajectory expects, ensuring a smooth handoff.  A custom \texttt{\_PreambleSrc} LeafSystem switches from the preamble to the looping trajectory at $t = T_{\mathrm{move}}$.
+
+
+% ============================================================================
+\section{Simulation Loop (\texttt{run\_simulation})}
+\label{sec:sim_loop}
+% ============================================================================
+
+The \texttt{run\_simulation()} function builds a complete Drake diagram, initializes state, and runs the simulation.
+
+\subsection{Drake Diagram Wiring}
+
+\begin{archbox}{System Diagram}
+\begin{center}
+\begin{tikzpicture}[
+    node distance=0.5cm and 0.8cm,
+    block/.style={rectangle, draw=#1, thick, fill=#1!8,
+                  minimum height=0.8cm, minimum width=2.2cm, align=center, font=\scriptsize},
+    arr/.style={-Stealth, thick, #1},
+    port/.style={font=\tiny, text=gray},
+]
+    \node[block=drakeblue] (ee)  {EE\_ref\\pos};
+    \node[block=drakeblue, below=0.15cm of ee] (vel) {Vel\_ref};
+    \node[block=drakeblue, below=0.15cm of vel] (acc) {Acc\_ref};
+
+    \node[block=seaorange, right=1.2cm of vel] (ctrl) {\textbf{SEACableController}\\{\tiny CT + SEA cable}};
+    \node[block=darkred, right=1.2cm of ctrl] (plant) {\textbf{MultibodyPlant}\\{\tiny 2-DOF}};
+
+    \draw[arr=drakeblue] (ee.east)  -- ++(0.3,0) |- (ctrl.west);
+    \draw[arr=drakeblue] (vel.east) -- (ctrl.west);
+    \draw[arr=drakeblue] (acc.east) -- ++(0.3,0) |- (ctrl.west);
+    \draw[arr=seaorange]  (ctrl) -- (plant) node[midway, above, port] {$[\tau_1, \tau_2]$};
+    \draw[arr=darkred]    (plant.south) -- ++(0,-0.5) -| (ctrl.south)
+        node[pos=0.25, below, port] {plant\_state};
+
+    % Loggers
+    \node[block=drakegreen, right=0.8cm of plant] (log) {7~Loggers\\{\tiny state, act, diag,\\q\_des, ref, vel, acc}};
+    \draw[arr=drakegreen, dashed] (plant.east) -- (log.west);
+    \draw[arr=drakegreen, dashed] (ctrl.north) |- ++(2.8,0.6) -| (log.north);
+\end{tikzpicture}
+\end{center}
+\end{archbox}
+
+\subsection{Build Steps}
+
+\begin{enumerate}[leftmargin=2em]
+    \item \textbf{Config}: Create \texttt{CupManipulatorTendon} config with joint angles, damping, stiffness
+    \item \textbf{Plant}: Load URDF, weld base, add actuators, add optional \texttt{RevoluteSpring}, finalize
+    \item \textbf{Trajectory}: Build rectangle trajectory + move-to-start preamble
+    \item \textbf{Controller}: Add \texttt{SEACableController} with SEA parameters ($\ks$, $\bc$, $\wm$) and CT gains ($K_p$, $K_d$)
+    \item \textbf{Wire}: Connect trajectory sources $\to$ controller $\to$ plant, plus state feedback
+    \item \textbf{Log}: 7~\texttt{LogVectorOutput} systems record state, actuation, diagnostics, IK solution, and all 3~trajectory references
+    \item \textbf{Initialize}: Patch zero-mass bodies (Onshape URDF artifacts), set initial $\bq$, set $\lm = \rp \cdot q_2$ (spring at rest)
+    \item \textbf{Run}: Advance in 0.1\,s chunks until Ctrl-C; update cable visualization each chunk
+\end{enumerate}
+
+\subsection{Zero-Mass Body Patching}
+
+\begin{warnbox}
+Onshape-exported URDFs sometimes include bodies with zero mass (no material assigned in CAD).  Drake's SAP solver produces NaN forces for zero-mass bodies.  The simulation patches these at startup:
+
+\begin{lstlisting}[caption={Zero-mass body patching.}]
+for idx in plant.GetBodyIndices(manipulator.model_instance):
+    body = plant.get_body(idx)
+    if body.default_mass() < 1e-6:
+        body.SetSpatialInertiaInBodyFrame(plant_ctx, _M_PATCH)
+\end{lstlisting}
+\end{warnbox}
+
+
+% ============================================================================
+\section{Plotting and Diagnostics}
+\label{sec:plotting}
+% ============================================================================
+
+The \texttt{plot\_sea\_results()} function produces two figures with comprehensive diagnostics.
+
+\subsection{Figure~1: 3$\times$3 Performance Panel}
+
+\begin{table}[H]
+\centering
+\caption{Figure 1 layout (3 rows $\times$ 3 columns).}
+\begin{tabular}{clll}
+\toprule
+\textbf{Row} & \textbf{Col 0} & \textbf{Col 1} & \textbf{Col 2} \\
+\midrule
+0 (EE)     & Position: $x, y$ actual vs ref & Velocity: $\dot{x}, \dot{y}$ & Acceleration: $\ddot{x}, \ddot{y}$ \\
+1 (Joint)  & Position: $q_1, q_2$ [deg]     & Velocity: $\dot{q}_1, \dot{q}_2$ & Acceleration: $\ddot{q}_1, \ddot{q}_2$ \\
+2 (Force)  & Torque: $\tau$ desired vs applied & Cable tensions: $T_{\mathrm{green}}, T_{\mathrm{red}}$ & EE XY path \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Joint velocity/acceleration references are reconstructed via $\bJ^{-1}$:
+\[
+    \dot{\bq}_{\mathrm{ref}} = \bJ^{-1}(\bq_{\mathrm{des}})\,\dot{\bm{p}}_{\mathrm{ref}}, \qquad
+    \ddot{\bq}_{\mathrm{ref}} = \bJ^{-1}(\bq_{\mathrm{des}})\,\ddot{\bm{p}}_{\mathrm{ref}}
+\]
+
+
+\subsection{Figure~2: 4$\times$2 SEA Diagnostics}
+
+\begin{table}[H]
+\centering
+\caption{Figure 2 layout (4 rows $\times$ 2 columns).}
+\begin{tabular}{cll}
+\toprule
+\textbf{Row} & \textbf{Left} & \textbf{Right} \\
+\midrule
+0 & EE Position X [mm]  & EE Position Y [mm] \\
+1 & $\tau_2$ desired vs applied (spring lag) & EE XY path overlay \\
+2 & Motor cable $\lm$ vs joint side $\rp q_2$ & Spring extension $\delta$ \& cable force $F$ \\
+3 & Torque tracking error (shaded, RMS) & EE tracking error $|\bm{p}_{\mathrm{act}} - \bm{p}_{\mathrm{ref}}|$ [mm] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Row~2 is the most informative for understanding SEA dynamics: the \textbf{gap} between $\lm$ and $\rp q_2$ is the spring extension $\delta$, which grows with softer springs.  Row~3 shows the \textbf{torque RMS error} (spring lag) and the resulting \textbf{EE tracking error} in mm.
+
+\subsection{Comparison Mode}
+
+When \texttt{--compare} is passed, two simulations run back-to-back:
+\begin{enumerate}[leftmargin=2em]
+    \item \textbf{Spring}: User-specified $\ks$ (default 3.0\,N/m)
+    \item \textbf{Rigid}: High $\ks$ ($= 5000$\,N/m by default) plus $5\times$ faster motor bandwidth
+\end{enumerate}
+
+Both datasets are overlaid on the same plots, showing exactly how spring compliance degrades tracking performance.  The EE XY path plot is particularly revealing: the compliant system cuts corners and lags behind the reference.
+
+
+% ============================================================================
 \section{Summary of Equations}
 \label{sec:summary}
 % ============================================================================
 
 \begin{resultbox}
-\textbf{Complete SEA Cable Model (Joint 2):}
+\textbf{Complete CT + SEA Pipeline (per timestep):}
 
+\medskip
+\textbf{Computed Torque (inner layer):}
+\begin{align}
+    \text{IK:}\quad
+        & \bq_{\mathrm{des}} = \mathrm{IK}(\bm{p}_{\mathrm{ref}}) \\[4pt]
+    \text{Diff.\ IK:}\quad
+        & \dot{\bq}_{\mathrm{ref}} = \bJ^{-1} \dot{\bm{p}}_{\mathrm{ref}}, \quad
+          \ddot{\bq}_{\mathrm{ref}} = \bJ^{-1} \ddot{\bm{p}}_{\mathrm{ref}} \\[4pt]
+    \text{PD + FF:}\quad
+        & \bm{a}_{\mathrm{des}} = \ddot{\bq}_{\mathrm{ref}} + K_p(\bq_{\mathrm{des}} - \bq) + K_d(\dot{\bq}_{\mathrm{ref}} - \dot{\bq}) \\[4pt]
+    \text{Inv.\ dynamics:}\quad
+        & \btau_{\mathrm{des}} = \bM(\bq)\,\bm{a}_{\mathrm{des}} + \bh(\bq, \dot{\bq})
+\end{align}
+
+\medskip
+\textbf{SEA Cable Model (Joint 2):}
 \begin{align}
     \text{Spring extension:}\quad
         & \delta = \lm - \rp \, q_2 \\[4pt]

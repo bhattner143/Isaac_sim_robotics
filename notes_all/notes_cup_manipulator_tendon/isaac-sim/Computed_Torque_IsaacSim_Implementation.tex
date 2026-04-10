@@ -384,18 +384,70 @@ Trajectory & \texttt{PiecewisePolynomial} & \texttt{scipy.CubicSpline} \\
 Isaac Sim requires \texttt{SimulationApp} to be instantiated \textbf{before any other \texttt{omni.*} or \texttt{isaacsim.*} import}. Violating this crashes Python without a useful error message.
 \end{warnbox}
 
-\begin{lstlisting}[caption={Mandatory import sequence --- \texttt{rl/script\_cup\_manipulator\_computed\_torque\_isaac\_sim.py}}]
-# PRE-PARSE render flag BEFORE any Isaac Sim import
+\subsubsection*{Quiet startup via \texttt{IsaacSimLogger}}
+
+Isaac Sim writes $\sim$500 lines of kit/carb noise (extension loading, GPU bandwidth tables, deprecation warnings) to file descriptors 1 and 2 \textbf{from C++}, bypassing \texttt{sys.stdout}. The \texttt{IsaacSimLogger} uses \texttt{os.dup2} to redirect fds at the OS level:
+
+\begin{lstlisting}[caption={\texttt{project\_utils/log\_isaacsim.py} --- key methods}]
+class IsaacSimLogger:
+    @classmethod
+    def from_argv(cls) -> "IsaacSimLogger":
+        """Verbose mode if --verbose in sys.argv, else quiet."""
+        return cls(verbose=("--verbose" in sys.argv))
+
+    def suppress(self):
+        """Redirect fds 1+2 to /dev/null (OS-level, bypasses C++)."""
+        if self._verbose: return
+        self._saved1 = os.dup(1);  self._saved2 = os.dup(2)
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, 1);  os.dup2(devnull, 2)
+        os.environ["CARB_LOG_LEVEL"] = "error"
+        atexit.register(self._restore_fds)  # crash safety
+
+    def restore(self):
+        """Restore fds; print Isaac Sim ready message."""
+        if self._verbose: return
+        self._restore_fds()
+        elapsed = time.time() - self._t0
+        print(f"Isaac Sim ready ({elapsed:.1f}s) --- use --verbose for full log")
+\end{lstlisting}
+
+\begin{resultbox}
+502 lines before / 139 lines after (72\% reduction). Normal Python tracebacks remain fully visible because fds are restored before the custom \texttt{excepthook} fires.
+\end{resultbox}
+
+\begin{lstlisting}[caption={Mandatory import sequence --- \texttt{script\_cup\_manipulator\_pendulam\_tendon\_computed\_torque\_isaac\_sim.py}}]
 import os, sys
+from pathlib import Path
+
+# Project root on sys.path (needed before SimulationApp)
+_PROJECT_ROOT = str(Path(__file__).resolve().parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+# Pre-parse --render (cannot use argparse yet)
+_RENDER_CHOICES = ("native", "websocket", "headless")
 _render_mode = "native"
 for _i, _arg in enumerate(sys.argv):
     if _arg == "--render" and _i + 1 < len(sys.argv):
         _render_mode = sys.argv[_i + 1]
+        if _render_mode not in _RENDER_CHOICES:
+            print(f"[ERROR] --render must be one of {_RENDER_CHOICES}")
+            sys.exit(1)
 
-# FIRST import --- must precede everything else
+# QUIET mode: suppress Isaac Sim extension/GPU/warning noise at startup.
+# Use --verbose to restore original output.
+from project_utils.log_isaacsim import IsaacSimLogger
+_log = IsaacSimLogger.from_argv()  # no-op when --verbose in sys.argv
+_log.suppress()
+
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+# FIRST Isaac Sim import
 from isaacsim import SimulationApp
 simulation_app = SimulationApp({
-    "headless": _render_mode != "native",
+    "headless": _render_mode != "native",  # native -> local window
     "width": 1280, "height": 720,
     "hide_ui": True,
 })
@@ -403,7 +455,33 @@ simulation_app = SimulationApp({
 # NOW safe to import Isaac Sim modules
 from omni.isaac.core import World
 from omni.isaac.core.articulations import ArticulationView
+
+# WebRTC streaming (--render websocket) -- set up BEFORE world init
+if _render_mode == "websocket":
+    import subprocess
+    from omni.kit.livestream.webrtc import set_setting, enable_extension
+    try:
+        _ip = subprocess.check_output(
+            ["tailscale", "ip", "-4"], text=True).strip()
+    except Exception:
+        _ip = "127.0.0.1"  # fallback: localhost
+    set_setting("/app/livestream/publicEndpointAddress", _ip)
+    enable_extension("omni.kit.livestream.webrtc")
+    _log.print(f"  WebRTC (Tailscale) : connect to  {_ip} : 49100")
+
+# Startup complete -- restore stdout/stderr
+_log.restore()
 \end{lstlisting}
+
+\begin{resultbox}
+\textbf{WebRTC streaming to Mac / tablet via Tailscale}:
+\begin{enumerate}[leftmargin=2em, itemsep=2pt]
+    \item Install Tailscale on both machines and join the same tailnet.
+    \item Start with \texttt{--render websocket}.
+    \item Open the Isaac Sim WebRTC Streaming Client on the Mac; connect to the printed Tailscale IP on port 49100.
+\end{enumerate}
+Critical: \texttt{set\_setting("/app/livestream/publicEndpointAddress", ip)} must point to the Tailscale IP, not the LAN IP, for ICE negotiation to succeed across the VPN.  Without it the Mac client receives an unreachable address and the stream never opens.
+\end{resultbox}
 
 
 % ============================================================================
@@ -558,7 +636,7 @@ For $K_p = 800$, $K_d = 40$: $\omega_n \approx 28.3$\,rad/s, $\zeta \approx 0.71
 
 \subsection{Controller Implementation}
 
-\begin{lstlisting}[caption={Engine-agnostic CT controller --- \texttt{rl/computed\_torque\_controller.py}}]
+\begin{lstlisting}[caption={Engine-agnostic CT controller --- \texttt{controller/computed\_torque\_isaacsim.py}}]
 class ComputedTorqueController:
     def __init__(self, Kp=800.0, Kd=40.0, tau_max=50.0,
                  pulley_radius=60*0.005/(2*np.pi)):
@@ -606,7 +684,7 @@ Cable tension decomposition:
 
 \subsection{IK and Differential IK --- NumPy Only}
 
-\begin{lstlisting}[caption={IK-to-joint-space pipeline --- \texttt{rl/computed\_torque\_controller.py}}]
+\begin{lstlisting}[caption={IK-to-joint-space pipeline --- \texttt{controller/computed\_torque\_isaacsim.py}}]
 def ik_to_joint_space_references(
     ee_pos_ref, ee_vel_ref, ee_acc_ref,
     L1, L2, q_seed, solve_ik_fn):
@@ -653,7 +731,7 @@ def ik_to_joint_space_references(
 
 The Isaac Sim version uses \texttt{scipy.interpolate.CubicSpline} with periodic boundary conditions to create $C^2$ trajectories:
 
-\begin{lstlisting}[caption={Looping cubic spline --- \texttt{rl/trajectory.py}}]
+\begin{lstlisting}[caption={Looping cubic spline --- \texttt{controller/trajectory.py}}]
 class LoopingCubicTrajectory:
     def __init__(self, t_breaks, waypoints, period):
         self.period = period
@@ -696,7 +774,7 @@ where $d(s)$ is the arc-length distance to the nearest corner and $h(t)$ is the 
 
 Before tracking begins, a \textbf{cubic Hermite spline} moves the arm from rest to the first waypoint:
 
-\begin{lstlisting}[caption={Preamble construction --- \texttt{rl/trajectory.py}}]
+\begin{lstlisting}[caption={Preamble construction --- \texttt{controller/trajectory.py}}]
 class PreambleTrajectorySource:
     """During t < move_duration: approach spline.
        After: main looping trajectory."""
@@ -722,7 +800,7 @@ Boundary conditions:
 
 \subsection{Setup Phase}
 
-\begin{lstlisting}[caption={World and robot setup --- \texttt{rl/script\_cup\_manipulator\_computed\_torque\_isaac\_sim.py}}]
+\begin{lstlisting}[caption={World and robot setup --- \texttt{script\_cup\_manipulator\_pendulam\_tendon\_computed\_torque\_isaac\_sim.py}}]
 # 1. Create robot wrapper
 manip = CupManipulatorTendonIsaac(MANIP_CONFIG)
 manip.prepare_usd()           # Convert URDF -> USD
@@ -793,9 +871,14 @@ while not stop_requested and step < max_steps:
         cable_viz.update(q[0], q[1])
 
     # 8. Step physics
-    world.step(render=(_render_mode == "native"))
+    # render=True for native window and websocket stream; False only for headless
+    world.step(render=(_render_mode != "headless"))
     t += args.dt;  step += 1
 \end{lstlisting}
+
+\begin{warnbox}
+\textbf{WebRTC streaming requires \texttt{render=True}.} Setting \texttt{render=False} skips the viewport update, so the Mac client receives no frames. The correct predicate is \texttt{render=(\_render\_mode != "headless")} --- not \texttt{== "native"}.
+\end{warnbox}
 
 \begin{codemath}
 Each iteration of the loop executes the full CT pipeline:
@@ -827,7 +910,7 @@ Each iteration of the loop executes the full CT pipeline:
 
 Cable routing geometry cannot be computed purely from PhysX (it has no cable model). Instead, we use a \textbf{headless Drake plant} solely for cable FK:
 
-\begin{lstlisting}[caption={Cable visualization wrapper --- \texttt{rl/cable\_viz.py}}]
+\begin{lstlisting}[caption={Cable visualization wrapper --- \texttt{project\_utils/viz\_cables\_isaacsim.py}}]
 class CableVisualizerIsaac:
     def __init__(self, stage, drake_urdf):
         self._stage = stage
@@ -1005,26 +1088,46 @@ for k in range(len(t)):
 % ============================================================================
 
 \begin{lstlisting}[language=bash, backgroundcolor=\color{lightgray}, frame=single, rulecolor=\color{gray}]
-# Activate Isaac Sim environment
+# Activate Isaac Sim conda environment
 conda activate env_isaacsim
 
-# Default: computed-torque with rectangle trajectory
-python rl/script_cup_manipulator_computed_torque_isaac_sim.py
+# Default: quiet mode, computed-torque, rectangle trajectory, native window
+python script_cup_manipulator_pendulam_tendon_computed_torque_isaac_sim.py
 
-# Custom gains and circle trajectory
-python rl/script_cup_manipulator_computed_torque_isaac_sim.py \
+# Custom gains and circle trajectory, headless (benchmarking / RL)
+python script_cup_manipulator_pendulam_tendon_computed_torque_isaac_sim.py \
+    --render headless \
     --ct-kp 800 --ct-kd 40 --ct-tau-max 50 \
     --traj-shape circle --traj-cx 0.4 --traj-radius 0.08 \
     --duration 15
 
-# Headless mode (no rendering -- for benchmarking)
-python rl/script_cup_manipulator_computed_torque_isaac_sim.py \
-    --render headless --duration 10.0
+# WebRTC streaming to Mac (Tailscale-routed, port 49100)
+python script_cup_manipulator_pendulam_tendon_computed_torque_isaac_sim.py \
+    --render websocket
+# -> outputs: Mac client: connect to  100.94.173.113 : 49100
+
+# Verbose: restore full Isaac Sim startup log
+python script_cup_manipulator_pendulam_tendon_computed_torque_isaac_sim.py \
+    --render headless --verbose
 
 # Scene visualization only (no control)
-python rl/script_cup_manipulator_computed_torque_isaac_sim.py \
-    --mode scene-viz
+python script_cup_manipulator_pendulam_tendon_scene_viz_isaac_sim.py \
+    --render websocket
 \end{lstlisting}
+
+\subsubsection*{Render mode summary}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{--render} & \textbf{Display} & \textbf{Use case} \\
+\midrule
+\texttt{native}    & Local OS window  & Development on the GPU machine \\
+\texttt{websocket} & WebRTC stream, port 49100 & Remote view from Mac / tablet \\
+\texttt{headless}  & None             & Benchmarking, RL training, CI \\
+\bottomrule
+\end{tabular}
+\end{center}
 
 
 % ============================================================================
@@ -1110,12 +1213,15 @@ $\Delta t$ & Physics timestep & s \\
 \begin{small}
 \textbf{Source files:}
 \begin{itemize}[leftmargin=2em, topsep=2pt, itemsep=1pt]
-    \item \texttt{rl/script\_cup\_manipulator\_computed\_torque\_isaac\_sim.py} --- Main Isaac Sim simulation script
+    \item \texttt{script\_cup\_manipulator\_pendulam\_tendon\_computed\_torque\_isaac\_sim.py} --- Main CT controller script (project root)
+    \item \texttt{script\_cup\_manipulator\_pendulam\_tendon\_scene\_viz\_isaac\_sim.py} --- Scene visualization (project root)
     \item \texttt{robots/cup\_manipulator\_tendon\_isaac.py} --- Isaac Sim robot wrapper (URDF$\to$USD, ArticulationView)
-    \item \texttt{rl/computed\_torque\_controller.py} --- Pure-NumPy CT controller (shared with PyDrake)
-    \item \texttt{rl/trajectory.py} --- SciPy trajectory classes (Rect, Circle, Line, Preamble)
-    \item \texttt{rl/cable\_viz.py} --- Cable visualization via DrakeCablePlant + USD prims
+    \item \texttt{controller/computed\_torque\_isaacsim.py} --- Pure-NumPy CT controller (engine-agnostic)
+    \item \texttt{controller/trajectory.py} --- SciPy trajectory classes (Rect, Circle, Line, Preamble)
+    \item \texttt{project\_utils/viz\_cables\_isaacsim.py} --- Cable visualization via DrakeCablePlant + USD prims
+    \item \texttt{project\_utils/log\_isaacsim.py} --- \texttt{IsaacSimLogger}: OS-level fd suppression for quiet startup
     \item \texttt{cable.py} --- DrakeCablePlant for headless cable FK
+    \item \texttt{tests/test\_cup\_manipulator\_tendon\_multi\_instance\_isaac\_sim.py} --- Multi-instance parallel demo
 \end{itemize}
 \end{small}
 

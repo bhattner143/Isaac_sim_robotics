@@ -39,40 +39,80 @@ Modes
 # ============================================================================
 import os
 import sys
+from pathlib import Path
 
-# Suppress verbose Isaac Sim startup
-os.environ.setdefault("CARB_LOG_LEVEL", "error")
-
-import argparse
+# Add project root to path (needed for project_utils import before SimulationApp)
+_PROJECT_ROOT = str(Path(__file__).resolve().parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 # Quick pre-parse for --render flag (needed before SimulationApp)
-_render_mode = "native"
+_RENDER_CHOICES = ("native", "websocket", "headless")
+_render_mode = "native"  # default
 for _i, _arg in enumerate(sys.argv):
     if _arg == "--render" and _i + 1 < len(sys.argv):
         _render_mode = sys.argv[_i + 1]
+        if _render_mode not in _RENDER_CHOICES:
+            print(f"[ERROR] --render must be one of {_RENDER_CHOICES}, got '{_render_mode}'")
+            sys.exit(1)
 
 # ============================================================================
-# ISAAC SIM — must be first import
+# QUIET STARTUP — suppress Isaac Sim extension/GPU/warning noise
+# Use --verbose to see original Isaac Sim output.
 # ============================================================================
+from project_utils.log_isaacsim import IsaacSimLogger
+
+_log = IsaacSimLogger.from_argv()  # no-op when --verbose is set
+_log.suppress()
+
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({
-    "headless": _render_mode != "native",
-    "width": 1280,
-    "height": 720,
-    "hide_ui": True,
+    "headless": _render_mode == "headless",
+    "width":    1280,
+    "height":   720,
+    "hide_ui":  True,
 })
+
+# Enable WebRTC streaming extension when mode is 'websocket'
+if _render_mode == "websocket":
+    import subprocess
+    from isaacsim.core.utils.extensions import enable_extension
+
+    _tailscale_ip = ""
+    try:
+        _tailscale_ip = subprocess.check_output(
+            ["tailscale", "ip", "-4"], text=True, timeout=3
+        ).strip()
+    except Exception:
+        pass
+
+    simulation_app.set_setting("/app/window/drawMouse", True)
+    simulation_app.set_setting("/app/livestream/port", 49100)
+    simulation_app.set_setting("/app/livestream/proto", "websocket")
+    if _tailscale_ip:
+        simulation_app.set_setting("/app/livestream/publicEndpointAddress", _tailscale_ip)
+    enable_extension("omni.kit.livestream.webrtc")
+
+    _connect_ip = _tailscale_ip if _tailscale_ip else "localhost"
+    _log.print("\n" + "=" * 60)
+    _log.print("  WebRTC streaming enabled (omni.kit.livestream.webrtc)")
+    _log.print(f"  Port          : 49100")
+    if _tailscale_ip:
+        _log.print(f"  Tailscale IP  : {_tailscale_ip}")
+    _log.print(f"  Mac client    : connect to  {_connect_ip} : 49100")
+    _log.print("=" * 60 + "\n")
 
 # ============================================================================
 # IMPORTS (safe after SimulationApp)
 # ============================================================================
+import argparse
 import numpy as np
 import signal
 import time as _time
-from pathlib import Path
 from termcolor import colored
 
 import matplotlib
@@ -87,16 +127,15 @@ from omni.isaac.core import World
 from omni.isaac.core.articulations import ArticulationView
 
 # Project imports (no Drake)
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from robots.cup_manipulator_tendon_isaac import (
     CupManipulatorTendonIsaac,
     create_cable_manipulator_config,
 )
-from rl.computed_torque_controller import (
+from controller.computed_torque_isaacsim import (
     ComputedTorqueController,
     ik_to_joint_space_references,
 )
-from rl.trajectory import (
+from controller.trajectory import (
     RectTrajectory,
     CircleTrajectory,
     LineTrajectory,
@@ -104,11 +143,10 @@ from rl.trajectory import (
     build_move_to_start,
 )
 
-# Analytical IK from the Isaac wrapper module
-from robots.cup_manipulator_tendon_isaac import CupManipulatorTendonIsaac
-
 # Cable (tendon) visualization — uses DrakeCablePlant from cable.py
-from rl.cable_viz import CableVisualizerIsaac
+from project_utils.viz_cables_isaacsim import CableVisualizerIsaac
+
+_log.restore()  # ← normal output resumes here
 
 # ============================================================================
 # ARGUMENT PARSER
@@ -122,9 +160,11 @@ parser = argparse.ArgumentParser(
 parser.add_argument('--mode', type=str, default='computed-torque',
                     choices=['computed-torque', 'scene-viz'],
                     help='Simulation mode (default: computed-torque)')
-parser.add_argument('--render', type=str, default='native',
-                    choices=['native', 'headless'],
-                    help='Render mode (default: native)')
+parser.add_argument('--render', type=str, default=_render_mode,
+                    choices=['native', 'websocket', 'headless'],
+                    help='Render mode: native (local window) | websocket (WebRTC stream, port 49100) | headless (no display)')
+parser.add_argument('--verbose', action='store_true', default=False,
+                    help='Show full Isaac Sim startup output (default: quiet)')
 parser.add_argument('--duration', type=float, default=10.0,
                     help='Lap duration [s] (default: 10.0)')
 parser.add_argument('--dt', type=float, default=1.0 / 100.0,
@@ -186,7 +226,7 @@ args = parser.parse_args()
 # ============================================================================
 # URDF PATH
 # ============================================================================
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent
 URDF_PATH = str(PROJECT_ROOT / "model_using_onshape_to_robot" / "manipulator_cable" / "manipulator_cable_obj.urdf")
 
 # ============================================================================
@@ -466,8 +506,8 @@ def run_computed_torque(args):
             if step % _CABLE_UPDATE_INTERVAL == 0:
                 cable_viz.update(q[0], q[1])
 
-            # Step physics
-            world.step(render=(_render_mode == "native"))
+            # Step physics  (render for native window and websocket stream; skip for headless)
+            world.step(render=(_render_mode != "headless"))
 
             t += args.dt
             step += 1
@@ -746,7 +786,7 @@ def main():
         print(colored(f"Unknown mode: {args.mode}", "red"))
         sys.exit(1)
 
-    simulation_app.close()
+    _log.close(simulation_app)
 
 
 if __name__ == "__main__":
