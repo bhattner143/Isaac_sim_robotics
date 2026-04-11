@@ -63,10 +63,10 @@ for _i, _arg in enumerate(sys.argv):
         except ValueError:
             pass
 
-# # ── Quiet startup: suppress Isaac Sim extension / GPU / warning noise ────────
-# from project_utils.log_isaacsim import IsaacSimLogger
-# _log = IsaacSimLogger.from_argv()   # no-op when --verbose is in sys.argv
-# _log.suppress()
+# ── Quiet startup: suppress Isaac Sim extension / GPU / warning noise ────────
+from project_utils.log_isaacsim import IsaacSimLogger
+_log = IsaacSimLogger.from_argv()   # no-op when --verbose is in sys.argv
+_log.suppress()
 
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -74,7 +74,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 # ── SimulationApp — MUST be first Isaac Sim import ───────────────────────────
 from isaacsim import SimulationApp
 simulation_app = SimulationApp({
-    "headless": _render_mode != "native",
+    "headless": _render_mode == "headless",
     "width": 1280,
     "height": 720,
     "hide_ui": True,
@@ -87,16 +87,25 @@ from omni.isaac.core.articulations import ArticulationView
 # ── WebRTC streaming (--render websocket) ───────────────────────────────────
 if _render_mode == "websocket":
     import subprocess
-    from omni.kit.livestream.webrtc import set_setting, enable_extension
+    from isaacsim.core.utils.extensions import enable_extension
+
+    _tailscale_ip = ""
     try:
-        _ip = subprocess.check_output(
-            ["tailscale", "ip", "-4"], text=True
+        _tailscale_ip = subprocess.check_output(
+            ["tailscale", "ip", "-4"], text=True, timeout=3
         ).strip()
     except Exception:
-        _ip = "127.0.0.1"
-    set_setting("/app/livestream/publicEndpointAddress", _ip)
+        pass
+
+    simulation_app.set_setting("/app/window/drawMouse", True)
+    simulation_app.set_setting("/app/livestream/port", 49100)
+    simulation_app.set_setting("/app/livestream/proto", "websocket")
+    if _tailscale_ip:
+        simulation_app.set_setting("/app/livestream/publicEndpointAddress", _tailscale_ip)
     enable_extension("omni.kit.livestream.webrtc")
-    print(f"  WebRTC (Tailscale) : connect to  {_ip} : 49100")
+
+    _connect_ip = _tailscale_ip if _tailscale_ip else "localhost"
+    print(f"  WebRTC streaming enabled — connect to  {_connect_ip} : 49100")
 
 # ── Project imports ──────────────────────────────────────────────────────────
 from termcolor import colored
@@ -140,7 +149,7 @@ parser.add_argument("--render", choices=_RENDER_CHOICES, default=_render_mode,
 parser.add_argument("--verbose", action="store_true", default=False,
                     help="Show full Isaac Sim startup log")
 parser.add_argument("--duration", type=float, default=200.0,
-                    help="Simulation duration [s] (default: 20.0)")
+                    help="Simulation duration [s] (default: 200)")
 parser.add_argument("--dt", type=float, default=1.0 / 100.0,
                     help="Physics timestep [s] (default: 0.01)")
 parser.add_argument("--move-duration", type=float, default=3.0,
@@ -158,16 +167,18 @@ parser.add_argument("--motor", choices=MOTOR_CHOICES, default="AK60_6_KV80_Confi
 parser.add_argument("--sea-mode", choices=["torque", "position"], default="torque",
                     help="Motor dynamics mode: 'torque' = 2nd-order rotor, "
                          "'position' = 1st-order servo.")
-parser.add_argument("--spring-stiffness", type=float, default=5000.0, metavar="K_S",
-                    help="SEA cable spring stiffness k_s [N/m] (default: 5000)")
-parser.add_argument("--cable-damping", type=float, default=5.0, metavar="B_C",
-                    help="SEA cable dashpot damping b_c [N·s/m] (default: 5)")
-_DEFAULT_MOTOR_BW_MULTI = 500.0
+parser.add_argument("--spring-stiffness", type=float, default=30, metavar="K_S",
+                    help="SEA cable spring stiffness k_s [N/m] (default: 3000)")
+parser.add_argument("--cable-damping", type=float, default=2.0, metavar="B_C",
+                    help="SEA cable dashpot damping b_c [N·s/m] (default: 2.0)")
+_DEFAULT_MOTOR_BW_MULTI = 100.0
 parser.add_argument("--motor-bandwidth", type=float, default=None, metavar="W_M",
                     help=f"SEA motor servo bandwidth ω_m [rad/s] "
-                         f"(default: {_DEFAULT_MOTOR_BW_MULTI}, position mode only)")parser.add_argument("--motor-substeps", type=int, default=None, metavar="N",
+                         f"(default: {_DEFAULT_MOTOR_BW_MULTI}, position mode only)")
+parser.add_argument("--motor-substeps", type=int, default=None, metavar="N",
                     help="Motor integrator sub-steps per physics step. "
-                         "Default: auto-computed for numerical stability.")parser.add_argument("--no-sea", action="store_true", default=False,
+                         "Default: auto-computed for numerical stability.")
+parser.add_argument("--no-sea", action="store_true", default=False,
                     help="Bypass SEA — apply CT torques directly (for diagnostics)")
 args = parser.parse_args()
 
@@ -199,7 +210,7 @@ _BASE_CONFIG = create_cable_manipulator_config(
         "link2_link1":  math.radians(-10.0),
     },
     damping=(0.05, 0.05),
-    stiffness=(0.5, 0.5),
+    stiffness=(0.0, 0.0),
 )
 
 # ── Per-environment trajectory definitions (cycled for N > len) ──────────────
@@ -409,6 +420,10 @@ log_t         = np.zeros(max_steps)
 log_tau_des   = [np.zeros((max_steps, 2)) for _ in range(N)]  # CT desired
 log_tau_sea   = [np.zeros((max_steps, 2)) for _ in range(N)]  # SEA applied
 log_delta     = [np.zeros(max_steps) for _ in range(N)]        # spring extension
+log_l_m       = [np.zeros(max_steps) for _ in range(N)]        # motor cable pos
+log_l_m_des   = [np.zeros(max_steps) for _ in range(N)]        # motor cable des
+log_F_cable   = [np.zeros(max_steps) for _ in range(N)]        # cable force
+log_tau_motor = [np.zeros(max_steps) for _ in range(N)]        # motor-side torque
 
 print(colored(
     f"\n[multi-instance] Running {N} robot(s) for "
@@ -466,7 +481,17 @@ while step < max_steps and not _stop_requested:
             ct_out = ctrl.compute(q, q_dot, q_des, q_dot_ref, q_ddot_ref, M, h)
 
             # 6. SEA actuator: spring-mediated torque for joint 2
-            tau_desired = ct_out.tau_raw
+            tau_desired = ct_out.tau_clip  # clipped CT output → SEA input
+
+            # Torque saturation warning (robot 0 only, throttled)
+            if i == 0 and np.any(np.abs(ct_out.tau_raw) > ctrl.tau_max):
+                _raw_max = float(np.max(np.abs(ct_out.tau_raw)))
+                print(colored(
+                    f"  ⚠ Torque saturation at t={t:.3f}s: "
+                    f"|τ_raw|_max={_raw_max:.2f} Nm > τ_limit={ctrl.tau_max:.1f} Nm",
+                    "yellow",
+                ))
+
             if args.no_sea:
                 tau_applied = ct_out.tau_clip
                 sea_diag = SEADiagnostics(
@@ -475,6 +500,7 @@ while step < max_steps and not _stop_requested:
                     tau2_des=float(tau_desired[1]),
                     T_green=0, T_red=0,
                     tau_sea=float(ct_out.tau_clip[1]),
+                    tau_motor=0,
                 )
             else:
                 tau_applied, sea_diag = sea_actuators[i].step(tau_desired, q, q_dot)
@@ -507,6 +533,10 @@ while step < max_steps and not _stop_requested:
                 log_tau_des[i][step]   = tau_desired
                 log_tau_sea[i][step]   = tau_applied
                 log_delta[i][step]     = sea_diag.delta
+                log_l_m[i][step]       = sea_diag.l_m
+                log_l_m_des[i][step]   = sea_diag.l_m_des
+                log_F_cable[i][step]   = sea_diag.F_cable
+                log_tau_motor[i][step] = sea_diag.tau_motor
 
         if step < max_steps:
             log_t[step] = t
@@ -540,6 +570,10 @@ for i in range(N):
     log_tau_des[i]   = log_tau_des[i][:n_logged]
     log_tau_sea[i]   = log_tau_sea[i][:n_logged]
     log_delta[i]     = log_delta[i][:n_logged]
+    log_l_m[i]       = log_l_m[i][:n_logged]
+    log_l_m_des[i]   = log_l_m_des[i][:n_logged]
+    log_F_cable[i]   = log_F_cable[i][:n_logged]
+    log_tau_motor[i] = log_tau_motor[i][:n_logged]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Wrap-up
@@ -561,7 +595,7 @@ if n_logged > 1:
     _COLORS = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red',
                'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive']
 
-    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    fig, axes = plt.subplots(3, 2, figsize=(16, 16))
     fig.suptitle(
         f'Multi-Instance SEA CT  —  {N} robots × {n_logged} steps  '
         f'(Kp={args.ct_kp}, Kd={args.ct_kd}, '
@@ -598,7 +632,7 @@ if n_logged > 1:
     ax.set_title('Tracking Error')
     ax.legend(fontsize=8, loc='best'); ax.grid(True, alpha=0.4)
 
-    # ── Bottom-left: τ₂ desired vs SEA-applied (per robot) ──────────────────
+    # ── Mid-left: τ₂ desired vs SEA-applied (per robot) ─────────────────────
     ax = axes[1, 0]
     for i in range(N):
         c = _COLORS[i % len(_COLORS)]
@@ -610,7 +644,7 @@ if n_logged > 1:
     ax.set_title('Joint-2 Torque  (solid=CT desired, dashed=SEA applied)')
     ax.legend(fontsize=8, loc='best'); ax.grid(True, alpha=0.4)
 
-    # ── Bottom-right: spring extension δ (per robot) ────────────────────────
+    # ── Mid-right: spring extension δ (per robot) ───────────────────────────
     ax = axes[1, 1]
     for i in range(N):
         c = _COLORS[i % len(_COLORS)]
@@ -619,6 +653,31 @@ if n_logged > 1:
     ax.axhline(0, color='k', lw=0.5)
     ax.set_xlabel('Time [s]'); ax.set_ylabel('δ [mm]')
     ax.set_title('SEA Spring Extension δ')
+    ax.legend(fontsize=8, loc='best'); ax.grid(True, alpha=0.4)
+
+    # ── Bottom-left: motor-side torque (per robot) ───────────────────────────
+    _peak_motor = _motor_cfg.peak_torque_joint / _motor_cfg.gear_ratio
+    ax = axes[2, 0]
+    for i in range(N):
+        c = _COLORS[i % len(_COLORS)]
+        ax.plot(log_t, log_tau_motor[i], '-', color=c, lw=1.2,
+                label=f'robot_{i}')
+    ax.axhline( _peak_motor, color='k', ls='--', lw=1.0, label=f'±peak = {_peak_motor:.2f} Nm')
+    ax.axhline(-_peak_motor, color='k', ls='--', lw=1.0)
+    ax.axhline(0, color='k', lw=0.5)
+    ax.set_xlabel('Time [s]'); ax.set_ylabel('τ_motor [Nm]')
+    ax.set_title(f'Motor-Side Torque  (N={_motor_cfg.gear_ratio})')
+    ax.legend(fontsize=8, loc='best'); ax.grid(True, alpha=0.4)
+
+    # ── Bottom-right: cable force F_cable (per robot) ────────────────────────
+    ax = axes[2, 1]
+    for i in range(N):
+        c = _COLORS[i % len(_COLORS)]
+        ax.plot(log_t, log_F_cable[i], '-', color=c, lw=1.2,
+                label=f'robot_{i}')
+    ax.axhline(0, color='k', lw=0.5)
+    ax.set_xlabel('Time [s]'); ax.set_ylabel('F [N]')
+    ax.set_title('Cable Force F_cable')
     ax.legend(fontsize=8, loc='best'); ax.grid(True, alpha=0.4)
 
     fig.tight_layout()
@@ -632,12 +691,12 @@ if n_logged > 1:
     plt.close(fig)
     print(colored(f"\n  📊 Overview figure saved: {_fname}", "green"))
 
-    # ── Per-robot figure: XY path + tracking error (one row per robot) ──────
+    # ── Per-robot figure: XY path + tracking error + SEA diag (one row per robot)
     _n_rows = N if N > 1 else 1
-    fig2, axes2 = plt.subplots(_n_rows, 2, figsize=(13, 4 * _n_rows),
+    fig2, axes2 = plt.subplots(_n_rows, 3, figsize=(18, 4 * _n_rows),
                                squeeze=False)
     fig2.suptitle(
-        f'Per-Robot EE Path & Tracking Error  —  {N} robot(s)  '
+        f'Per-Robot EE Path, Tracking Error & SEA  —  {N} robot(s)  '
         f'(Kp={args.ct_kp}, Kd={args.ct_kd}, '
         f'k_s={args.spring_stiffness}, ω_m={args.motor_bandwidth}'
         f'{", NO-SEA" if args.no_sea else ""})',
@@ -671,7 +730,7 @@ if n_logged > 1:
         ax_xy.legend(fontsize=8, loc='best')
         ax_xy.grid(True, alpha=0.4)
 
-        # ── Right column: tracking error vs time ──────────────────────────
+        # ── Middle column: tracking error vs time ─────────────────────────
         ax_err = axes2[i, 1]
         err    = np.linalg.norm(log_ee_actual[i] - log_ee_ref[i], axis=1) * 1e3
         ax_err.plot(log_t, err, '-', color=c, lw=1.2)
@@ -691,6 +750,17 @@ if n_logged > 1:
         ax_err.set_title(f'robot_{i} ({spec["type"]}) — Tracking Error')
         ax_err.legend(fontsize=8, loc='best')
         ax_err.grid(True, alpha=0.4)
+
+        # ── Right column: motor cable vs joint side ───────────────────────
+        ax_sea = axes2[i, 2]
+        ax_sea.plot(log_t, log_l_m[i] * 1e3, 'b-', lw=1.2, label='l_m (motor)')
+        ax_sea.plot(log_t, log_l_m_des[i] * 1e3, 'b--', lw=1.0, label='l_m_des')
+        ax_sea.axhline(0, color='k', lw=0.5)
+        ax_sea.set_xlabel('Time [s]')
+        ax_sea.set_ylabel('[mm]')
+        ax_sea.set_title(f'robot_{i} — Motor Cable l_m')
+        ax_sea.legend(fontsize=8, loc='best')
+        ax_sea.grid(True, alpha=0.4)
 
     fig2.tight_layout()
     _fname2 = _plots_dir / f'multi_instance_perrobot_{N}env_{_stamp}.png'

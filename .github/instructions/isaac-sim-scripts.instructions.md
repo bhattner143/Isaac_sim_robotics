@@ -58,3 +58,12 @@ Always call `world.reset()` between `initialize_dynamics_view` and `finalize_dyn
 
 ## Render Modes
 Support three modes via `--render`: `native` (local window), `websocket` (WebRTC stream), `headless` (no display). Set `headless=(_render_mode != "native")` in SimulationApp config.
+
+## RL Training/Eval Scripts (rl/)
+RL scripts follow the same Isaac Sim conventions above, plus:
+- `PYTHONUNBUFFERED=1 python -u` to see output (Isaac Sim buffers stdout from C++)
+- Eval produces 2 figures: overview (3×2) and detail (N×3), saved to `plots/`
+- `--compare-baseline` defaults to True — always runs CT-only vs CT+RL
+- Motor dynamics: `actuators/motor.py` provides `get_motor(name)` for AK60-6, AK80-8
+- SEA: `actuators/sea_isaacsim.py` `SEACableActuatorNP` with `MotorMode.TORQUE` (default)
+- Env: `rl/envs/manipulator_residual_env.py` — 14-D obs, 2-D action, does NOT own SimulationApp

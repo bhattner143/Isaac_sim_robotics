@@ -77,6 +77,8 @@ from controller.trajectory import (
     build_move_to_start,
 )
 from actuators.sea_isaacsim import SEACableActuatorNP
+from actuators.motor_dynamics import MotorMode
+from actuators.motor import get_motor, MOTOR_CHOICES
 from rl.envs.manipulator_residual_env import ManipulatorResidualEnv
 
 # ── RL imports ───────────────────────────────────────────────────────────────
@@ -114,14 +116,24 @@ parser.add_argument("--residual-max", type=float, default=5.0,
 parser.add_argument("--move-duration", type=float, default=3.0)
 
 # CT gains
-parser.add_argument("--ct-kp", type=float, default=800.0)
+parser.add_argument("--ct-kp", type=float, default=100.0)
 parser.add_argument("--ct-kd", type=float, default=40.0)
-parser.add_argument("--ct-tau-max", type=float, default=50.0)
+parser.add_argument("--ct-tau-max", type=float, default=None,
+                    help="Torque saturation [Nm]. Default: motor peak_torque_joint.")
+
+# Motor model
+parser.add_argument("--motor", choices=MOTOR_CHOICES, default="AK60_6_KV80_Config",
+                    help="CubeMars motor model for the elbow joint")
 
 # SEA parameters
-parser.add_argument("--spring-stiffness", type=float, default=200.0)
+parser.add_argument("--sea-mode", choices=["torque", "position"], default="torque",
+                    help="Motor dynamics mode: torque (2nd-order) or position (1st-order)")
+parser.add_argument("--spring-stiffness", type=float, default=30.0)
 parser.add_argument("--cable-damping", type=float, default=2.0)
-parser.add_argument("--motor-bandwidth", type=float, default=30.0)
+parser.add_argument("--motor-bandwidth", type=float, default=100.0,
+                    help="Motor servo bandwidth [rad/s] (position mode only)")
+parser.add_argument("--motor-substeps", type=int, default=None,
+                    help="Motor sub-steps per physics step (None=auto)")
 
 # PPO hyperparameters
 parser.add_argument("--learning-rate", type=float, default=3e-4)
@@ -136,10 +148,11 @@ parser.add_argument("--ent-coef", type=float, default=0.0)
 parser.add_argument("--w-tracking", type=float, default=100.0)
 parser.add_argument("--w-effort", type=float, default=0.01)
 parser.add_argument("--w-smoothness", type=float, default=0.001)
+parser.add_argument("--w-torque-tracking", type=float, default=1.0)
 
 # Trajectory
-parser.add_argument("--traj-type", default="circle",
-                    choices=["circle", "rect"])
+parser.add_argument("--traj-type", default="rect",
+                    choices=["circle", "rect", "line"])
 
 # Checkpointing
 parser.add_argument("--save-freq", type=int, default=10_000,
@@ -150,6 +163,12 @@ parser.add_argument("--log-dir", type=str, default="rl/logs")
 parser.add_argument("--checkpoint-dir", type=str, default="rl/checkpoints")
 
 args = parser.parse_args()
+
+# ─── Motor-derived defaults ──────────────────────────────────────────────────
+_motor = get_motor(args.motor)
+_motor_mode = MotorMode(args.sea_mode)
+if args.ct_tau_max is None:
+    args.ct_tau_max = _motor.peak_torque_joint
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -172,7 +191,7 @@ config = create_cable_manipulator_config(
         "link2_link1": math.radians(-10.0),
     },
     damping=(0.05, 0.05),
-    stiffness=(0.5, 0.5),
+    stiffness=(0.0, 0.0),
 )
 
 robot = CupManipulatorTendonIsaac(config, enable_visualization=False)
@@ -190,15 +209,14 @@ robot.weld_base_to_world(
     position=np.array([0.0, 0.0, 0.0]),
     orientation=np.deg2rad([0.0, 0.0, 0.0]),
 )
+robot.add_end_effector_frame()
 robot.set_joint_properties()
 robot.add_joint_actuators()
 
 world.reset()
 robot.initialize_state()
-robot.initialize_dynamics_view(world, reset=False)
-world.reset()
-robot.initialize_state()
-robot.finalize_dynamics_view(world)
+robot.initialize_dynamics_view(world)
+robot.set_initial_positions()
 
 L1, L2 = robot._get_link_lengths()
 r_p = robot.r_p
@@ -207,12 +225,19 @@ print(f"  L1={L1*1e3:.1f} mm  L2={L2*1e3:.1f} mm  r_p={r_p*1e3:.2f} mm")
 # ── Trajectory ───────────────────────────────────────────────────────────────
 if args.traj_type == "circle":
     main_traj = CircleTrajectory(
-        cx=0.42, cy=0.00, radius=0.09, lap_duration=8.0, N=60,
+        cx=0.4, cy=0.00, radius=0.1, lap_duration=args.episode_steps * args.dt, N=60,
     )
 elif args.traj_type == "rect":
     main_traj = RectTrajectory(
-        x_range=(0.38, 0.52), y_range=(-0.10, 0.10),
-        lap_duration=8.0, N=40, v_max=0.10, v_corner=0.03, corner_blend=0.35,
+        x_range=(0.49, 0.51), y_range=(-0.08, 0.08),
+        lap_duration=args.episode_steps * args.dt, N=60,
+        v_max=0.9, v_corner=0.05, corner_blend=0.35,
+    )
+else:
+    from controller.trajectory import LineTrajectory
+    main_traj = LineTrajectory(
+        cx=0.4, cy=0.0, radius=0.1,
+        lap_duration=args.episode_steps * args.dt, N=60,
     )
 
 q_cur = robot.get_positions_user_order()
@@ -237,9 +262,12 @@ sea = SEACableActuatorNP(
     r_p=r_p,
     k_s=args.spring_stiffness,
     b_c=args.cable_damping,
-    omega_m=args.motor_bandwidth,
     tau_max=args.ct_tau_max,
     dt=args.dt,
+    motor_mode=_motor_mode,
+    motor_cfg=_motor,
+    omega_m=args.motor_bandwidth,
+    motor_substeps=args.motor_substeps,
 )
 sea.initialize(q_cur[1])
 
@@ -262,6 +290,7 @@ env = ManipulatorResidualEnv(
         "tracking": args.w_tracking,
         "effort": args.w_effort,
         "smoothness": args.w_smoothness,
+        "torque_tracking": args.w_torque_tracking,
     },
     render_mode=args.render,
     solve_ik_fn=solve_2r_ik,
@@ -292,7 +321,7 @@ ppo_kwargs = dict(
     ent_coef=args.ent_coef,
     verbose=1,
     policy_kwargs=dict(
-        net_arch=dict(pi=[128, 128], vf=[128, 128]),
+        net_arch=dict(pi=[256, 256], vf=[256, 256]),
     ),
     device="cpu",  # Isaac Sim owns the GPU; policy runs on CPU
 )
@@ -329,9 +358,10 @@ checkpoint_cb = CheckpointCallback(
 _stamp = time.strftime("%Y%m%d_%H%M%S")
 print(f"\n[train] Starting PPO training — {args.total_timesteps} steps")
 print(f"  residual_max = {args.residual_max} Nm")
-print(f"  SEA: k_s={args.spring_stiffness}  b_c={args.cable_damping}  ω_m={args.motor_bandwidth}")
-print(f"  CT:  Kp={args.ct_kp}  Kd={args.ct_kd}")
-print(f"  Reward: track={args.w_tracking}  effort={args.w_effort}  smooth={args.w_smoothness}")
+print(f"  Motor: {args.motor}  mode={args.sea_mode}")
+print(f"  SEA: k_s={args.spring_stiffness}  b_c={args.cable_damping}  substeps={sea.motor_substeps}")
+print(f"  CT:  Kp={args.ct_kp}  Kd={args.ct_kd}  τ_max={args.ct_tau_max}")
+print(f"  Reward: track={args.w_tracking}  effort={args.w_effort}  smooth={args.w_smoothness}  τ_track={args.w_torque_tracking}")
 print(f"  Log dir: {log_dir}")
 print(f"  Checkpoint dir: {ckpt_dir}\n")
 

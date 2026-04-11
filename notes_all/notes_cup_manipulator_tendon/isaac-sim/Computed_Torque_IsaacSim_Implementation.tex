@@ -1206,6 +1206,142 @@ $\Delta t$ & Physics timestep & s \\
 
 
 % ============================================================================
+\section{Series Elastic Actuator (SEA) Extension}
+\label{sec:sea}
+% ============================================================================
+
+The rigid-tendon CT controller (above) assumes $\btau^{\text{applied}} = \btau^{\text{desired}}$.
+In the physical system, joint~2 is driven through a compliant cable--spring transmission:
+
+\begin{archbox}{SEA Physical Topology (Joint 2)}
+\begin{center}
+Motor drum $\;\xrightarrow{\text{cable}}\;$
+\textbf{Spring} ($k_s$, $b_c$) $\;\xrightarrow{\text{cable}}\;$
+Pulley $\;\to\;$ Link 2
+\end{center}
+Joint~1 remains rigid direct-drive ($\tau_1^{\text{app}} = \tau_1^{\text{des}}$).
+\end{archbox}
+
+\subsection{Motor Rotor Dynamics (Torque Mode)}
+
+The motor model (\texttt{actuators/motor\_dynamics.py}, class \texttt{TorqueMotor})
+uses 2nd-order rotor dynamics matching the CubeMars AK60-6 ($N=6$, $\tau_{\text{peak}} = 9\;\text{Nm}$):
+
+\begin{equation}
+\boxed{
+  J_m \ddot{\theta}_m = \frac{\tau_2^{\text{des}}}{N}
+  - b_m\,\dot{\theta}_m - \frac{\rp \cdot F}{N}
+}
+\end{equation}
+
+Spring extension and cable force:
+\begin{align}
+  \delta &= \rp \left(\frac{\theta_m}{N} - q_2\right) \\
+  F &= k_s \cdot \delta + b_c \cdot \dot{\delta}
+\end{align}
+
+Unilateral cable model (cables can only pull):
+\[
+  T_{\text{green}} = \max(F, 0), \quad T_{\text{red}} = \max(-F, 0), \quad
+  \tau_2^{\text{sea}} = \rp \cdot (T_{\text{green}} - T_{\text{red}})
+\]
+
+\begin{warnbox}
+The SEA creates a first-order lag between $\tau_2^{\text{des}}$ and
+$\tau_2^{\text{sea}}$.  For weak springs ($k_s \leq 100\;\text{N/m}$),
+this lag causes 20--40\,mm tracking errors on the rectangle trajectory
+--- far worse than the $\sim 11\;\text{mm}$ achieved with rigid tendons.
+\end{warnbox}
+
+\subsection{SEA Diagnostics}
+
+The \texttt{SEACableActuatorNP.step()} method returns an \texttt{SEADiagnostics}
+dataclass with ten fields:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Field} & \textbf{Description} & \textbf{Unit} \\
+\midrule
+\texttt{motor\_pos}  & $\theta_m / N$ (joint-side) or $l_m$  & rad / m \\
+\texttt{motor\_aux}  & $\dot{\theta}_m / N$ or $l_{m,\text{des}}$  & rad/s / m \\
+\texttt{delta}       & Spring extension $\delta$              & m \\
+\texttt{F\_cable}    & Net cable force                        & N \\
+\texttt{tau1\_des}   & Desired $\tau_1$                       & Nm \\
+\texttt{tau2\_des}   & Desired $\tau_2$                       & Nm \\
+\texttt{T\_green}    & Retracting cable tension               & N \\
+\texttt{T\_red}      & Extending cable tension                & N \\
+\texttt{tau\_sea}    & Applied $\tau_2$ via spring             & Nm \\
+\texttt{tau\_motor}  & Motor-side electromagnetic torque       & Nm \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+
+% ============================================================================
+\section{Residual RL Compensator}
+\label{sec:rl}
+% ============================================================================
+
+To compensate the SEA lag without hand-tuning a lead compensator, a
+residual RL policy is trained on top of the CT controller.
+
+\subsection{Architecture}
+
+\begin{center}
+\begin{tikzpicture}[
+    block/.style={draw, minimum width=2.0cm, minimum height=0.9cm,
+                  rounded corners=2pt, font=\small},
+    arr/.style={->, thick},
+    node distance=1.6cm and 2.0cm,
+]
+  \node[block] (ct)   {CT Controller};
+  \node[block, below=0.8cm of ct] (rl) {RL Policy $\pi_\theta$};
+  \node[block, right=1.8cm of ct] (add) {$\Sigma$};
+  \node[block, right=1.4cm of add] (sea) {SEA Model};
+  \node[block, right=1.4cm of sea] (plant) {PhysX Plant};
+
+  \draw[arr] (ct.east) -- node[above,font=\footnotesize]{$\btau^{\text{ct}}$} (add.west);
+  \draw[arr] (rl.east) -| node[near start,below,font=\footnotesize]{$\Delta\btau$} (add.south);
+  \draw[arr] (add.east) -- node[above,font=\footnotesize]{$\btau^{\text{ct}}\!+\!\Delta\btau$} (sea.west);
+  \draw[arr] (sea.east) -- node[above,font=\footnotesize]{$\btau^{\text{sea}}$} (plant.west);
+  \draw[arr] (plant.south) -- ++(0,-0.8) -| node[near start,below,font=\footnotesize]{14-D obs} (rl.south);
+\end{tikzpicture}
+\end{center}
+
+The 14-D observation includes joint state, EE error, spring diagnostics
+($\delta$, $\dot{\delta}$, $F_{\text{cable}}$), and the CT--SEA torque
+mismatch ($\tau_2^{\text{des}} - \tau_2^{\text{app}}$).
+The 2-D action $\Delta\btau \in [-5, +5]^2\;\text{Nm}$ is intentionally
+small so the RL acts as a \\emph{correction}, not a replacement.
+
+\subsection{What the Policy Learns for Weak Springs}
+
+\begin{resultbox}
+The analytical solution (what a perfect policy would learn) is a
+\textbf{torque-error I+D compensator}:
+\[
+  \Delta\btau \approx k_I \int (\btau^{\text{des}} - \btau^{\text{app}})\,dt
+  + k_D \frac{d}{dt}(\btau^{\text{des}} - \btau^{\text{app}})
+\]
+This inverts the first-order spring lag filter.  The RL policy learns this
+from data without needing to know $k_s$ explicitly, so it \textbf{generalizes
+across spring stiffnesses}.
+\end{resultbox}
+
+Specific behaviors for weak springs ($k_s \leq 100\;\text{N/m}$):
+\begin{enumerate}[leftmargin=2em]
+    \item \textbf{Torque pre-loading}: At trajectory corners, $\Delta\tau_2 > 0$ is sent \emph{before} the corner to pre-charge the spring.
+    \item \textbf{Gravity droop correction}: Steady $\Delta\tau_2 < 0$ on downward segments compensates delayed gravity response.
+    \item \textbf{Active damping}: During spring oscillations, the residual is $180^\circ$ out of phase.
+    \item \textbf{Cross-joint coupling}: $\Delta\tau_1$ corrects Coriolis errors caused by joint-2's delayed spring response.
+\end{enumerate}
+
+See the companion RL notes (\texttt{rl/notes/residual\_rl\_implementation.tex})
+for the full reward function, PPO hyperparameters, and training details.
+
+
+% ============================================================================
 % FILE REFERENCE
 % ============================================================================
 \vfill
@@ -1218,10 +1354,15 @@ $\Delta t$ & Physics timestep & s \\
     \item \texttt{robots/cup\_manipulator\_tendon\_isaac.py} --- Isaac Sim robot wrapper (URDF$\to$USD, ArticulationView)
     \item \texttt{controller/computed\_torque\_isaacsim.py} --- Pure-NumPy CT controller (engine-agnostic)
     \item \texttt{controller/trajectory.py} --- SciPy trajectory classes (Rect, Circle, Line, Preamble)
+    \item \texttt{actuators/sea\_isaacsim.py} --- Pure-NumPy SEA cable model (\texttt{SEACableActuatorNP})
+    \item \texttt{actuators/motor\_dynamics.py} --- Motor dynamics: \texttt{TorqueMotor} (2nd-order), \texttt{PositionServoMotor} (1st-order)
+    \item \texttt{actuators/motor.py} --- Motor catalog: AK60-6, AK80-8 configs
     \item \texttt{project\_utils/viz\_cables\_isaacsim.py} --- Cable visualization via DrakeCablePlant + USD prims
     \item \texttt{project\_utils/log\_isaacsim.py} --- \texttt{IsaacSimLogger}: OS-level fd suppression for quiet startup
-    \item \texttt{cable.py} --- DrakeCablePlant for headless cable FK
-    \item \texttt{tests/test\_cup\_manipulator\_tendon\_multi\_instance\_isaac\_sim.py} --- Multi-instance parallel demo
+    \item \texttt{rl/envs/manipulator\_residual\_env.py} --- Gymnasium environment for residual RL
+    \item \texttt{rl/train\_ppo\_residual.py} --- PPO training with SB3 on Isaac Sim
+    \item \texttt{rl/eval\_ppo\_residual.py} --- Evaluation: CT-only vs CT+RL comparison plots
+    \item \texttt{test\_cup\_manipulator\_tendon\_multi\_instance\_isaac\_sim.py} --- Multi-instance parallel demo
 \end{itemize}
 \end{small}
 

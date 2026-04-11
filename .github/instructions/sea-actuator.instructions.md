@@ -56,6 +56,12 @@ Joint 1 is always rigid direct-drive (τ₁ passes through unchanged).
 - `b_m` — motor-side viscous damping [Nm·s/rad] (torque mode, = `viscous_damping_joint / N²`)
 - `N`   — gear ratio (from `motor_cfg.gear_ratio`)
 
+## Motor Catalog (`actuators/motor.py`)
+- `AK60_6_KV80_Config` — CubeMars AK60-6: N=6, τ_peak=9 Nm, J_m=3.32e-5, 24/48V
+- `AK80_8_KV60_Config` — CubeMars AK80-8: N=8, τ_peak=25 Nm, J_m=6.09e-5, 48V
+- Use `get_motor("AK60_6_KV80_Config")` to get a `MotorModelConfig` dataclass
+- `MOTOR_CHOICES` list for CLI argument validation
+
 ## Motor Dynamics Classes (`actuators/motor_dynamics.py`)
 - `MotorDynamics` — abstract base; subclasses implement `step()` and `compute_spring_force()`
 - `PositionServoMotor(MotorDynamics)` — 1st-order position servo
@@ -105,18 +111,22 @@ builder.Connect(sea.GetOutputPort("actuation"),     plant.get_actuation_input_po
 The legacy `SEACableController` in `controller/controller.py` is a monolithic (CT + SEA in one class) kept for backward compatibility.
 
 ## Diagnostics Layout
-8-element vector from `sea.GetOutputPort("diagnostics")`:
+`SEADiagnostics` dataclass from `sea.step()` (10 fields):
 
-| Slot | Torque mode          | Position mode           |
-|------|----------------------|-------------------------|
-| [0]  | θ_m / N (joint pos)  | l_m (cable displ.)      |
-| [1]  | θ̇_m / N (joint vel) | l_m_des (target displ.) |
-| [2]  | δ (spring extension) | δ (spring extension)    |
-| [3]  | F_cable (net force)  | F_cable (net force)     |
-| [4]  | τ₁_des               | τ₁_des                  |
-| [5]  | τ₂_des               | τ₂_des                  |
-| [6]  | T_green              | T_green                 |
-| [7]  | T_red                | T_red                   |
+| Field        | Description                          | Unit      |
+|--------------|--------------------------------------|-----------|
+| `motor_pos`  | θ_m/N (torque) or l_m (position)     | rad / m   |
+| `motor_aux`  | θ̇_m/N (torque) or l_m_des (position)| rad/s / m |
+| `delta`      | spring extension δ                   | m         |
+| `F_cable`    | net cable force                      | N         |
+| `tau1_des`   | desired τ₁                           | Nm        |
+| `tau2_des`   | desired τ₂                           | Nm        |
+| `T_green`    | retracting cable tension             | N         |
+| `T_red`      | extending cable tension              | N         |
+| `tau_sea`    | actual τ₂ applied via spring         | Nm        |
+| `tau_motor`  | motor-side electromagnetic torque     | Nm        |
+
+Backward-compatible aliases: `.l_m` → `motor_pos`, `.l_m_des` → `motor_aux`.
 
 ## Initialization
 Call `sea.initialize_spring_at_rest(sea_ctx, q2_init)` before the sim loop so the spring starts with `δ = 0` (no pre-load).

@@ -209,7 +209,7 @@ _sea = parser.add_argument_group("SEA cable model (joint 2)")
 _sea.add_argument('--sea-mode', choices=['torque', 'position'], default='torque',
                   help="Motor dynamics mode: 'torque' = 2nd-order rotor, "
                        "'position' = 1st-order servo.")
-_sea.add_argument('--spring-stiffness', type=float, default=3000, metavar='K_S',
+_sea.add_argument('--spring-stiffness', type=float, default=30, metavar='K_S',
                   help='Cable spring stiffness k_s [N/m]. Lower → more lag.')
 _sea.add_argument('--cable-damping', type=float, default=2.0, metavar='B_C',
                   help='Cable dashpot damping b_c [N·s/m]')

@@ -188,12 +188,18 @@ Open in browser. Click ▶ to replay recorded animations.
 ## Key Files & Their Roles
 
 - **`robot_types.py`**: Central config system—ALL robots/scenes defined here
-- **`script_cart_pendulum_2d_extended_ofc.py`**: Main research script for 2D OFC with multiple modes
-- **`script_cup_manipulator_controller_drake.py`**: Two-system architecture example (plant + controller)
-- **`LQR_IMPLEMENTATION_SUMMARY.md`**: Finite-horizon LQR theory & implementation
+- **`controller/computed_torque_isaacsim.py`**: Pure-NumPy CT controller (engine-agnostic)
+- **`controller/trajectory.py`**: SciPy trajectory classes (Rect, Circle, Line, Preamble)
+- **`actuators/sea_isaacsim.py`**: Pure-NumPy SEA cable model (`SEACableActuatorNP`)
+- **`actuators/motor_dynamics.py`**: Motor dynamics: `TorqueMotor` (2nd-order), `PositionServoMotor` (1st-order)
+- **`actuators/motor.py`**: Motor catalog: AK60-6 (9 Nm), AK80-8 (25 Nm) configs
+- **`rl/envs/manipulator_residual_env.py`**: Gymnasium env for residual RL (14-D obs, 2-D action)
+- **`rl/train_ppo_residual.py`**: PPO training with SB3 on Isaac Sim
+- **`rl/eval_ppo_residual.py`**: Evaluation: CT-only vs CT+RL comparison plots
+- **`robots/cup_manipulator_tendon_isaac.py`**: Isaac Sim robot wrapper (URDF→USD, ArticulationView)
 - **`SYSTEM_ARCHITECTURE_GUIDE.md`**: Block diagrams of muscle dynamics + linearization
-- **`model/manipulators/`**: URDF files and mesh assets
-- **`tests/`**: Isaac Sim examples (require GPU + Isaac Sim installed)
+- **`model_using_onshape_to_robot/`**: URDF files and mesh assets from Onshape
+- **`test_cup_manipulator_tendon_multi_instance_isaac_sim.py`**: Multi-instance Isaac Sim demo
 
 ## Common Pitfalls
 
@@ -202,6 +208,9 @@ Open in browser. Click ▶ to replay recorded animations.
 3. **Isaac Sim Import Order**: `SimulationApp()` MUST be first import, before any `isaacsim.*` modules
 4. **Linearization Point**: Drake linearizes around `context` state—set equilibrium BEFORE calling `Linearize()`
 5. **IK Seed Warm-Starting**: Use previous IK solution as seed for next iteration to avoid discontinuities
+
+6. **Isaac Sim stdout buffering**: Use `PYTHONUNBUFFERED=1 python -u` to see script output (C++ buffers fd 1/2)
+7. **SEA torque tracking reward**: The `w₂·(τ_des − τ_applied)²` reward term is critical for RL — without it the policy ignores spring lag
 
 ## Documentation References
 
@@ -212,6 +221,6 @@ Open in browser. Click ▶ to replay recorded animations.
 
 ---
 
-**Last Updated**: February 13, 2026  
+**Last Updated**: April 11, 2026  
 **Frameworks**: PyDrake + Isaac Sim 5.1.0  
 **Python**: 3.11 (conda environments: `pydrake`, `env_isaacsim`)

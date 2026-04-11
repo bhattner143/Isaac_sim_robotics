@@ -22,9 +22,11 @@ RL agent compensate for:
   - Model inaccuracies in M(q), h(q,q̇)
   - Trajectory-dependent dynamics
 
-Observation (10-D)
+Observation (14-D)
 ──────────────────
-    [q₁, q₂, q̇₁, q̇₂, ee_err_x, ee_err_y, δ, F_cable, τ₂_ct, τ₂_sea]
+    [q₁, q₂, q̇₁, q̇₂, ee_err_x, ee_err_y,
+     δ, δ̇, F_cable, τ₂_ct, τ₂_sea, τ_motor,
+     (τ₁_des − τ₁_applied), (τ₂_des − τ₂_applied)]
 
 Action (2-D)
 ────────────
@@ -32,8 +34,8 @@ Action (2-D)
 
 Reward
 ──────
-    r = -α·‖ee_err‖² - β·‖Δτ‖² - γ·‖q̈‖²
-      tracking     effort       smoothness
+    r = -α·‖ee_err‖² - β·‖Δτ‖² - γ·‖q̈‖² - λ·(τ_des − τ_applied)²
+      tracking     effort       smoothness    torque tracking
 
 Episode terminates after ``max_episode_steps`` or if joint limits exceeded.
 """
@@ -122,10 +124,12 @@ class ManipulatorResidualEnv(gym.Env):
         self.w_track = w.get("tracking", 100.0)
         self.w_effort = w.get("effort", 0.01)
         self.w_smooth = w.get("smoothness", 0.001)
+        self.w_torque_track = w.get("torque_tracking", 1.0)
 
-        # ── Observation space (10-D) ────────────────────────────────────────
+        # ── Observation space (14-D) ────────────────────────────────────────
         #   [q1, q2, q1_dot, q2_dot, ee_err_x, ee_err_y,
-        #    delta, F_cable, tau2_ct, tau2_sea]
+        #    delta, delta_dot, F_cable, tau2_ct, tau2_sea, tau_motor,
+        #    tau1_tracking_err, tau2_tracking_err]
         obs_high = np.array([
             np.pi,       # q1
             np.pi,       # q2
@@ -134,9 +138,13 @@ class ManipulatorResidualEnv(gym.Env):
             0.5,         # ee_err_x
             0.5,         # ee_err_y
             0.1,         # delta (spring extension)
+            5.0,         # delta_dot (spring extension rate)
             500.0,       # F_cable
             50.0,        # tau2_ct
             50.0,        # tau2_sea
+            50.0,        # tau_motor
+            50.0,        # tau1_tracking_err
+            50.0,        # tau2_tracking_err
         ], dtype=np.float32)
         self.observation_space = spaces.Box(
             low=-obs_high, high=obs_high, dtype=np.float32,
@@ -155,6 +163,7 @@ class ManipulatorResidualEnv(gym.Env):
         self._t = 0.0
         self._q_seed = None
         self._prev_tau = np.zeros(2)
+        self._prev_delta = 0.0
         self._last_sea_diag = None
         self._last_ct_out = None
 
@@ -172,6 +181,7 @@ class ManipulatorResidualEnv(gym.Env):
         self._step_count = 0
         self._t = 0.0
         self._prev_tau = np.zeros(2)
+        self._prev_delta = 0.0
 
         # Randomize initial joint angles slightly for domain randomization
         jc = self.robot.config.joint_configs
@@ -265,7 +275,10 @@ class ManipulatorResidualEnv(gym.Env):
         r_effort = -self.w_effort * np.sum(action ** 2)
         tau_diff = tau_applied - self._prev_tau
         r_smooth = -self.w_smooth * np.sum(tau_diff ** 2)
-        reward = float(r_track + r_effort + r_smooth)
+        # Torque tracking: penalize gap between CT desired and SEA actual
+        tau_track_err = ct_out.tau_raw - tau_applied
+        r_torque_track = -self.w_torque_track * np.sum(tau_track_err ** 2)
+        reward = float(r_track + r_effort + r_smooth + r_torque_track)
 
         self._prev_tau = tau_applied.copy()
 
@@ -285,9 +298,12 @@ class ManipulatorResidualEnv(gym.Env):
         info = {
             "t": self._t,
             "ee_error_mm": ee_err_norm * 1e3,
+            "ee_actual": ee_actual.copy(),
+            "ee_ref": ee_ref.copy(),
             "r_track": r_track,
             "r_effort": r_effort,
             "r_smooth": r_smooth,
+            "r_torque_track": r_torque_track,
             "tau_ct": ct_out.tau_raw.copy(),
             "tau_residual": action.copy(),
             "tau_applied": tau_applied.copy(),
@@ -296,7 +312,7 @@ class ManipulatorResidualEnv(gym.Env):
         return obs, reward, terminated, truncated, info
 
     def _get_obs(self) -> np.ndarray:
-        """Build the 10-D observation vector."""
+        """Build the 14-D observation vector."""
         q = self.robot.get_positions_user_order()
         q_dot = self.robot.get_velocities_user_order()
 
@@ -306,19 +322,32 @@ class ManipulatorResidualEnv(gym.Env):
         ee_err = ee_actual - ee_ref
 
         # SEA state
-        delta = self._last_sea_diag.delta if self._last_sea_diag else 0.0
-        F_cable = self._last_sea_diag.F_cable if self._last_sea_diag else 0.0
+        diag = self._last_sea_diag
+        delta = diag.delta if diag else 0.0
+        delta_dot = (delta - self._prev_delta) / self.dt if self.dt > 0 else 0.0
+        self._prev_delta = delta
+        F_cable = diag.F_cable if diag else 0.0
         tau2_ct = self._last_ct_out.tau_raw[1] if self._last_ct_out else 0.0
-        tau2_sea = self._last_sea_diag.tau_sea if self._last_sea_diag else 0.0
+        tau2_sea = diag.tau_sea if diag else 0.0
+        tau_motor = diag.tau_motor if diag else 0.0
+
+        # Torque tracking error: τ_des − τ_applied
+        tau_ct_raw = self._last_ct_out.tau_raw if self._last_ct_out else np.zeros(2)
+        tau1_track_err = tau_ct_raw[0] - self._prev_tau[0]
+        tau2_track_err = tau_ct_raw[1] - (diag.tau_sea if diag else 0.0)
 
         obs = np.array([
             q[0], q[1],
             q_dot[0], q_dot[1],
             ee_err[0], ee_err[1],
             delta,
+            delta_dot,
             F_cable,
             tau2_ct,
             tau2_sea,
+            tau_motor,
+            tau1_track_err,
+            tau2_track_err,
         ], dtype=np.float32)
 
         return obs

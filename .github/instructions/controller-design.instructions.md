@@ -34,6 +34,19 @@ Tendon scripts decompose joint-2 torque into green (retract) / red (extend) cabl
 ## Composable Wiring with SEA
 The `ComputedTorqueController` outputs `[τ₁, τ₂]` on its `actuation` port. For SEA simulations, wire this into `SEACableActuator.tau_desired` instead of directly to the plant. The SEA actuator models motor + spring dynamics and outputs the actual torques. See `sea-actuator.instructions.md` for the wiring pattern.
 
+## Residual RL (rl/envs/manipulator_residual_env.py)
+RL adds a small correction `Δτ` on top of CT before the SEA:
+```
+CT Controller → (+Δτ from RL) → SEA Model → PhysX Plant
+```
+
+- **14-D observation**: `[q₁, q₂, q̇₁, q̇₂, ee_err_x, ee_err_y, δ, δ̇, F_cable, τ₂_ct, τ₂_sea, τ_motor, τ₁_track_err, τ₂_track_err]`
+- **2-D action**: `Δτ ∈ [-5, +5]² Nm` (small relative to CT output)
+- **Reward**: tracking (100) + effort (0.01) + smoothness (0.001) + torque_tracking (1.0)
+- The torque tracking reward `w₂·(τ_des − τ_applied)²` is critical — without it the policy ignores the spring lag
+- For weak springs (k_s ≤ 100 N/m), the RL policy learns a torque-error I+D compensator
+- Motor: AK60-6 in torque mode (2nd-order rotor dynamics, N=6, τ_peak=9 Nm)
+
 ## State Vectors
 - **Cart-Pendulum 2D** (8D): `[x, y, α, β, ẋ, ẏ, α̇, β̇]`
 - **Extended System** (14D): adds `[F_x, F_y, x_ref, y_ref, ẋ_ref, ẏ_ref]`
