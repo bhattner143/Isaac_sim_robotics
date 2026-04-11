@@ -476,6 +476,48 @@
             "problemMatcher": []
         },
         {
+            "label": "🎯 Multi-Instance: Good Tracking (native)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/test_cup_manipulator_tendon_multi_instance_isaac_sim.py --render native --duration 45 --ct-kp 800 --ct-kd 57 --spring-stiffness 5000 --cable-damping 5 --motor-bandwidth 500"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "💥 Multi-Instance: Bad Tracking (native)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/test_cup_manipulator_tendon_multi_instance_isaac_sim.py --render native --duration 45 --ct-kp 800 --ct-kd 57  --spring-stiffness 5000 --cable-damping 0 --motor-bandwidth 5"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
             "label": "📄 LaTeX: Compile PyDrake Document",
             "type": "shell",
             "command": "latexmk",

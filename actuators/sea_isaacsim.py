@@ -15,15 +15,19 @@ State variable
 ──────────────
     l_m  [m]  — motor-side cable displacement (wound on drum)
 
-SEA equations
-─────────────
+SEA equations (unilateral cable model)
+──────────────────────────────────────
     δ       = l_m − r_p · q₂                        spring extension  [m]
     l̇_m    = ω_m · (l_m_des − l_m)                  motor position servo
     l_m_des = r_p · q₂ + τ₂_des / (k_s · r_p)       steady-state inversion
     F_raw   = k_s · δ + b_c · (l̇_m − r_p · q̇₂)     spring–damper force
-    T_green = max( F_raw, 0)                          retracting cable
-    T_red   = max(−F_raw, 0)                          extending cable
-    τ₂_out  = r_p · (T_green − T_red) = r_p · F_raw
+
+    Cables can only PULL (tension ≥ 0), never push:
+      δ > 0 → green taut:  T_green = max(F_raw, 0),  T_red = 0
+      δ < 0 → red taut:    T_green = 0,  T_red = max(−F_raw, 0)
+      δ = 0 → both slack:  T_green = T_red = 0
+
+    τ₂_out  = r_p · (T_green − T_red)
 
 Usage::
 
@@ -100,17 +104,33 @@ class SEACableActuatorNP:
 
     def _spring_force(self, l_m: float, l_m_des: float,
                       q2: float, q2_dot: float):
-        """Compute cable force, spring extension, and motor velocity.
+        """Compute cable force with unilateral (slack) cable model.
+
+        Two cables wrap the pulley in opposite directions.  Each cable
+        can only pull (tension >= 0), never push.  When one side is
+        taut the other is slack and transmits zero force.
 
         Returns (F_cable, delta, l_m_dot, T_green, T_red).
         """
-        delta     = l_m - self.r_p * q2
+        delta     = l_m - self.r_p * q2          # + = green stretched
         l_m_dot   = self.omega_m * (l_m_des - l_m)
         delta_dot = l_m_dot - self.r_p * q2_dot
         F_raw     = self.k_s * delta + self.b_c * delta_dot
-        T_green   = float(max(F_raw,  0.0))
-        T_red     = float(max(-F_raw, 0.0))
-        F_cable   = T_green - T_red   # bidirectional via antagonism
+
+        if delta > 0.0:
+            # Green cable taut, red cable slack
+            T_green = float(max(F_raw, 0.0))    # cable can only pull
+            T_red   = 0.0
+        elif delta < 0.0:
+            # Red cable taut, green cable slack
+            T_green = 0.0
+            T_red   = float(max(-F_raw, 0.0))   # cable can only pull
+        else:
+            # Both cables at rest
+            T_green = 0.0
+            T_red   = 0.0
+
+        F_cable = T_green - T_red   # unilateral: only one side active
         return F_cable, delta, l_m_dot, T_green, T_red
 
     def step(
@@ -147,8 +167,10 @@ class SEACableActuatorNP:
         tau_out = np.array([tau1_des, tau_sea])
         tau_out = np.clip(tau_out, -self.tau_max, self.tau_max)
 
-        # Euler-step motor servo: l_m ← l_m + dt·ω_m·(l_m_des − l_m)
-        self.l_m += self.dt * self.omega_m * (l_m_des - l_m_now)
+        # Exact exponential integration (unconditionally stable for any ω_m):
+        #   l_m(t+dt) = l_m_des - (l_m_des - l_m) * exp(-ω_m * dt)
+        alpha = np.exp(-self.omega_m * self.dt)
+        self.l_m = l_m_des - (l_m_des - l_m_now) * alpha
 
         diag = SEADiagnostics(
             l_m=l_m_now, l_m_des=l_m_des, delta=delta,

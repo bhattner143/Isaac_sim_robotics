@@ -5,9 +5,9 @@ N parallel instances of the cup manipulator tendon running independent
 trajectories (rect, circle, line) simultaneously in Isaac Sim.
 
 Each robot is placed on a square grid and runs a CT (computed-torque)
-controller with its own looping trajectory.  Demonstrates the
-ArticulationView batching pattern used as a stepping-stone towards
-full Isaac Lab RL training.
+controller with SEA (Series Elastic Actuator) cable actuation on joint 2.
+Joint 1 is rigid direct-drive; joint 2 passes through a spring-damper
+cable model (k_s, b_c, ω_m) before reaching the plant.
 
 Usage::
 
@@ -15,6 +15,10 @@ Usage::
 
     # 4 robots in a 2×2 grid, local window
     python test_cup_manipulator_tendon_multi_instance_isaac_sim.py
+
+    # Soft spring (high lag)
+    python test_cup_manipulator_tendon_multi_instance_isaac_sim.py \\
+        --spring-stiffness 30
 
     # 9 robots, headless (benchmarking / CI)
     python test_cup_manipulator_tendon_multi_instance_isaac_sim.py \\
@@ -114,6 +118,7 @@ from controller.trajectory import (
     PreambleTrajectorySource,
     build_move_to_start,
 )
+from actuators.sea_isaacsim import SEACableActuatorNP, SEADiagnostics
 
 import matplotlib
 matplotlib.use('Agg')  # non-interactive — works headless & within Isaac Sim
@@ -140,10 +145,19 @@ parser.add_argument("--move-duration", type=float, default=3.0,
                     help="Move-to-start preamble duration [s] (default: 3.0)")
 parser.add_argument("--ct-kp", type=float, default=800.0,
                     help="CT position gain Kp [s^-2] (default: 800)")
-parser.add_argument("--ct-kd", type=float, default=40.0,
-                    help="CT velocity gain Kd [s^-1] (default: 40)")
+parser.add_argument("--ct-kd", type=float, default=57.0,
+                    help="CT velocity gain Kd [s^-1] (default: 57, critically damped for Kp=800)")
 parser.add_argument("--ct-tau-max", type=float, default=50.0,
                     help="Torque saturation [Nm] (default: 50)")
+# SEA parameters
+parser.add_argument("--spring-stiffness", type=float, default=5000.0, metavar="K_S",
+                    help="SEA cable spring stiffness k_s [N/m] (default: 5000)")
+parser.add_argument("--cable-damping", type=float, default=5.0, metavar="B_C",
+                    help="SEA cable dashpot damping b_c [N·s/m] (default: 5)")
+parser.add_argument("--motor-bandwidth", type=float, default=500.0, metavar="W_M",
+                    help="SEA motor servo bandwidth ω_m [rad/s] (default: 500)")
+parser.add_argument("--no-sea", action="store_true", default=False,
+                    help="Bypass SEA — apply CT torques directly (for diagnostics)")
 args = parser.parse_args()
 
 N = args.num_envs
@@ -174,7 +188,7 @@ _BASE_CONFIG = create_cable_manipulator_config(
 _TRAJ_SPECS = [
     # 0 — Rectangle (wide, slow corners)
     {"type": "rect",   "lap": 8.0,
-     "x_range": (0.38, 0.52), "y_range": (-0.10, 0.10)},
+     "x_range": (0.36, 0.49), "y_range": (-0.10, 0.10)},
     # 1 — Circle (medium)
     {"type": "circle", "lap": 8.0, "cx": 0.42, "cy": 0.00, "radius": 0.09},
     # 2 — Horizontal line (back-and-forth)
@@ -307,10 +321,34 @@ for i in range(N):
     print(colored(f"    robot_{i}: {spec['type']}  (lap={spec['lap']} s)", "cyan"))
 
 # CT controllers — same gains for all, independent state
+r_p = manips[0].r_p
 ct_controllers = [
-    ComputedTorqueController(Kp=args.ct_kp, Kd=args.ct_kd, tau_max=args.ct_tau_max)
+    ComputedTorqueController(Kp=args.ct_kp, Kd=args.ct_kd, tau_max=args.ct_tau_max,
+                             pulley_radius=r_p)
     for _ in range(N)
 ]
+
+# SEA actuators — one per robot, independent motor state
+sea_actuators = []
+for i in range(N):
+    sea = SEACableActuatorNP(
+        r_p=r_p,
+        k_s=args.spring_stiffness,
+        b_c=args.cable_damping,
+        omega_m=args.motor_bandwidth,
+        tau_max=args.ct_tau_max,
+        dt=args.dt,
+    )
+    q_cur = manips[i].get_positions_user_order()
+    sea.initialize(q_cur[1])
+    sea_actuators.append(sea)
+
+print(colored(
+    f"  SEA: k_s={args.spring_stiffness} N/m  "
+    f"b_c={args.cable_damping} N·s/m  "
+    f"ω_m={args.motor_bandwidth} rad/s",
+    "cyan",
+))
 
 # Move-to-start preambles: cubic Hermite from current pose to first waypoint
 q_seeds: list[np.ndarray] = []
@@ -345,6 +383,10 @@ t = 0.0
 log_ee_actual = [np.zeros((max_steps, 2)) for _ in range(N)]  # actual EE [x,y]
 log_ee_ref    = [np.zeros((max_steps, 2)) for _ in range(N)]  # reference EE [x,y]
 log_t         = np.zeros(max_steps)
+# SEA-specific logging (per robot)
+log_tau_des   = [np.zeros((max_steps, 2)) for _ in range(N)]  # CT desired
+log_tau_sea   = [np.zeros((max_steps, 2)) for _ in range(N)]  # SEA applied
+log_delta     = [np.zeros(max_steps) for _ in range(N)]        # spring extension
 
 print(colored(
     f"\n[multi-instance] Running {N} robot(s) for "
@@ -401,14 +443,48 @@ while step < max_steps and not _stop_requested:
             # 5. Computed-torque
             ct_out = ctrl.compute(q, q_dot, q_des, q_dot_ref, q_ddot_ref, M, h)
 
-            # 6. Apply torques
-            m.set_joint_torques(ct_out.tau_clip)
+            # 6. SEA actuator: spring-mediated torque for joint 2
+            tau_desired = ct_out.tau_raw
+            if args.no_sea:
+                tau_applied = ct_out.tau_clip
+                sea_diag = SEADiagnostics(
+                    l_m=0, l_m_des=0, delta=0, F_cable=0,
+                    tau1_des=float(tau_desired[0]),
+                    tau2_des=float(tau_desired[1]),
+                    T_green=0, T_red=0,
+                    tau_sea=float(ct_out.tau_clip[1]),
+                )
+            else:
+                tau_applied, sea_diag = sea_actuators[i].step(tau_desired, q, q_dot)
 
-            # 7. Log EE positions
+            # 7. Apply torques
+            m.set_joint_torques(tau_applied)
+
+            # ── Diagnostic (first 3 steps, robot 0 only) ────────────────
+            if step < 3 and i == 0:
+                ee_fk = forward_kinematics_2r(L1, L2, q[0], q[1])
+                ee_fk_des = forward_kinematics_2r(L1, L2, q_des[0], q_des[1])
+                print(f"  [diag] step={step} t={t:.3f}")
+                print(f"    q      = [{np.rad2deg(q[0]):+7.2f}, {np.rad2deg(q[1]):+7.2f}] deg")
+                print(f"    q_des  = [{np.rad2deg(q_des[0]):+7.2f}, {np.rad2deg(q_des[1]):+7.2f}] deg")
+                print(f"    q_err  = [{np.rad2deg(q_des[0]-q[0]):+7.3f}, {np.rad2deg(q_des[1]-q[1]):+7.3f}] deg")
+                print(f"    ee_ref = [{ee_ref[0]*1e3:7.1f}, {ee_ref[1]*1e3:7.1f}] mm")
+                print(f"    ee_fk  = [{ee_fk[0]*1e3:7.1f}, {ee_fk[1]*1e3:7.1f}] mm")
+                print(f"    FK@des = [{ee_fk_des[0]*1e3:7.1f}, {ee_fk_des[1]*1e3:7.1f}] mm")
+                print(f"    M diag = [{M[0,0]:.4f}, {M[1,1]:.4f}]")
+                print(f"    h      = [{h[0]:+.4f}, {h[1]:+.4f}]")
+                print(f"    tau_des= [{tau_desired[0]:+.3f}, {tau_desired[1]:+.3f}] Nm")
+                print(f"    tau_app= [{tau_applied[0]:+.3f}, {tau_applied[1]:+.3f}] Nm")
+                print(f"    ik_ok  = {ik_ok}  sea={'OFF' if args.no_sea else 'ON'}")
+
+            # 8. Log EE positions + SEA data
             if step < max_steps:
                 ee_actual = forward_kinematics_2r(L1, L2, q[0], q[1])
                 log_ee_actual[i][step] = ee_actual
                 log_ee_ref[i][step]    = ee_ref
+                log_tau_des[i][step]   = tau_desired
+                log_tau_sea[i][step]   = tau_applied
+                log_delta[i][step]     = sea_diag.delta
 
         if step < max_steps:
             log_t[step] = t
@@ -439,6 +515,9 @@ log_t = log_t[:n_logged]
 for i in range(N):
     log_ee_actual[i] = log_ee_actual[i][:n_logged]
     log_ee_ref[i]    = log_ee_ref[i][:n_logged]
+    log_tau_des[i]   = log_tau_des[i][:n_logged]
+    log_tau_sea[i]   = log_tau_sea[i][:n_logged]
+    log_delta[i]     = log_delta[i][:n_logged]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Wrap-up
@@ -460,15 +539,16 @@ if n_logged > 1:
     _COLORS = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red',
                'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive']
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
     fig.suptitle(
-        f'Multi-Instance CT  —  {N} robots × {n_logged} steps  '
-        f'(Kp={args.ct_kp}, Kd={args.ct_kd})',
+        f'Multi-Instance SEA CT  —  {N} robots × {n_logged} steps  '
+        f'(Kp={args.ct_kp}, Kd={args.ct_kd}, '
+        f'k_s={args.spring_stiffness}, ω_m={args.motor_bandwidth})',
         fontsize=13, fontweight='bold',
     )
 
-    # ── Left: XY path ────────────────────────────────────────────────────────
-    ax = axes[0]
+    # ── Top-left: XY path ────────────────────────────────────────────────────
+    ax = axes[0, 0]
     for i in range(N):
         c = _COLORS[i % len(_COLORS)]
         spec = _TRAJ_SPECS[i % len(_TRAJ_SPECS)]
@@ -484,8 +564,8 @@ if n_logged > 1:
     ax.set_aspect('equal')
     ax.legend(fontsize=8, loc='best'); ax.grid(True, alpha=0.4)
 
-    # ── Right: tracking error vs time ────────────────────────────────────────
-    ax = axes[1]
+    # ── Top-right: tracking error vs time ────────────────────────────────────
+    ax = axes[0, 1]
     for i in range(N):
         c = _COLORS[i % len(_COLORS)]
         spec = _TRAJ_SPECS[i % len(_TRAJ_SPECS)]
@@ -496,16 +576,105 @@ if n_logged > 1:
     ax.set_title('Tracking Error')
     ax.legend(fontsize=8, loc='best'); ax.grid(True, alpha=0.4)
 
+    # ── Bottom-left: τ₂ desired vs SEA-applied (per robot) ──────────────────
+    ax = axes[1, 0]
+    for i in range(N):
+        c = _COLORS[i % len(_COLORS)]
+        ax.plot(log_t, log_tau_des[i][:, 1], '-', color=c, lw=1.0, alpha=0.5)
+        ax.plot(log_t, log_tau_sea[i][:, 1], '--', color=c, lw=1.2,
+                label=f'robot_{i}')
+    ax.axhline(0, color='k', lw=0.5)
+    ax.set_xlabel('Time [s]'); ax.set_ylabel('τ₂ [Nm]')
+    ax.set_title('Joint-2 Torque  (solid=CT desired, dashed=SEA applied)')
+    ax.legend(fontsize=8, loc='best'); ax.grid(True, alpha=0.4)
+
+    # ── Bottom-right: spring extension δ (per robot) ────────────────────────
+    ax = axes[1, 1]
+    for i in range(N):
+        c = _COLORS[i % len(_COLORS)]
+        ax.plot(log_t, log_delta[i] * 1e3, '-', color=c, lw=1.2,
+                label=f'robot_{i}')
+    ax.axhline(0, color='k', lw=0.5)
+    ax.set_xlabel('Time [s]'); ax.set_ylabel('δ [mm]')
+    ax.set_title('SEA Spring Extension δ')
+    ax.legend(fontsize=8, loc='best'); ax.grid(True, alpha=0.4)
+
     fig.tight_layout()
 
     # Save (Agg backend — no display needed)
     _plots_dir = Path(_PROJECT_ROOT) / 'plots'
     _plots_dir.mkdir(exist_ok=True)
     _stamp = time.strftime('%Y%m%d_%H%M%S')
-    _fname = _plots_dir / f'multi_instance_{N}env_{_stamp}.png'
+    _fname = _plots_dir / f'multi_instance_sea_{N}env_{_stamp}.png'
     fig.savefig(str(_fname), dpi=150, bbox_inches='tight')
     plt.close(fig)
-    print(colored(f"\n  📊 Figure saved: {_fname}", "green"))
+    print(colored(f"\n  📊 Overview figure saved: {_fname}", "green"))
+
+    # ── Per-robot figure: XY path + tracking error (one row per robot) ──────
+    _n_rows = N if N > 1 else 1
+    fig2, axes2 = plt.subplots(_n_rows, 2, figsize=(13, 4 * _n_rows),
+                               squeeze=False)
+    fig2.suptitle(
+        f'Per-Robot EE Path & Tracking Error  —  {N} robot(s)  '
+        f'(Kp={args.ct_kp}, Kd={args.ct_kd}, '
+        f'k_s={args.spring_stiffness}, ω_m={args.motor_bandwidth}'
+        f'{", NO-SEA" if args.no_sea else ""})',
+        fontsize=13, fontweight='bold',
+    )
+
+    _preamble_steps = int(args.move_duration / args.dt)
+
+    for i in range(N):
+        c    = _COLORS[i % len(_COLORS)]
+        spec = _TRAJ_SPECS[i % len(_TRAJ_SPECS)]
+
+        # ── Left column: XY path ─────────────────────────────────────────
+        ax_xy = axes2[i, 0]
+        ax_xy.plot(
+            log_ee_ref[i][:, 0] * 1e3, log_ee_ref[i][:, 1] * 1e3,
+            '--', color='gray', lw=1.0, alpha=0.7, label='ref',
+        )
+        ax_xy.plot(
+            log_ee_actual[i][:, 0] * 1e3, log_ee_actual[i][:, 1] * 1e3,
+            '-', color=c, lw=1.5, label='actual',
+        )
+        ax_xy.plot(
+            log_ee_actual[i][0, 0] * 1e3, log_ee_actual[i][0, 1] * 1e3,
+            'o', color=c, ms=6,
+        )
+        ax_xy.set_xlabel('X [mm]')
+        ax_xy.set_ylabel('Y [mm]')
+        ax_xy.set_title(f'robot_{i} ({spec["type"]}) — EE Path')
+        ax_xy.set_aspect('equal')
+        ax_xy.legend(fontsize=8, loc='best')
+        ax_xy.grid(True, alpha=0.4)
+
+        # ── Right column: tracking error vs time ──────────────────────────
+        ax_err = axes2[i, 1]
+        err    = np.linalg.norm(log_ee_actual[i] - log_ee_ref[i], axis=1) * 1e3
+        ax_err.plot(log_t, err, '-', color=c, lw=1.2)
+        ax_err.axvline(
+            args.move_duration, color='k', lw=0.8, ls='--',
+            label='preamble end',
+        )
+        if n_logged > _preamble_steps:
+            _mean_err = err[_preamble_steps:].mean()
+            _max_err  = err[_preamble_steps:].max()
+            ax_err.axhline(
+                _mean_err, color=c, lw=0.9, ls=':',
+                label=f'mean={_mean_err:.1f} mm  max={_max_err:.1f} mm',
+            )
+        ax_err.set_xlabel('Time [s]')
+        ax_err.set_ylabel('EE error [mm]')
+        ax_err.set_title(f'robot_{i} ({spec["type"]}) — Tracking Error')
+        ax_err.legend(fontsize=8, loc='best')
+        ax_err.grid(True, alpha=0.4)
+
+    fig2.tight_layout()
+    _fname2 = _plots_dir / f'multi_instance_perrobot_{N}env_{_stamp}.png'
+    fig2.savefig(str(_fname2), dpi=150, bbox_inches='tight')
+    plt.close(fig2)
+    print(colored(f"  📊 Per-robot figure saved: {_fname2}", "green"))
 else:
     print(colored("  ⚠ No steps logged — skipping plot.", "yellow"))
 
@@ -514,9 +683,10 @@ simulation_app.close()
 # ── Open the saved PNG with the system image viewer ──────────────────────────
 if n_logged > 1:
     import subprocess
-    try:
-        subprocess.Popen(['eog', str(_fname)],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print(colored(f"  🖼  Opened: {_fname}", "green"))
-    except Exception:
-        pass  # eog not available — PNG is on disk
+    for _fig_path in (_fname, _fname2):
+        try:
+            subprocess.Popen(['eog', str(_fig_path)],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(colored(f"  🖼  Opened: {_fig_path}", "green"))
+        except Exception:
+            pass  # eog not available — PNG is on disk

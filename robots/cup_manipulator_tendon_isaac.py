@@ -431,8 +431,9 @@ class CupManipulatorTendonIsaac:
                     UsdPhysics.DriveAPI.Apply(jt_prim, "angular")
                 drive = UsdPhysics.DriveAPI.Get(jt_prim, "angular")
                 drive.GetTypeAttr().Set("force")
-                # Zero stiffness — no position spring for effort control
+                # Zero stiffness and damping — no internal PD fighting our efforts
                 drive.GetStiffnessAttr().Set(0.0)
+                drive.GetDampingAttr().Set(0.0)
                 # Large maxForce — don't let URDF effort limit cap our torques
                 drive.GetMaxForceAttr().Set(1e4)
         print(colored(
@@ -518,10 +519,17 @@ class CupManipulatorTendonIsaac:
                 f"Dynamics view: joints [{self.JT1_NAME}, {self.JT2_NAME}] "
                 f"not found in ArticulationView DOFs: {av_dof_names}"
             )
+        # Diagnostic: check if Articulation and ArticulationView DOF orderings match
+        _art_jt1_idx = self._joint_index.get(self.JT1_NAME)
+        _art_jt2_idx = self._joint_index.get(self.JT2_NAME)
+        _order_match = (_art_jt1_idx == self._av_jt1_idx and
+                        _art_jt2_idx == self._av_jt2_idx)
         print(colored(
             f"✓ Dynamics ArticulationView initialized: "
-            f"jt1_idx={self._av_jt1_idx}, jt2_idx={self._av_jt2_idx}",
-            'green',
+            f"jt1_idx={self._av_jt1_idx}, jt2_idx={self._av_jt2_idx}"
+            f"  (Articulation: jt1={_art_jt1_idx}, jt2={_art_jt2_idx}"
+            f"  {'✓ MATCH' if _order_match else '⚠️  MISMATCH — fixed by AV-based reads'})",
+            'green' if _order_match else 'yellow',
         ))
 
     # ── Dynamics Queries (for Computed Torque) ────────────────────────────
@@ -626,7 +634,17 @@ class CupManipulatorTendonIsaac:
         self.set_jt_velocity([self.JT1_NAME, self.JT2_NAME], [q1_dot, q2_dot])
 
     def get_positions_user_order(self) -> np.ndarray:
-        """Return [q1, q2] in user (logical) order."""
+        """Return [q1, q2] in user (logical) order.
+
+        Uses ArticulationView indices when available (same ordering as
+        mass matrix, bias forces, and set_joint_torques) to avoid
+        cross-API DOF-ordering mismatches.
+        """
+        if self._art_view is not None and self._av_jt1_idx is not None:
+            pos_full = self._art_view.get_joint_positions()  # (1, ndof)
+            pos = pos_full[0]
+            return np.array([float(pos[self._av_jt1_idx]),
+                             float(pos[self._av_jt2_idx])])
         return np.array(self.get_jt([self.JT1_NAME, self.JT2_NAME]))
 
     def set_positions_user_order(self, user_positions):
@@ -639,7 +657,16 @@ class CupManipulatorTendonIsaac:
             self.set_jt([self.JT1_NAME, self.JT2_NAME], [q1, q2])
 
     def get_velocities_user_order(self) -> np.ndarray:
-        """Return [q1_dot, q2_dot] in user order."""
+        """Return [q1_dot, q2_dot] in user order.
+
+        Uses ArticulationView indices when available (same ordering as
+        mass matrix, bias forces, and set_joint_torques).
+        """
+        if self._art_view is not None and self._av_jt1_idx is not None:
+            vel_full = self._art_view.get_joint_velocities()  # (1, ndof)
+            vel = vel_full[0]
+            return np.array([float(vel[self._av_jt1_idx]),
+                             float(vel[self._av_jt2_idx])])
         return np.array(self.get_jt_velocity([self.JT1_NAME, self.JT2_NAME]))
 
     def set_velocities_user_order(self, user_velocities):
@@ -837,7 +864,11 @@ def solve_2r_ik(
     q2 = q2_a if abs(q2_a - q_seed[1]) < abs(q2_b - q_seed[1]) else q2_b
     q1 = math.atan2(y, x) - math.atan2(
         L2 * math.sin(q2), L1 + L2 * math.cos(q2))
-    return np.array([q1, q2]), True
+    # Validate FK matches the target (catches numerical edge cases)
+    ee_x = L1 * math.cos(q1) + L2 * math.cos(q1 + q2)
+    ee_y = L1 * math.sin(q1) + L2 * math.sin(q1 + q2)
+    err = math.sqrt((ee_x - x) ** 2 + (ee_y - y) ** 2)
+    return np.array([q1, q2]), err < 1e-3
 
 
 def forward_kinematics_2r(

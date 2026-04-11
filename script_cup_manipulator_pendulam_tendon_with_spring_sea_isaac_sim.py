@@ -199,7 +199,7 @@ parser.add_argument('--ct-tau-max', type=float, default=50.0,
 
 # SEA parameters
 _sea = parser.add_argument_group("SEA cable model (joint 2)")
-_sea.add_argument('--spring-stiffness', type=float, default=200.0, metavar='K_S',
+_sea.add_argument('--spring-stiffness', type=float, default=20.0, metavar='K_S',
                   help='Cable spring stiffness k_s [N/m]. Lower → more lag.')
 _sea.add_argument('--cable-damping', type=float, default=2.0, metavar='B_C',
                   help='Cable dashpot damping b_c [N·s/m]')
@@ -276,13 +276,18 @@ class SpringVisualizerIsaac:
         spring_viz.update(q1, q2, delta)
     """
 
-    def __init__(self, stage, cable_viz: CableVisualizerIsaac):
+    def __init__(self, stage, cable_viz: CableVisualizerIsaac,
+                 k_s: float = 200.0, r_p: float = 0.048, tau_max: float = 50.0):
         self._stage = stage
         self._cable_viz = cable_viz
         self._n_coils = _SPRING_N_COILS
         self._amplitude = _SPRING_AMPLITUDE
         self._prim_count = 0
-        # We pre-allocate prims for both green and red cable springs
+        # Normalisation: delta_max = tau_max / (k_s · r_p) is the cable
+        # extension at full torque.  We map [0, delta_max] → visual
+        # spring fraction [_REST_FRAC, _MAX_FRAC] so the stretch is
+        # clearly visible for any k_s.
+        self._delta_max = tau_max / max(k_s * r_p, 1e-9)
 
     def create_prims(self, q1: float, q2: float):
         """Pre-allocate spring USD cylinder prims. Call BEFORE world.reset()."""
@@ -352,10 +357,14 @@ class SpringVisualizerIsaac:
             # Dynamic spring length based on SEA extension δ
             # Green (ri=0): taut when δ > 0 (F_raw > 0)
             # Red   (ri=1): taut when δ < 0 (F_raw < 0)
-            rest_len = 0.002  # rest length [m]
+            _REST_FRAC = 0.15   # visual fraction at δ = 0
+            _MAX_FRAC  = 0.65   # visual fraction at δ = δ_max
             route_ext = max(spring_extension, 0.0) if ri == 0 else max(-spring_extension, 0.0)
-            actual_len = rest_len + route_ext
-            spring_frac = np.clip(actual_len / seg_len, 0.05, 0.70) if seg_len > 1e-6 else 0.30
+            norm = min(route_ext / max(self._delta_max, 1e-9), 1.0)
+            spring_frac = np.clip(
+                _REST_FRAC + norm * (_MAX_FRAC - _REST_FRAC),
+                0.05, 0.70,
+            )
             sf2 = spring_frac / 2.0
             mid = 0.5
 
@@ -525,7 +534,10 @@ def run_sea(args):
     _CABLE_UPDATE_INTERVAL = 5
 
     # ── 4. Spring visualization — pre-allocate BEFORE world.reset() ─────────
-    spring_viz = SpringVisualizerIsaac(_stage, cable_viz)
+    spring_viz = SpringVisualizerIsaac(
+        _stage, cable_viz,
+        k_s=args.spring_stiffness, r_p=manip.r_p, tau_max=args.ct_tau_max,
+    )
     spring_viz.create_prims(
         q1=MANIP_CONFIG.joint_configs['link1_base'].position,
         q2=MANIP_CONFIG.joint_configs['link2_link1'].position,
@@ -808,7 +820,10 @@ def run_scene_viz(args):
     )
 
     # Spring visualization
-    spring_viz = SpringVisualizerIsaac(_stage, cable_viz)
+    spring_viz = SpringVisualizerIsaac(
+        _stage, cable_viz,
+        k_s=args.joint_stiffness[0], r_p=manip.r_p, tau_max=50.0,
+    )
     spring_viz.create_prims(
         q1=MANIP_CONFIG.joint_configs['link1_base'].position,
         q2=MANIP_CONFIG.joint_configs['link2_link1'].position,

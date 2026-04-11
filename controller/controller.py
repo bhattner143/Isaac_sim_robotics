@@ -418,11 +418,23 @@ class SEACableController(LeafSystem):
         l_m_dot   = self._omega_m * (l_m_des - l_m)   # motor velocity
         delta_dot = l_m_dot - self._r_p * q_dot[1]
         F_raw = self._k_s * delta + self._b_c * delta_dot
-        # Decompose into two cable tensions (cables can only pull)
-        T_green = float(max(F_raw,  0.0))   # retracting side
-        T_red   = float(max(-F_raw, 0.0))   # extending side
-        # Net signed force: positive = green pulling, negative = red pulling
-        F_cable = T_green - T_red            # = F_raw (antagonistic net)
+
+        # Unilateral cable model: cables can only PULL, never push.
+        # Which cable is taut depends on the sign of δ (spring extension).
+        if delta > 0.0:
+            # Green cable taut, red cable slack
+            T_green = float(max(F_raw, 0.0))
+            T_red   = 0.0
+        elif delta < 0.0:
+            # Red cable taut, green cable slack
+            T_green = 0.0
+            T_red   = float(max(-F_raw, 0.0))
+        else:
+            # Both cables at rest
+            T_green = 0.0
+            T_red   = 0.0
+
+        F_cable = T_green - T_red   # unilateral: only one side active
         return F_cable, delta, l_m_dot, T_green, T_red
 
     # ── Discrete update: first-order motor position servo ─────────────────

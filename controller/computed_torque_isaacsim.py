@@ -167,6 +167,16 @@ def ik_to_joint_space_references(
     # J⁻¹ maps EE space → joint space
     J_inv = np.linalg.pinv(J)
     q_dot_ref = J_inv @ ee_vel_ref
-    q_ddot_ref = J_inv @ ee_acc_ref  # J̇·q̇ bias dropped (O(q̇²), small)
+
+    # Correct acceleration mapping: ẍ = J·q̈ + J̇·q̇  ⟹  q̈ = J⁻¹·(ẍ − J̇·q̇)
+    q1d_dot, q2d_dot = q_dot_ref
+    q12d_dot = q1d_dot + q2d_dot
+    Jdot = np.array([
+        [-L1 * c1 * q1d_dot - L2 * c12 * q12d_dot,
+         -L2 * c12 * q12d_dot],
+        [-L1 * s1 * q1d_dot - L2 * s12 * q12d_dot,
+         -L2 * s12 * q12d_dot],
+    ])
+    q_ddot_ref = J_inv @ (ee_acc_ref - Jdot @ q_dot_ref)
 
     return q_des, q_dot_ref, q_ddot_ref, ok

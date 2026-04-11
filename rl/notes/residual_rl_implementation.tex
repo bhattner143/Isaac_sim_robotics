@@ -1,0 +1,490 @@
+% =============================================================================
+%  Residual Reinforcement Learning for SEA-Actuated Manipulator
+%  Implementation notes: Gymnasium env, PPO training, evaluation pipeline
+% =============================================================================
+
+\documentclass[11pt, a4paper]{article}
+
+\usepackage{amsmath, amssymb, bm}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{cleveref}
+\usepackage{tikz}
+\usepackage{enumitem}
+\usepackage[backgroundcolor=blue!5, linecolor=blue!40, linewidth=1pt,
+            innertopmargin=6pt, innerbottommargin=6pt,
+            innerleftmargin=7pt, innerrightmargin=7pt]{mdframed}
+
+\geometry{margin=2.2cm}
+
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue!70!black},
+  commentstyle=\color{gray},
+  stringstyle=\color{orange!80!black},
+  frame=single,
+  breaklines=true,
+  columns=fullflexible,
+  backgroundcolor=\color{gray!8},
+  xleftmargin=6pt, xrightmargin=6pt,
+  aboveskip=4pt, belowskip=4pt,
+}
+
+% ── Standard project macros ──────────────────────────────────────────────────
+\newcommand{\bq}{\bm{q}}
+\newcommand{\bp}{\bm{p}}
+\newcommand{\bu}{\bm{u}}
+\newcommand{\btau}{\bm{\tau}}
+\newcommand{\bF}{\bm{F}}
+\newcommand{\bJ}{\bm{J}}
+\newcommand{\bM}{\bm{M}}
+\newcommand{\bC}{\bm{C}}
+\newcommand{\bG}{\bm{G}}
+
+\title{\textbf{Residual RL for SEA-Actuated Manipulator}\\
+       \large \texttt{rl/train\_ppo\_residual.py} \;|\;
+              \texttt{rl/envs/manipulator\_residual\_env.py} \;|\;
+              \texttt{rl/eval\_ppo\_residual.py}}
+\date{April 2026}
+\author{Isaac-sim robotics notes}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% =============================================================================
+\section{Motivation}
+% =============================================================================
+
+The 2-DOF cable-driven manipulator uses a computed-torque (CT) controller
+to track end-effector trajectories.  Joint~1 is rigidly actuated while
+joint~2 is driven through a Series Elastic Actuator (SEA) cable, introducing:
+
+\begin{itemize}[nosep]
+  \item \textbf{Phase lag} — the motor servo has finite bandwidth $\omega_m$,
+        so the spring-mediated torque $\tau_2^{\text{sea}}$ lags behind the
+        CT-desired torque $\tau_2^{\text{ct}}$.
+  \item \textbf{Model mismatch} — the CT law relies on $\bM(\bq)$ and
+        $\bm{h}(\bq,\dot{\bq})$ from the ArticulationView, which may
+        differ from the true PhysX dynamics under fast motions.
+  \item \textbf{Spring compliance} — the cable spring ($k_s$) absorbs
+        energy, causing steady-state tracking offsets that grow with
+        trajectory curvature.
+\end{itemize}
+
+\begin{mdframed}
+\textbf{Key idea (Residual RL).}\;
+Rather than replacing the CT controller entirely, we learn a \emph{small}
+additive correction $\Delta\btau$ that is summed with the CT output
+\emph{before} the SEA model.  This preserves the well-understood baseline
+while letting the RL agent compensate for the phenomena above.
+\end{mdframed}
+
+
+% =============================================================================
+\section{System Architecture}
+% =============================================================================
+
+The full control loop is:
+
+\begin{center}
+\begin{tikzpicture}[
+  block/.style={draw, minimum width=2.0cm, minimum height=0.9cm,
+                rounded corners=2pt, font=\small},
+  arr/.style={->, thick},
+  node distance=1.6cm and 1.8cm,
+]
+  \node[block] (ct)   {CT Controller};
+  \node[block, below=0.8cm of ct] (rl) {RL Policy $\pi_\theta$};
+  \node[block, right=1.6cm of ct] (add) {$+$};
+  \node[block, right=1.4cm of add] (sea) {SEA Cable};
+  \node[block, right=1.4cm of sea] (plant) {PhysX Plant};
+
+  \draw[arr] (ct.east) -- node[above,font=\footnotesize]{$\btau^{\text{ct}}$} (add.west);
+  \draw[arr] (rl.east) -| node[near start,below,font=\footnotesize]{$\Delta\btau$} (add.south);
+  \draw[arr] (add.east) -- node[above,font=\footnotesize]{$\btau^{\text{ct}}\!+\!\Delta\btau$} (sea.west);
+  \draw[arr] (sea.east) -- node[above,font=\footnotesize]{$\btau^{\text{sea}}$} (plant.west);
+
+  % Feedback
+  \draw[arr] (plant.south) -- ++(0,-0.8) -| node[near start,below,font=\footnotesize]{observation $\bm{o}_t$} (rl.south);
+  \draw[arr] (plant.south) -- ++(0,-0.8) -| (ct.south);
+\end{tikzpicture}
+\end{center}
+
+At every timestep $\Delta t = 0.01\;\text{s}$ (100\,Hz):
+\begin{enumerate}[nosep]
+  \item Read joint state $(\bq, \dot{\bq})$ from the PhysX plant.
+  \item Trajectory source provides $(\bp_{\text{ref}}, \dot{\bp}_{\text{ref}}, \ddot{\bp}_{\text{ref}})$ in task space.
+  \item IK + analytical Jacobian convert to joint-space references $(\bq_{\text{des}}, \dot{\bq}_{\text{ref}}, \ddot{\bq}_{\text{ref}})$.
+  \item CT computes $\btau^{\text{ct}} = \bM(\bq)\,\bm{a}_{\text{des}} + \bm{h}(\bq,\dot{\bq})$.
+  \item RL policy outputs $\Delta\btau = \pi_\theta(\bm{o}_t)$.
+  \item SEA model processes $\btau^{\text{ct}} + \Delta\btau$ through the motor servo + spring-damper.
+  \item Resulting $\btau^{\text{sea}}$ is applied to the PhysX articulation.
+\end{enumerate}
+
+
+% =============================================================================
+\section{Gymnasium Environment}
+\label{sec:env}
+% =============================================================================
+
+The environment is implemented in
+\texttt{rl/envs/manipulator\_residual\_env.py} as a
+\texttt{gymnasium.Env} subclass.
+
+\subsection{Design Decision: External Scene Creation}
+
+\begin{mdframed}
+The environment does \textbf{not} create its own \texttt{SimulationApp} or
+\texttt{World}.  Instead it receives pre-built Isaac Sim objects (robot,
+world, controller, SEA) and drives the existing simulation.  This avoids
+the overhead of re-creating the USD stage on every \texttt{env.reset()} and
+allows the same scene to be shared between training and evaluation scripts.
+\end{mdframed}
+
+Constructor signature:
+\begin{lstlisting}
+ManipulatorResidualEnv(
+    robot,            # CupManipulatorTendonIsaac (initialized)
+    world,            # omni.isaac.core.World
+    ct_controller,    # ComputedTorqueController
+    sea_actuator,     # SEACableActuatorNP
+    traj_source,      # PreambleTrajectorySource
+    L1, L2,           # link lengths [m]
+    dt=0.01,          # physics timestep
+    max_episode_steps=2000,
+    residual_max=5.0, # action bounds [Nm]
+    reward_weights={"tracking": 100, "effort": 0.01, "smoothness": 0.001},
+    solve_ik_fn, fk_fn, ik_to_jt_fn,  # kinematics functions
+)
+\end{lstlisting}
+
+\subsection{Observation Space (10-D)}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{clcc}
+\toprule
+\textbf{Index} & \textbf{Quantity} & \textbf{Symbol} & \textbf{Bounds} \\
+\midrule
+0 & Joint 1 position  & $q_1$         & $[-\pi, \pi]$ \\
+1 & Joint 2 position  & $q_2$         & $[-\pi, \pi]$ \\
+2 & Joint 1 velocity  & $\dot{q}_1$   & $[-10, 10]$ \\
+3 & Joint 2 velocity  & $\dot{q}_2$   & $[-10, 10]$ \\
+4 & EE error X        & $e_x$         & $[-0.5, 0.5]$ \\
+5 & EE error Y        & $e_y$         & $[-0.5, 0.5]$ \\
+6 & Spring extension  & $\delta$      & $[-0.1, 0.1]$ \\
+7 & Cable force       & $F_{\text{cable}}$ & $[-500, 500]$ \\
+8 & CT desired $\tau_2$ & $\tau_2^{\text{ct}}$ & $[-50, 50]$ \\
+9 & SEA applied $\tau_2$ & $\tau_2^{\text{sea}}$ & $[-50, 50]$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Design rationale:}
+\begin{itemize}[nosep]
+  \item $e_x, e_y$ tell the agent \emph{how far off} the EE is (task-space error).
+  \item $\delta$ and $F_{\text{cable}}$ expose the SEA internal state so the
+        agent can anticipate spring dynamics.
+  \item $\tau_2^{\text{ct}}$ vs $\tau_2^{\text{sea}}$ reveal the CT--SEA
+        mismatch the agent should compensate.
+\end{itemize}
+
+\subsection{Action Space (2-D)}
+
+\[
+  \bm{a}_t = \Delta\btau = [\Delta\tau_1,\; \Delta\tau_2]
+  \;\in\; [-\delta_{\max},\; \delta_{\max}]^2
+\]
+
+Default $\delta_{\max} = 5\;\text{Nm}$.  This is intentionally small
+relative to the CT output ($|\tau^{\text{ct}}| \leq 50\;\text{Nm}$) so
+the RL agent acts as a \emph{correction}, not a replacement.
+
+\subsection{Reward Function}
+
+\begin{align}
+  r_t &= \underbrace{-\alpha \|\bm{e}_t\|^2}_{%
+    \text{tracking}} \;
+    \underbrace{-\;\beta \|\Delta\btau_t\|^2}_{%
+    \text{effort}} \;
+    \underbrace{-\;\gamma \|\btau_t - \btau_{t-1}\|^2}_{%
+    \text{smoothness}}
+  \label{eq:reward}
+\end{align}
+
+where $\bm{e}_t = \bp_{\text{ee}} - \bp_{\text{ref}}$ is the task-space
+tracking error.  Default weights:
+
+\begin{center}
+\begin{tabular}{lrl}
+\toprule
+\textbf{Component} & \textbf{Weight} & \textbf{Purpose} \\
+\midrule
+$\alpha$ (tracking)   & 100.0   & Penalize EE deviation \\
+$\beta$ (effort)      & 0.01    & Regularize residual magnitude \\
+$\gamma$ (smoothness) & 0.001   & Penalize torque jerk \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$\beta$ and $\gamma$ prevent the policy from learning large, noisy
+corrections that would stress the cable or excite vibrations.
+
+\subsection{Episode Reset}
+
+On \texttt{env.reset()}:
+\begin{enumerate}[nosep]
+  \item Joint angles are set to nominal $\pm$ uniform noise $\mathcal{U}(-0.05, 0.05)$\;rad
+        (domain randomization of initial conditions).
+  \item Velocities zeroed.
+  \item SEA motor cable position re-initialized: $l_m = r_p \cdot q_2$.
+  \item IK seed computed at first trajectory waypoint.
+  \item One physics step to settle.
+\end{enumerate}
+
+\subsection{Termination Conditions}
+
+\begin{itemize}[nosep]
+  \item \textbf{Terminated}: $|q_i| > 150°$ (joint limit violation).
+  \item \textbf{Truncated}: step count $\geq$ \texttt{max\_episode\_steps}
+        (default 2000 = 20\,s).
+\end{itemize}
+
+
+% =============================================================================
+\section{PPO Training}
+\label{sec:train}
+% =============================================================================
+
+Training is handled by \texttt{rl/train\_ppo\_residual.py} using
+Stable-Baselines3 (SB3) v2.8.
+
+\subsection{Isaac Sim Scene Construction}
+
+The training script handles the full Isaac Sim lifecycle:
+
+\begin{enumerate}[nosep]
+  \item Pre-parse \texttt{--render} from \texttt{sys.argv} (before argparse).
+  \item Create \texttt{SimulationApp} with headless mode.
+  \item Build \texttt{World}, load URDF $\to$ USD, weld base, set properties.
+  \item Initialize \texttt{ArticulationView} for dynamics queries ($\bM$, $\bm{h}$).
+  \item Create trajectory, CT controller, and SEA actuator.
+  \item Wrap everything in \texttt{ManipulatorResidualEnv} $\to$ \texttt{Monitor}.
+\end{enumerate}
+
+\begin{mdframed}
+\textbf{Important:} \texttt{SimulationApp} must be instantiated \emph{before}
+any \texttt{omni.*} imports.  The \texttt{--render} flag is pre-parsed with
+a simple \texttt{sys.argv} loop because \texttt{argparse} cannot run before
+the app is created.
+\end{mdframed}
+
+\subsection{PPO Hyperparameters}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{lrl}
+\toprule
+\textbf{Parameter} & \textbf{Default} & \textbf{CLI flag} \\
+\midrule
+Learning rate       & $3 \times 10^{-4}$ & \texttt{--learning-rate} \\
+Rollout steps       & 2048               & \texttt{--n-steps} \\
+Mini-batch size     & 64                 & \texttt{--batch-size} \\
+Epochs per update   & 10                 & \texttt{--n-epochs} \\
+Discount $\gamma$   & 0.99               & \texttt{--gamma} \\
+Clip range          & 0.2                & \texttt{--clip-range} \\
+Entropy coeff.      & 0.0                & \texttt{--ent-coef} \\
+Network arch.       & $[128,\,128]$      & (hardcoded) \\
+Device              & CPU                & (hardcoded) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Why CPU?}\; Isaac Sim owns the GPU for PhysX rendering.
+Running the policy on CPU avoids CUDA context conflicts.  The 2-layer MLP
+with 128 neurons is small enough that CPU inference is not a bottleneck.
+
+\subsection{Network Architecture}
+
+Both the policy $\pi_\theta$ and value function $V_\phi$ use separate
+128--128 MLPs:
+
+\begin{lstlisting}
+policy_kwargs = dict(
+    net_arch=dict(pi=[128, 128], vf=[128, 128]),
+)
+\end{lstlisting}
+
+With a 10-D input and 2-D output, the policy has approximately:
+\[
+  (10 \times 128 + 128) + (128 \times 128 + 128) + (128 \times 2 + 2)
+  = 18\,178 \;\text{parameters}
+\]
+
+\subsection{Checkpointing and Logging}
+
+\begin{itemize}[nosep]
+  \item \textbf{Checkpoints}: saved every 10\,000 steps to \texttt{rl/checkpoints/}
+        (configurable via \texttt{--save-freq}).
+  \item \textbf{Logging}: stdout + CSV + TensorBoard to \texttt{rl/logs/}.
+  \item \textbf{Resume}: \texttt{--resume rl/checkpoints/ppo\_residual\_latest}
+        reloads weights and continues training.
+  \item \textbf{SIGINT}: Ctrl+C triggers a clean save before exit
+        (using \texttt{signal.signal}, not \texttt{try/except}).
+\end{itemize}
+
+\subsection{Training Flow}
+
+\begin{enumerate}[nosep]
+  \item SB3 collects a rollout of $n_{\text{steps}} = 2048$ transitions by
+        calling \texttt{env.step(action)} repeatedly.
+  \item Rollout buffer is split into mini-batches of size 64.
+  \item PPO objective is optimized for 10 epochs with clipped surrogate loss.
+  \item Repeat until \texttt{total\_timesteps} reached or Ctrl+C.
+\end{enumerate}
+
+Each rollout collects $\approx 20$\,s of wall time at headless RTF $\approx 2$--$5\times$.
+
+
+% =============================================================================
+\section{Evaluation}
+\label{sec:eval}
+% =============================================================================
+
+\texttt{rl/eval\_ppo\_residual.py} loads a trained checkpoint and runs
+deterministic rollouts for analysis.
+
+\subsection{Evaluation Modes}
+
+\begin{center}
+\begin{tabular}{lp{8cm}}
+\toprule
+\textbf{Flag} & \textbf{Behavior} \\
+\midrule
+(default) & Load model, run one episode with CT+RL, plot results. \\
+\texttt{--compare-baseline} & Additionally run an episode with $\Delta\btau = \bm{0}$
+    (CT-only) for side-by-side comparison. \\
+\texttt{--render native} & Visualize in real-time Isaac Sim window. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Output Plots}
+
+The evaluation script produces a multi-panel figure saved to
+\texttt{plots/eval\_ppo\_residual\_<timestamp>.png}:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Tracking error} [mm] vs time --- CT+RL vs CT-only (if \texttt{--compare-baseline}).
+  \item \textbf{Residual torques} $\Delta\tau_1$, $\Delta\tau_2$ [Nm] vs time.
+  \item \textbf{Spring extension} $\delta$ [mm] vs time.
+\end{enumerate}
+
+Summary statistics (mean, max, std of EE error after the 3\,s preamble)
+are printed to stdout.
+
+\subsection{Deterministic Evaluation}
+
+During evaluation, actions are sampled with \texttt{deterministic=True}:
+\begin{lstlisting}
+action, _ = model.predict(obs, deterministic=True)
+\end{lstlisting}
+This uses the mean of the Gaussian policy (no exploration noise),
+giving the best-case performance of the learned policy.
+
+
+% =============================================================================
+\section{File Structure}
+% =============================================================================
+
+\begin{center}
+\begin{tabular}{lp{9cm}}
+\toprule
+\textbf{File} & \textbf{Role} \\
+\midrule
+\texttt{rl/\_\_init\_\_.py} & Package init \\
+\texttt{rl/envs/\_\_init\_\_.py} & Exports \texttt{ManipulatorResidualEnv} \\
+\texttt{rl/envs/manipulator\_residual\_env.py} & Gymnasium environment (obs, action, reward, reset, step) \\
+\texttt{rl/train\_ppo\_residual.py} & Isaac Sim scene setup + SB3 PPO training loop \\
+\texttt{rl/eval\_ppo\_residual.py} & Load checkpoint + run deterministic episode + plot \\
+\texttt{rl/checkpoints/} & Saved model weights (\texttt{.zip}) \\
+\texttt{rl/logs/} & CSV + TensorBoard training logs \\
+\texttt{rl/notes/} & This document \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Dependencies on project modules:
+\begin{itemize}[nosep]
+  \item \texttt{robots.cup\_manipulator\_tendon\_isaac} --- robot class, FK, IK
+  \item \texttt{controller.computed\_torque\_isaacsim} --- CT controller,
+        \texttt{ik\_to\_joint\_space\_references}
+  \item \texttt{controller.trajectory} --- \texttt{CircleTrajectory},
+        \texttt{RectTrajectory}, \texttt{PreambleTrajectorySource}
+  \item \texttt{actuators.sea\_isaacsim} --- \texttt{SEACableActuatorNP},
+        \texttt{SEADiagnostics}
+\end{itemize}
+
+
+% =============================================================================
+\section{Usage Reference}
+% =============================================================================
+
+\begin{lstlisting}[language=bash, caption={Training commands}]
+conda activate env_isaacsim
+
+# Default training (headless, circle, 500k steps)
+python rl/train_ppo_residual.py
+
+# Soft spring (more SEA lag -- RL has more to learn)
+python rl/train_ppo_residual.py \
+    --spring-stiffness 100 --motor-bandwidth 20 \
+    --total-timesteps 2000000
+
+# Resume from checkpoint
+python rl/train_ppo_residual.py \
+    --resume rl/checkpoints/ppo_residual_latest
+
+# Monitor training curves
+tensorboard --logdir rl/logs
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash, caption={Evaluation commands}]
+# Evaluate latest model
+python rl/eval_ppo_residual.py
+
+# Compare RL vs CT-only baseline
+python rl/eval_ppo_residual.py --compare-baseline
+
+# Evaluate with live rendering
+python rl/eval_ppo_residual.py --render native
+\end{lstlisting}
+
+
+% =============================================================================
+\section{Future Work}
+% =============================================================================
+
+\begin{enumerate}
+  \item \textbf{Domain randomization} --- randomize $k_s$, $b_c$, $\omega_m$,
+        joint friction, and payload mass at each \texttt{reset()} to improve
+        transfer robustness.
+  \item \textbf{Multi-trajectory training} --- cycle through rect/circle/line
+        trajectories across episodes so the policy generalizes beyond a single
+        shape.
+  \item \textbf{Isaac Lab port} --- move to \texttt{ManagerBasedRLEnv} for
+        1024+ parallel environments on GPU, leveraging vectorized PhysX.
+  \item \textbf{Observation normalization} --- wrap with SB3's
+        \texttt{VecNormalize} to auto-scale observations and rewards.
+  \item \textbf{Curriculum learning} --- start with a stiff SEA ($k_s = 500$),
+        progressively soften during training.
+\end{enumerate}
+
+
+\end{document}
