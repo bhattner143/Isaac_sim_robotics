@@ -160,6 +160,31 @@ class MotorModelConfig(ABC):
         """Electrical time constant  τ_e = L / R  [s]."""
         return self.winding_inductance / self.winding_resistance
 
+    @property
+    @abstractmethod
+    def rated_current_motor(self) -> float:
+        """Rated (continuous) phase current  [A DC].
+        From datasheet."""
+
+    @property
+    @abstractmethod
+    def peak_current_motor(self) -> float:
+        """Peak (short-duration) phase current  [A DC].
+        From datasheet."""
+
+    @property
+    @abstractmethod
+    def mechanical_time_constant(self) -> float:
+        """Mechanical time constant  τ_m  [s].
+        Determines the motor's open-loop speed response.
+        From datasheet (or τ_m = R·J / KT²)."""
+
+    @property
+    @abstractmethod
+    def motor_constant(self) -> float:
+        """Motor constant  Km  [Nm/√W].
+        Efficiency figure-of-merit: torque per sqrt(power dissipated)."""
+
     # ── Physical ──────────────────────────────────────────────────────────
     @property
     @abstractmethod
@@ -177,6 +202,21 @@ class MotorModelConfig(ABC):
         """Peak phase current at peak joint torque  [A].
         Computed as  τ_peak / (N × KT)."""
         return self.peak_torque_joint / self.torque_constant_joint
+
+    @property
+    def position_servo_bandwidth(self) -> float:
+        """Approximate closed-loop position-servo bandwidth  ω_b  [rad/s].
+
+        Derived from the mechanical time constant as  ω_b = 1 / τ_m.
+        This is an **upper-bound** engineering proxy — the real closed-loop
+        bandwidth depends on the motor's internal position PID tuning and is
+        typically 2–5× lower.
+
+        For a 1st-order position-mode model::
+
+            θ̇_m = ω_b · (θ_m_cmd − θ_m)
+        """
+        return 1.0 / self.mechanical_time_constant
 
 
 # ── Concrete motor models ──────────────────────────────────────────────────────
@@ -235,6 +275,14 @@ class AK80_8_KV60_Config(MotorModelConfig):
     @property
     def winding_inductance(self) -> float:      return 214e-6         # H  (phase-to-phase)
     @property
+    def rated_current_motor(self) -> float:     return 5.0            # A DC (est.)
+    @property
+    def peak_current_motor(self) -> float:      return 15.6           # A DC (est. from τ_peak / KT)
+    @property
+    def mechanical_time_constant(self) -> float: return 3.0e-3        # s  (est.)
+    @property
+    def motor_constant(self) -> float:          return 0.304          # Nm/√W  (est.)
+    @property
     def mass(self) -> float:                    return 0.570          # kg
 
 
@@ -245,25 +293,31 @@ class AK60_6_KV80_Config(MotorModelConfig):
 
     Specs (joint side, 6:1 planetary gearbox):
 
-    =====================  =========  =====
-    Parameter              Value      Unit
-    =====================  =========  =====
-    Gear ratio             6          —
-    Peak torque            9          Nm
-    Continuous torque      3          Nm
-    No-load speed (48 V)   640        rpm motor → 106.7 rpm joint → 11.17 rad/s
-    Rotor inertia          243.5      gcm²  → 2.435e-5 kg·m²
-    Reflected inertia      8.766e-4   kg·m²  (N²×2.435e-5)
-    Viscous damping        0.12       Nm·s/rad  (est.)
-    Back-drive torque      0.2        Nm
-    KT (motor)             0.135      Nm/A
-    KV                     80         rpm/V
-    Rated voltage          48         V
-    Pole pairs             14         —
-    Phase resistance       595        mΩ
-    Phase inductance       676        μH  → τ_e ≈ 1.14 ms
-    Mass                   0.380      kg
-    =====================  =========  =====
+    ========================  =========  =====
+    Parameter                 Value      Unit
+    ========================  =========  =====
+    Gear ratio                6          —
+    Peak torque               9          Nm
+    Continuous torque          3          Nm
+    No-load speed (48 V)      640        rpm motor → 106.7 rpm joint → 11.17 rad/s
+    Rated speed (48 V)        400        rpm motor → 66.7 rpm joint
+    Rotor inertia             331.91     gcm²  → 3.3191e-5 kg·m²
+    Reflected inertia         1.195e-3   kg·m²  (N²×3.3191e-5)
+    Viscous damping           0.12       Nm·s/rad  (est.)
+    Back-drive torque         0.2        Nm
+    KT (motor)                0.11937    Nm/A   (from datasheet)
+    KV                        80         rpm/V
+    Rated voltage             24/48      V
+    Pole pairs                14         —
+    Phase resistance          595        mΩ
+    Phase inductance          675        μH  → τ_e ≈ 1.13 ms
+    Rated current             4          A DC
+    Peak current              11.2       A DC
+    Km (motor constant)       0.1541     Nm/√W
+    Mechanical time const.    2.5        ms
+    Electrical time const.    1.13       ms
+    Mass                      0.460      kg
+    ========================  =========  =====
     """
 
     @property
@@ -275,13 +329,13 @@ class AK60_6_KV80_Config(MotorModelConfig):
     @property
     def no_load_rpm_motor(self) -> float:       return 640.0          # rpm (motor side, from datasheet at 48 V)
     @property
-    def rotor_inertia_motor(self) -> float:     return 243.5e-7       # 243.5 gcm² → kg·m²
+    def rotor_inertia_motor(self) -> float:     return 331.91e-7      # 331.91 gcm² → kg·m²  (datasheet)
     @property
     def viscous_damping_joint(self) -> float:   return 0.12           # Nm·s/rad (est.)
     @property
     def back_drive_torque(self) -> float:       return 0.2            # Nm (from datasheet)
     @property
-    def torque_constant(self) -> float:         return 0.135          # Nm/A (motor side, from datasheet)
+    def torque_constant(self) -> float:         return 0.11937        # Nm/A (motor side, from datasheet)
     @property
     def rated_voltage(self) -> float:           return 48.0           # V
     @property
@@ -289,9 +343,17 @@ class AK60_6_KV80_Config(MotorModelConfig):
     @property
     def winding_resistance(self) -> float:      return 0.595          # Ω (phase-to-phase)
     @property
-    def winding_inductance(self) -> float:      return 676e-6         # H (phase-to-phase)
+    def winding_inductance(self) -> float:      return 675e-6         # H (phase-to-phase)
     @property
-    def mass(self) -> float:                    return 0.380          # kg
+    def rated_current_motor(self) -> float:     return 4.0            # A DC (from datasheet)
+    @property
+    def peak_current_motor(self) -> float:      return 11.2           # A DC (from datasheet)
+    @property
+    def mechanical_time_constant(self) -> float: return 2.5e-3        # s  (from datasheet)
+    @property
+    def motor_constant(self) -> float:          return 0.1541         # Nm/√W (Km, from datasheet)
+    @property
+    def mass(self) -> float:                    return 0.460          # kg  (from datasheet)
 
 
 # Convenience list of all registered motor class names.
@@ -382,6 +444,12 @@ if __name__ == "__main__":
             print(f"  {'Winding inductance':<30} {m.winding_inductance*1e6:.1f} μH")
             print(f"  {'Electrical time constant':<30} {m.electrical_time_constant*1e3:.3f} ms"
                   f"  (τ_e = L/R)")
+            print(f"  {'Mechanical time constant':<30} {m.mechanical_time_constant*1e3:.2f} ms")
+            print(f"  {'Motor constant Km':<30} {m.motor_constant:.4f} Nm/√W")
+            print(f"  {'Rated current (motor)':<30} {m.rated_current_motor:.1f} A")
+            print(f"  {'Peak current (motor, sheet)':<30} {m.peak_current_motor:.1f} A")
+            print(f"  {'Peak current (derived)':<30} {m.peak_current:.2f} A"
+                  f"  (= τ_peak / KT_joint)")
             print(f"  {'Mass':<30} {m.mass} kg")
             print()
 

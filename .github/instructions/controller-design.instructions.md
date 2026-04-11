@@ -31,6 +31,9 @@ Always warm-start IK with the previous solution to avoid discontinuities.
 ## Cable Tension Decomposition
 Tendon scripts decompose joint-2 torque into green (retract) / red (extend) cable tensions. The `ComputedTorqueController` with `pulley_radius` does this automatically.
 
+## Composable Wiring with SEA
+The `ComputedTorqueController` outputs `[τ₁, τ₂]` on its `actuation` port. For SEA simulations, wire this into `SEACableActuator.tau_desired` instead of directly to the plant. The SEA actuator models motor + spring dynamics and outputs the actual torques. See `sea-actuator.instructions.md` for the wiring pattern.
+
 ## State Vectors
 - **Cart-Pendulum 2D** (8D): `[x, y, α, β, ẋ, ẏ, α̇, β̇]`
 - **Extended System** (14D): adds `[F_x, F_y, x_ref, y_ref, ẋ_ref, ẏ_ref]`

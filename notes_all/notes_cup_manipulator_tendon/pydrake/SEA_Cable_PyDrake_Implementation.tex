@@ -173,6 +173,10 @@
 \newcommand{\ks}{k_{\mathrm{s}}}
 \newcommand{\bc}{b_{\mathrm{c}}}
 \newcommand{\wm}{\omega_{\mathrm{m}}}
+\newcommand{\wb}{\omega_{\mathrm{b}}}
+\newcommand{\Jm}{J_{\mathrm{m}}}
+\newcommand{\bmotor}{b_{\mathrm{m}}}
+\newcommand{\thetam}{\theta_{\mathrm{m}}}
 
 \title{%
     \textcolor{seaorange}{\rule{\linewidth}{1.5pt}}\\[0.4cm]
@@ -198,7 +202,8 @@
     \item \textbf{Antagonistic cables}: Both green and red cables can transmit force (push + pull)
     \item \textbf{Physically motivated}: Models steel cable elasticity + explicit compliance element
     \item \textbf{Tunable compliance}: $\ks$ from 20\,N/m (very soft) to 5000+\,N/m (near-rigid)
-    \item \textbf{Motor model}: First-order position servo with bandwidth $\wm$ [rad/s]
+    \item \textbf{Two motor modes}: \textbf{Torque mode} (2nd-order rotor dynamics, default) and \textbf{Position mode} (1st-order servo, legacy).  Switchable via \texttt{--sea-mode}
+    \item \textbf{Pluggable motor dynamics}: \texttt{MotorDynamics} ABC with \texttt{TorqueMotor} and \texttt{PositionServoMotor} subclasses (\texttt{actuators/motor\_dynamics.py})
     \item \textbf{Dynamic visualization}: Meshcat spring coil stretches in real-time with $\delta$
     \item \textbf{Comparison mode}: \texttt{--compare} overlays compliant vs.\ rigid on the same plot
 \end{itemize}
@@ -299,13 +304,11 @@ The cable force is a linear spring--damper:
 \label{eq:Fraw}
 \end{equation}
 where:
-\begin{align}
-    \dot{\delta} &= \lmd - \rp \, \dot{q}_2
-    \label{eq:delta_dot} \\
-    \lmd &= \wm \, (\lm^{\mathrm{des}} - \lm)
-    \qquad \text{(first-order motor servo)}
-    \label{eq:motor_velocity}
-\end{align}
+\begin{equation}
+    \dot{\delta} = \lmd - \rp \, \dot{q}_2
+    \label{eq:delta_dot}
+\end{equation}
+Here $\lmd$ is the motor-side cable velocity, whose computation depends on the motor mode (see Section~\ref{sec:motor}).
 
 
 \subsection{Antagonistic Cable Decomposition}
@@ -359,16 +362,75 @@ Joint~1 receives its torque directly from the CT controller (rigid direct-drive)
 \label{sec:motor}
 % ============================================================================
 
-The motor is modeled as a \textbf{first-order position servo}---a bandwidth-limited system that tracks a desired cable displacement:
+The motor model is \textbf{pluggable}: two modes are supported, selectable at runtime via \texttt{--sea-mode}.  Both share the same cable spring--damper physics; only the motor dynamics differ.
+
+\subsection{Torque Mode (Default --- 2nd-Order Rotor Dynamics)}
+\label{sec:torque_mode}
+
+In torque mode the motor runs in MIT torque/impedance mode (the default for quasi-direct-drive actuators like CubeMars AK60-6).  The rotor is modelled as an inertia $\Jm$ with viscous damping $b_{\mathrm{m}}$, driven by the commanded torque and loaded by the spring reaction through the gearbox:
 
 \begin{equation}
-\boxed{\lmd = \wm \, (\lm^{\mathrm{des}} - \lm)}
+\boxed{\Jm \, \ddot{\thetam} = \frac{\tau_{2,\mathrm{des}}}{N} - b_{\mathrm{m}} \, \dot{\thetam} - \frac{\rp \cdot F}{N}}
+\label{eq:torque_mode}
+\end{equation}
+
+where $\thetam$ is the motor-side angle, $N$ is the gear ratio, and $F$ is the cable spring force in Newtons.
+
+\textbf{Spring extension in linear coordinates:}
+\begin{equation}
+    \delta = \rp \!\left(\frac{\thetam}{N} - q_2\right), \qquad
+    \dot{\delta} = \rp \!\left(\frac{\dot{\thetam}}{N} - \dot{q}_2\right)
+\label{eq:delta_torque}
+\end{equation}
+
+\textbf{Cable force:}
+\begin{equation}
+    F = \ks \, \delta + \bc \, \dot{\delta}
+\label{eq:F_torque}
+\end{equation}
+
+\textbf{Motor-side resonance frequency} (effective torsional spring at the rotor):
+\begin{equation}
+    \omega_n = \sqrt{\frac{\rp^2 \, \ks}{N^2 \, \Jm}}
+\label{eq:omega_n}
+\end{equation}
+
+For AK60-6 with $\ks = 300$\,N/m, $\rp = 47.75$\,mm, $N = 6$: $\omega_n \approx 24$\,rad/s (4\,Hz).
+
+\textbf{Discrete integration} (semi-implicit Euler, velocity first):
+\begin{align}
+    \dot{\thetam}[k{+}1] &= \dot{\thetam}[k] + \Delta t \cdot \ddot{\thetam}[k] \\
+    \thetam[k{+}1] &= \thetam[k] + \Delta t \cdot \dot{\thetam}[k{+}1]
+\label{eq:torque_discrete}
+\end{align}
+
+State: $[\thetam, \dot{\thetam}]$ (2 scalars, motor-side).
+
+\begin{codemath}
+The motor equation derives from Newton's second law on the rotor:
+\[
+    \underbrace{\Jm \, \ddot{\thetam}}_{\text{rotor inertia}} =
+    \underbrace{\frac{\tau_{2,\mathrm{des}}}{N}}_{\substack{\text{motor-side}\\\text{command}}} -
+    \underbrace{b_{\mathrm{m}} \, \dot{\thetam}}_{\substack{\text{viscous}\\\text{friction}}} -
+    \underbrace{\frac{\rp \cdot F}{N}}_{\substack{\text{spring load}\\\text{reflected to motor}}}
+\]
+The spring load is computed in the \emph{linear} domain ($\delta$ in metres) to keep $\ks$ in N/m consistent across modes.
+\end{codemath}
+
+
+\subsection{Position Mode (Legacy --- 1st-Order Servo)}
+\label{sec:position_mode}
+
+When the motor runs a factory position controller (CAN position commands), it is modelled as a \textbf{first-order low-pass filter}:
+
+\begin{equation}
+\boxed{\lmd = \wb \, (\lm^{\mathrm{des}} - \lm)}
 \label{eq:motor_servo}
 \end{equation}
 
-This is discretized via forward Euler at each simulation timestep:
+where $\wb$ is the position-servo bandwidth.  Discretized via forward Euler:
 \begin{equation}
-    \lm[k+1] = \lm[k] + \Delta t \cdot \wm \, (\lm^{\mathrm{des}}[k] - \lm[k])
+    \lm[k+1] = \lm[k] + \Delta t \cdot \wb \, (\lm^{\mathrm{des}}[k] - \lm[k])
 \label{eq:motor_discrete}
 \end{equation}
 
@@ -378,15 +440,15 @@ The desired motor cable position is computed by \textbf{steady-state spring inve
 \label{eq:lm_des}
 \end{equation}
 
-\begin{codemath}
-At steady state ($\dot{\delta} = 0$):
-\begin{align*}
-    \tau_{2,\mathrm{des}} &= \rp \cdot \ks \cdot \delta_{\mathrm{ss}} \\
-    \delta_{\mathrm{ss}} &= \frac{\tau_{2,\mathrm{des}}}{\ks \, \rp} \\
-    \lm^{\mathrm{des}} &= \rp \, q_2 + \delta_{\mathrm{ss}}
-\end{align*}
-This means the motor must displace beyond the joint position by exactly the spring extension needed to produce the commanded torque.
-\end{codemath}
+State: $[\lm]$ (1 scalar, cable displacement in metres).
+
+\begin{warnbox}
+\textbf{Position-servo bandwidth is $\wb = 1/\tau_m$, NOT the no-load joint speed.}
+
+The mechanical time constant $\tau_m = 2.5$\,ms gives an open-loop upper bound of $\wb = 1/\tau_m \approx 400$\,rad/s.  However, the closed-loop position-servo bandwidth is 2--5$\times$ lower (depends on the motor's internal PID tuning, which CubeMars does not publish).  The default is a conservative $\wb = 100$\,rad/s.
+
+The no-load joint speed ($\omega_{\mathrm{NL,joint}} = 11.17$\,rad/s) limits \emph{maximum cable velocity}, not servo bandwidth.  These are different quantities.
+\end{warnbox}
 
 
 \subsection{Effect of Parameters}
@@ -400,8 +462,8 @@ This means the motor must displace beyond the joint position by exactly the spri
 \midrule
 $\ks$ high (5000+\,N/m) & stiff & Small $\delta_{\mathrm{ss}}$ $\to$ fast torque $\to$ near-rigid \\
 $\ks$ low (20--50\,N/m)  & soft  & Large $\delta_{\mathrm{ss}}$ $\to$ slow torque $\to$ high lag \\
-$\wm$ high (100+\,rad/s)  & fast motor & Tracks $\lm^{\mathrm{des}}$ quickly $\to$ less lag \\
-$\wm$ low (5--10\,rad/s)  & slow motor & Can't keep up $\to$ more lag at high speed \\
+$\wb$ high (100+\,rad/s)  & fast motor (pos.\ mode) & Tracks $\lm^{\mathrm{des}}$ quickly $\to$ less lag \\
+$\wb$ low (5--10\,rad/s)  & slow motor (pos.\ mode) & Can't keep up $\to$ more lag at high speed \\
 $\bc$ high & heavy damping & Suppresses oscillation, adds velocity-dependent drag \\
 $\bc$ low  & light damping & Allows spring oscillation at natural frequency \\
 \bottomrule
@@ -413,6 +475,330 @@ The SEA introduces a \textbf{fundamental bandwidth limit}: even with perfect CT,
     \omega_{\mathrm{spring}} = \sqrt{\frac{\ks \, \rp^2}{I_2}}
 \end{equation}
 where $I_2$ is the reflected inertia at joint~2.
+
+
+% ============================================================================
+\section{CubeMars AK60-6 KV80 Motor}
+\label{sec:cubemars}
+% ============================================================================
+
+The elbow (joint~2) is driven by a \textbf{CubeMars AK60-6 V3.0 KV80} quasi-direct-drive actuator, which integrates a brushless DC motor with a 6:1 planetary gearbox in a compact package.  This section explains every datasheet parameter, what it physically means, and how it affects the manipulator's motion.
+
+\subsection{Datasheet Specifications}
+
+\begin{table}[H]
+\centering
+\caption{CubeMars AK60-6 KV80 --- full specification table.  All values are \emph{joint side} (after gearbox) unless marked ``motor side.''}
+\label{tab:ak60_specs}
+\begin{tabular}{llrl}
+\toprule
+\textbf{Parameter} & \textbf{Symbol} & \textbf{Value} & \textbf{Unit} \\
+\midrule
+\multicolumn{4}{l}{\textit{Mechanical}} \\
+Gear ratio                      & $N$                  & 6       & --- \\
+Peak torque (joint)             & $\tau_{\mathrm{peak}}$ & 9.0   & Nm \\
+Continuous torque (joint)       & $\tau_{\mathrm{cont}}$ & 3.0   & Nm \\
+No-load speed (motor side)      & $\omega_{\mathrm{NL,motor}}$ & 640 & rpm \\
+No-load speed (joint side)      & $\omega_{\mathrm{NL,joint}}$ & 11.17 & rad/s \\
+Rated speed (motor / joint)     &                              & 400 / 66.7 & rpm \\
+Rotor inertia (motor side)      & $I_{\mathrm{r,motor}}$       & 3.3191$\times 10^{-5}$  & kg$\cdot$m$^2$ \\
+Reflected inertia (joint side)  & $I_{\mathrm{r,joint}}$       & 1.195$\times 10^{-3}$  & kg$\cdot$m$^2$ \\
+Viscous damping (joint)         & $b_{\mathrm{v}}$             & 0.12  & Nm$\cdot$s/rad \\
+Back-drive torque               & $\tau_{\mathrm{bd}}$         & 0.2   & Nm \\
+Mass                            & $m_{\mathrm{motor}}$         & 0.460 & kg \\
+\midrule
+\multicolumn{4}{l}{\textit{Electrical}} \\
+Torque constant (motor side)    & $K_T$                & 0.11937 & Nm/A \\
+Velocity constant               & $K_V$                & 80      & rpm/V \\
+Rated voltage                   & $V_{\mathrm{bus}}$   & 24/48   & V \\
+Rated current                   & $I_{\mathrm{rated}}$ & 4.0     & A DC \\
+Peak current                    & $I_{\mathrm{peak}}$  & 11.2    & A DC \\
+Pole pairs                      & $p$                  & 14      & --- \\
+Phase resistance                & $R$                  & 0.595   & $\Omega$ \\
+Phase inductance                & $L$                  & 675     & $\mu$H \\
+Motor constant                  & $K_m$                & 0.1541  & Nm/$\sqrt{\text{W}}$ \\
+Mechanical time constant        & $\tau_m$             & 2.5     & ms \\
+Electrical time constant        & $\tau_e = L/R$       & 1.13    & ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{What Each Parameter Means (Plain Language)}
+
+\begin{description}[leftmargin=2em, style=nextline, font=\bfseries\sffamily\color{seaorange}]
+
+\item[Gear ratio ($N = 6$)]
+The motor shaft turns 6 times for every single turn of the joint.  This multiplies torque by 6 but divides speed by 6.  A lower gear ratio makes the joint feel ``lighter'' and more backdrivable; a higher ratio provides more torque but adds friction and inertia.
+
+\textit{Effect on manipulator:}  With $N=6$, the motor can push with up to 9\,Nm at the joint, which is enough for a small planar arm.  If we needed more force (e.g., lifting heavy objects), we would pick a higher gear ratio, but the arm would move slower.
+
+\item[Peak torque ($\tau_{\mathrm{peak}} = 9.0$\,Nm)]
+The \emph{maximum instantaneous} torque the motor can exert at the joint.  This is only available for short bursts (milliseconds to a few seconds) before the motor overheats.
+
+\textit{Effect on manipulator:}  Sets the hard limit on how quickly the arm can accelerate or decelerate.  The CT controller clips torque commands to $\pm\tau_{\mathrm{peak}}$.  If the trajectory demands more torque than 9\,Nm, the arm will track poorly.
+
+\item[Continuous torque ($\tau_{\mathrm{cont}} = 3.0$\,Nm)]
+The torque the motor can sustain \emph{indefinitely} without overheating.  Think of peak torque as a sprint and continuous torque as a marathon pace.
+
+\textit{Effect on manipulator:}  During steady-state trajectory tracking (constant speed on a rectangle), the required torque must stay below 3\,Nm or the motor will thermally shut down over time.  Gravity compensation for the arm typically requires 1--2\,Nm, well within this limit.
+
+\item[No-load joint speed ($\omega_{\mathrm{NL,joint}} = 11.17$\,rad/s $\approx$ 107\,rpm)]
+The fastest the joint can spin when there is zero torque load.  Derived from the motor's 640\,rpm no-load speed divided by the gear ratio:
+\begin{equation}
+    \omega_{\mathrm{NL,joint}} = \frac{640 \;\text{rpm}}{6} \times \frac{2\pi}{60} = 11.17 \;\text{rad/s}
+\end{equation}
+
+\textit{Effect on manipulator:}  Limits how fast the end-effector can sweep.  This is a \emph{velocity} limit, not a servo bandwidth.  In simulation, the motor dynamics mode determines how this is used: torque mode derives motor acceleration from rotor inertia; position mode uses $\wb = 1/\tau_m$ as the servo bandwidth (not $\omega_{\mathrm{NL,joint}}$).
+
+\item[Reflected rotor inertia ($I_{\mathrm{r,joint}} = 1.20 \times 10^{-3}$\,kg$\cdot$m$^2$)]
+How much the spinning motor rotor ``feels like'' at the joint, amplified by the square of the gear ratio:
+\begin{equation}
+    I_{\mathrm{r,joint}} = N^2 \cdot I_{\mathrm{r,motor}} = 36 \times 3.3191 \times 10^{-5} = 1.195 \times 10^{-3} \;\text{kg$\cdot$m$^2$}
+\end{equation}
+
+\textit{Effect on manipulator:}  Adds to the link-2 inertia that the CT controller must cancel.  For our small arm (link-2 inertia $\approx 10^{-3}$\,kg$\cdot$m$^2$), the reflected inertia is \emph{larger} than the link itself, so the arm feels noticeably heavier than its mass alone would suggest.
+
+\item[Viscous damping ($b_{\mathrm{v}} = 0.12$\,Nm$\cdot$s/rad)]
+A friction torque proportional to joint speed: $\tau_{\mathrm{friction}} = b_{\mathrm{v}} \cdot \dot{q}_2$.  Comes from the gearbox, bearings, and back-EMF effects.
+
+\textit{Effect on manipulator:}  Acts as a natural velocity damper.  At the typical trajectory speed of $\dot{q}_2 \approx 1$\,rad/s, this contributes only 0.12\,Nm of drag---small compared to the continuous torque limit, so it does not significantly limit motion.
+
+\item[Back-drive torque ($\tau_{\mathrm{bd}} = 0.2$\,Nm)]
+The minimum external torque needed to push the joint when the motor is off.  Represents static friction (Coulomb friction + cogging torque).
+
+\textit{Effect on manipulator:}  A low back-drive torque (0.2\,Nm for this motor) means the arm is \textbf{highly backdrivable}---you can easily push it with your finger.  This is desirable for safe human-robot interaction and for force sensing without dedicated sensors.  In simulation, this parameter is captured by Drake's joint damping.
+
+\item[Torque constant ($K_T = 0.11937$\,Nm/A)]
+Maps electric current (amps) to motor-shaft torque.  Higher $K_T$ means more torque per amp, but lower speed per volt.
+
+\textit{Effect on manipulator:}  Determines how much current the motor driver must supply.  At peak joint torque: $I_{\mathrm{peak}} = \tau_{\mathrm{peak}} / (N \cdot K_T) = 9 / (6 \times 0.11937) = 12.6$\,A.  The datasheet reports 11.2\,A peak (driver-limited), so the motor cannot quite reach full 9\,Nm in practice.
+
+\item[Rated voltage ($V_{\mathrm{bus}} = 48$\,V)]
+The supply voltage that determines maximum speed.  Higher voltage $\to$ higher no-load speed.
+
+\textit{Effect on manipulator:}  At 48\,V, the motor achieves its rated 640\,rpm.  Running at 24\,V would halve the max speed but keep torque the same (current-limited).  In simulation, voltage is not modelled; motor bandwidth emerges from rotor inertia (torque mode) or position-servo bandwidth $\wb$ (position mode).
+
+\end{description}
+
+
+\subsection{Mapping Motor Specs to Simulation Parameters}
+\label{sec:motor_mapping}
+
+The simulation does \emph{not} model the full electrical dynamics (current loop, PWM, etc.).  Instead, the motor's complex electromechanical behaviour is captured by a few parameters whose mapping depends on the motor mode:
+
+\begin{table}[H]
+\centering
+\caption{Datasheet $\to$ simulation parameter mapping.}
+\label{tab:motor_mapping}
+\begin{tabular}{llll}
+\toprule
+\textbf{Sim.\ Parameter} & \textbf{Derived From} & \textbf{Formula / Value} & \textbf{Mode} \\
+\midrule
+$\Jm$ [kg$\cdot$m$^2$] — rotor inertia & Datasheet (motor side) & $3.3191\times10^{-5}$ & Torque \\
+$b_{\mathrm{m}}$ [Nm$\cdot$s/rad] — motor damping & $b_{\mathrm{v,joint}} / N^2$ & $0.12 / 36 = 3.33\times10^{-3}$ & Torque \\
+$N$ — gear ratio & Gearbox spec & $6$ & Both \\
+$\wb$ [rad/s] — servo bandwidth & $1 / \tau_m$ (open-loop) & $1 / 0.0025 = 400$ (default: 100) & Position \\
+$\tau_{\max}$ [Nm] — torque clip & Peak torque & $\tau_{\mathrm{peak}} = 9.0$ & Both \\
+Joint damping [Nm$\cdot$s/rad] & Viscous damping & $b_{\mathrm{v}} = 0.12$ & Both \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{warnbox}
+\textbf{Position-mode bandwidth: $\wb = 1/\tau_m$, not $\omega_{\mathrm{NL,joint}}$.}
+
+The mechanical time constant $\tau_m = \Jm \cdot R / K_T^2 = 2.5$\,ms gives an open-loop upper bound $\wb = 400$\,rad/s.  The no-load joint speed $\omega_{\mathrm{NL,joint}} = 11.17$\,rad/s is a \emph{velocity} limit, not a bandwidth.  CubeMars does not publish closed-loop position-servo bandwidth, so the CLI default is a conservative 100\,rad/s ($\approx 4\times$ below the open-loop limit).
+
+In \textbf{torque mode} (default), there is no explicit $\wb$; motor bandwidth emerges from the rotor inertia, damping, and spring dynamics (see Section~\ref{sec:torque_mode}).
+\end{warnbox}
+
+\begin{archbox}{Motor Torque--Speed Tradeoff}
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=0.85]
+    % Axes
+    \draw[->] (0,0) -- (7,0) node[right] {$\dot{q}_2$ [rad/s]};
+    \draw[->] (0,0) -- (0,5) node[above] {$\tau_2$ [Nm]};
+
+    % Torque-speed line
+    \draw[thick, seaorange] (0,4.5) -- (6,0)
+        node[pos=0.15, left, font=\small] {Operating envelope};
+
+    % Peak torque
+    \draw[dashed, darkred] (0,4.5) -- (6.5,4.5)
+        node[right, font=\small, text=darkred] {$\tau_{\mathrm{peak}} = 9$\,Nm};
+
+    % Continuous torque
+    \draw[dashed, drakegreen] (0,1.5) -- (6.5,1.5)
+        node[right, font=\small, text=drakegreen] {$\tau_{\mathrm{cont}} = 3$\,Nm};
+
+    % No-load speed
+    \draw[dashed, drakeblue] (6,0) -- (6,4.8)
+        node[above, font=\small, text=drakeblue] {$\omega_{\mathrm{NL}} = 11.17$};
+
+    % Typical operating point
+    \filldraw[drakegreen] (2.5,2.6) circle (3pt)
+        node[right, font=\small] {Typical trajectory};
+
+    % Shaded region
+    \fill[seaorange, opacity=0.08] (0,0) -- (0,4.5) -- (6,0) -- cycle;
+
+    % Axis ticks
+    \foreach \y/\label in {1.5/3, 4.5/9}
+        \draw (0.08,\y) -- (-0.08,\y) node[left, font=\small] {\label};
+    \draw (6,0.08) -- (6,-0.08) node[below, font=\small] {11.2};
+\end{tikzpicture}
+\end{center}
+The motor can produce high torque at low speed or high speed at low torque, but not both simultaneously.  Trajectory tracking typically operates in the green region.
+\end{archbox}
+
+
+% ============================================================================
+\section{SEA Equations: Derivation from First Principles}
+\label{sec:sea_derivation}
+% ============================================================================
+
+This section derives the complete SEA cable model step by step, starting from the physical setup and ending with the equations implemented in code.
+
+\subsection{Step 1: Define the Spring Extension}
+
+Consider the cable path: the motor drum pays out a cable of length $\lm$ [m].  This cable wraps around the big pulley (radius $\rp$) and connects to a spring anchored on link~2.  The amount of cable ``consumed'' by the joint rotation is $\rp \cdot q_2$.
+
+The \textbf{spring extension} is simply the difference between what the motor has paid out and what the joint has consumed:
+\begin{equation}
+\boxed{\delta = \lm - \rp \, q_2}
+\end{equation}
+
+\begin{itemize}[leftmargin=2em]
+    \item $\delta > 0$: motor has paid out more cable than needed $\to$ spring is stretched $\to$ it pulls the joint forward
+    \item $\delta < 0$: joint has rotated further than the motor $\to$ spring is compressed $\to$ it pushes back
+    \item $\delta = 0$: spring at rest, no force
+\end{itemize}
+
+
+\subsection{Step 2: Spring--Damper Force}
+
+The cable element between the pulley and link~2 behaves as a \textbf{parallel spring--damper}:
+\begin{equation}
+\boxed{F_{\mathrm{raw}} = \underbrace{\ks \, \delta}_{\text{elastic}} + \underbrace{\bc \, \dot{\delta}}_{\text{viscous}}}
+\end{equation}
+
+The spring stiffness $\ks$ [N/m] is the cable/belt elasticity (or an explicit compliance element).  The damping $\bc$ [N$\cdot$s/m] models internal friction in the cable.
+
+The spring extension rate $\dot{\delta}$ is:
+\begin{equation}
+    \dot{\delta} = \lmd - \rp \, \dot{q}_2
+\end{equation}
+That is, the spring stretches when the motor pulls cable in faster than the joint rotates, and compresses when the joint outruns the motor.
+
+
+\subsection{Step 3: Motor Dynamics}
+
+The motor does not jump instantly to the desired state.  The dynamics depend on the selected mode:
+
+\medskip
+\textbf{Torque mode} (default).  The rotor is an inertia loaded by the spring:
+\begin{equation}
+\boxed{\Jm \, \ddot{\thetam} = \frac{\tau_{2,\mathrm{des}}}{N} - b_{\mathrm{m}} \, \dot{\thetam} - \frac{\rp \cdot F}{N}}
+\end{equation}
+
+The motor's bandwidth is \emph{not} a single number---it emerges from the coupled motor--spring dynamics.  The motor-side resonance is $\omega_n = \sqrt{\rp^2 \ks / (N^2 \Jm)}$, which for AK60-6 and $\ks = 300$\,N/m is $\approx 24$\,rad/s.
+
+\medskip
+\textbf{Position mode} (legacy).  The motor tracks a target cable position as a first-order lag:
+\begin{equation}
+\boxed{\lmd = \wb \, (\lm^{\mathrm{des}} - \lm)}
+\end{equation}
+
+\textbf{Where does $\wb$ come from?}  It is the position-servo bandwidth, derived from the mechanical time constant: $\wb = 1/\tau_m \approx 400$\,rad/s (open-loop upper bound for AK60-6).  The CLI default is a conservative 100\,rad/s because the closed-loop bandwidth is lower (see Section~\ref{sec:motor_mapping}).
+
+In discrete time (simulation timestep $\Delta t = 2$\,ms):
+\begin{equation}
+    \lm[k+1] = \lm[k] + \Delta t \cdot \wb \cdot (\lm^{\mathrm{des}}[k] - \lm[k])
+\end{equation}
+
+\begin{codemath}
+\textbf{Transfer function} of the position-mode motor servo (Laplace domain):
+\[
+    \frac{L_m(s)}{L_m^{\mathrm{des}}(s)} = \frac{\wb}{s + \wb}
+\]
+This is a first-order low-pass with cutoff frequency $\wb$.  At frequencies above $\wb$, the motor cannot track the commanded cable position---this is the fundamental source of lag in position-mode SEA.
+\end{codemath}
+
+
+\subsection{Step 4: Steady-State Spring Inversion}
+
+The controller needs to tell the motor \emph{where} to position the cable so that the spring produces the desired torque.  At steady state (motor has reached its target, spring extension rate is zero):
+\begin{align}
+    \tau_{2,\mathrm{des}} &= \rp \cdot F_{\mathrm{cable}} = \rp \cdot \ks \cdot \delta_{\mathrm{ss}} \\
+    \Rightarrow\quad \delta_{\mathrm{ss}} &= \frac{\tau_{2,\mathrm{des}}}{\ks \, \rp} \\
+    \Rightarrow\quad \lm^{\mathrm{des}} &= \underbrace{\rp \, q_2}_{\text{joint position}} + \underbrace{\frac{\tau_{2,\mathrm{des}}}{\ks \, \rp}}_{\text{spring stretch needed}}
+\end{align}
+
+\begin{equation}
+\boxed{\lm^{\mathrm{des}} = \rp \, q_2 + \frac{\tau_{2,\mathrm{des}}}{\ks \, \rp}}
+\end{equation}
+
+\textbf{Plain language}: ``The motor must pay out enough cable to match the joint angle, \emph{plus} a little extra to stretch the spring by the amount needed to produce the desired force.''
+
+
+\subsection{Step 5: From Cable Force to Joint Torque}
+
+The cable force maps to joint torque through the pulley radius (moment arm):
+\begin{equation}
+\boxed{\tau_2 = \rp \cdot F_{\mathrm{cable}}}
+\end{equation}
+
+With the antagonistic cable arrangement (Section~\ref{sec:antagonistic}), the net cable force is:
+\[
+    F_{\mathrm{cable}} = T_{\mathrm{green}} - T_{\mathrm{red}} = F_{\mathrm{raw}}
+\]
+where each tension is non-negative (cables only pull).
+
+
+\subsection{Step 6: Effect of Spring Stiffness on Tracking}
+
+The effect of $\ks$ on tracking quality depends on the motor mode.  The two modes exhibit \emph{opposite} trends.
+
+\medskip
+\textbf{Torque mode (default) --- stiffer is better.}\quad
+In torque mode the motor bandwidth is \emph{not} fixed; it emerges from the coupled rotor--spring dynamics.  The motor-side resonance frequency scales with $\sqrt{\ks}$:
+\begin{equation}
+    \omega_n = \sqrt{\frac{\rp^2 \, \ks}{N^2 \, \Jm}}
+    \qquad \Longrightarrow \qquad
+    \omega_n \propto \sqrt{\ks}
+\end{equation}
+Increasing $\ks$ raises $\omega_n$, making the motor--spring system respond \emph{faster}.  Simultaneously, the steady-state spring deflection needed to produce a given torque \emph{decreases}:
+\begin{equation}
+    \delta_{\mathrm{ss}} = \frac{\tau_{2,\mathrm{des}}}{\ks \, \rp}
+    \quad \xrightarrow{\;\ks \uparrow\;}
+    \quad 0
+\end{equation}
+Both effects work in the same direction: \textbf{stiffer springs yield better tracking in torque mode}.  In the limit $\ks \to \infty$, the SEA degenerates to a rigid tendon.  This is confirmed by simulation (Section~\ref{sec:results}): $\ks = 30{,}000$\,N/m achieves near-rigid performance ($<5$\,mm EE error, $\tau$ RMS error $0.004$\,Nm), while $\ks = 30$\,N/m produces $\sim$25\,mm EE error with 10$\times$ worse torque tracking.
+
+\medskip
+\textbf{Position mode (legacy) --- stiffer is worse.}\quad
+In position mode the motor servo has a \emph{fixed} bandwidth $\wb$, so the motor position error $\varepsilon$ is approximately constant regardless of $\ks$.  The resulting \textbf{torque error} scales linearly with stiffness:
+\begin{equation}
+\boxed{\Delta\tau_{\mathrm{pos}} \;\approx\; \rp \cdot \ks \cdot \varepsilon}
+\end{equation}
+
+With a soft spring ($\ks = 30$\,N/m): $\Delta\tau \approx 0.048 \times 30 \times \varepsilon \approx 1.4\,\varepsilon$\,Nm.
+
+With a stiff spring ($\ks = 3000$\,N/m): $\Delta\tau \approx 0.048 \times 3000 \times \varepsilon \approx 144\,\varepsilon$\,Nm.
+
+The stiff spring amplifies the same small motor position lag into a \emph{much larger} torque error.  The fix: increase $\wb$ proportionally to $\ks$.
+
+\begin{resultbox}
+\textbf{Torque mode (default):}\quad Stiffer spring $\;\to\;$ higher motor--spring resonance $\omega_n \propto \sqrt{\ks}$ $\;\to\;$ \textbf{better tracking}.  No bandwidth tuning required---the 2nd-order rotor dynamics adapt naturally to stiffer springs.
+
+\medskip
+\textbf{Position mode (legacy):}\quad Stiffer spring $\;\to\;$ larger torque error $\Delta\tau \propto \ks \cdot \varepsilon$ if $\wb$ is held constant.  To maintain tracking accuracy:
+\[
+    \frac{\ks}{\wb} = \text{const} \qquad \Longrightarrow \qquad \text{constant torque tracking error}
+\]
+If $\ks$ increases by $100\times$, $\wb$ should also increase by $100\times$.  Physically limited by motor hardware ($\wb_{\max} \approx 400$\,rad/s for AK60-6).
+\end{resultbox}
 
 
 % ============================================================================
@@ -451,22 +837,40 @@ where $I_2$ is the reflected inertia at joint~2.
 
 \subsection{Per-Timestep Algorithm}
 
-At each simulation step ($\Delta t = 2$\,ms), the \texttt{SEACableController} executes:
+At each simulation step ($\Delta t = 2$\,ms), the two blocks execute in sequence:
 
+\medskip
+\textbf{Block 1 --- \texttt{ComputedTorqueController}} (controller/controller.py):
 \begin{enumerate}[leftmargin=2em]
     \item \textbf{Read plant state} $(q_1, q_2, \dot{q}_1, \dot{q}_2)$
     \item \textbf{Analytical 2R IK}: $\bm{p}_{\mathrm{ref}} \to (q_{1}^{\mathrm{des}}, q_{2}^{\mathrm{des}})$
     \item \textbf{Differential IK}: $\dot{\bm{p}}_{\mathrm{ref}} \xrightarrow{\bJ^{-1}} \dot{\bq}_{\mathrm{ref}}$, \quad $\ddot{\bm{p}}_{\mathrm{ref}} \xrightarrow{\bJ^{-1}} \ddot{\bq}_{\mathrm{ref}}$
     \item \textbf{PD + feedforward}: $\bm{a}_{\mathrm{des}} = \ddot{\bq}_{\mathrm{ref}} + K_p(\bq_{\mathrm{des}} - \bq) + K_d(\dot{\bq}_{\mathrm{ref}} - \dot{\bq})$
     \item \textbf{Inverse dynamics}: $\btau_{\mathrm{des}} = \bM(\bq)\,\bm{a}_{\mathrm{des}} + \bh(\bq, \dot{\bq})$
+\end{enumerate}
+
+\textbf{Block 2 --- \texttt{SEACableActuator}} (actuators/sea.py), delegating to a \texttt{MotorDynamics} subclass:
+
+\medskip
+\textit{Torque mode} (default, \texttt{TorqueMotor}):
+\begin{enumerate}[leftmargin=2em, start=6]
+    \item \textbf{Motor command}: $\tau_m = \tau_{2,\mathrm{des}} / N$
+    \item \textbf{Cable force}: $\delta = \rp(\thetam/N - q_2)$, \quad $F = \ks\,\delta + \bc\,\dot{\delta}$
+    \item \textbf{Rotor update} (semi-implicit Euler): $\ddot{\thetam} = (\tau_m - b_{\mathrm{m}}\,\dot{\thetam} - \rp F/N) / \Jm$, \quad update $[\thetam, \dot{\thetam}]$
+    \item \textbf{Tension decomposition}: $T_{\mathrm{green}} = \max(F, 0)$, \quad $T_{\mathrm{red}} = \max(-F, 0)$
+    \item \textbf{Apply torque}: $\tau_1 = \tau_{1,\mathrm{des}}$ (rigid), \quad $\tau_2 = \rp \cdot (T_{\mathrm{green}} - T_{\mathrm{red}})$
+\end{enumerate}
+
+\textit{Position mode} (legacy, \texttt{PositionServoMotor}):
+\begin{enumerate}[leftmargin=2em, start=6]
     \item \textbf{Motor target} (steady-state inversion): $\lm^{\mathrm{des}} = \rp \, q_2 + \tau_{2,\mathrm{des}} / (\ks \, \rp)$
-    \item \textbf{Motor update} (Euler step): $\lm \gets \lm + \Delta t \cdot \wm \cdot (\lm^{\mathrm{des}} - \lm)$
+    \item \textbf{Motor update} (Euler step): $\lm \gets \lm + \Delta t \cdot \wb \cdot (\lm^{\mathrm{des}} - \lm)$
     \item \textbf{Spring force}: $\delta = \lm - \rp q_2$, \quad $F = \ks \delta + \bc \dot{\delta}$
     \item \textbf{Tension decomposition}: $T_{\mathrm{green}} = \max(F, 0)$, \quad $T_{\mathrm{red}} = \max(-F, 0)$
     \item \textbf{Apply torque}: $\tau_1 = \tau_{1,\mathrm{des}}$ (rigid), \quad $\tau_2 = \rp \cdot (T_{\mathrm{green}} - T_{\mathrm{red}})$
 \end{enumerate}
 
-Steps 1--6 are the standard CT pipeline (identical to the rigid-tendon controller).  Steps 7--10 are the SEA cable layer.
+Steps 1--5 are the standard CT pipeline (identical to the rigid-tendon controller).  Steps 6--10 are the SEA cable layer.  Because these are separate Drake \texttt{LeafSystem}s, any controller that outputs $[\tau_1, \tau_2]$ can be substituted for the CT block.
 
 
 % ============================================================================
@@ -476,7 +880,7 @@ Steps 1--6 are the standard CT pipeline (identical to the rigid-tendon controlle
 
 \subsection{Source File}
 
-\texttt{script\_cup\_manipulator\_pendulam\_tendon\_with\_spring\_sea\_pydrake.py} ($\sim$900 lines) is a \textbf{self-contained} simulation script.  Unlike the multi-file CT implementation, the entire SEA model lives in one file for clarity.
+\texttt{script\_cup\_manipulator\_pendulam\_tendon\_with\_spring\_sea\_pydrake.py} ($\sim$900 lines) uses a \textbf{two-block architecture}: control logic in \texttt{ComputedTorqueController} and actuator physics in \texttt{SEACableActuator}, wired together via a Drake diagram.
 
 \begin{table}[H]
 \centering
@@ -485,7 +889,9 @@ Steps 1--6 are the standard CT pipeline (identical to the rigid-tendon controlle
 \toprule
 \textbf{Name} & \textbf{Role} \\
 \midrule
-\texttt{SEACableController}     & Drake \texttt{LeafSystem}. CT outer-loop + SEA cable model. Discrete state $\lm$. \\
+\texttt{ComputedTorqueController}     & Drake \texttt{LeafSystem} (controller/controller.py). IK + PD + inverse dynamics. Outputs $\btau_{\mathrm{des}}$. \\
+\texttt{SEACableActuator}             & Drake \texttt{LeafSystem} (actuators/sea.py). Delegates to \texttt{MotorDynamics} + spring--damper cable model. \\
+\texttt{MotorDynamics}                & ABC (actuators/motor\_dynamics.py). Subclasses: \texttt{TorqueMotor} (2nd-order), \texttt{PositionServoMotor} (1st-order). \\
 \texttt{\_build\_rect\_trajectory} & C$^2$ rectangular EE trajectory with speed-profiled corners. \\
 \texttt{\_build\_move\_to\_start}  & Cubic-Hermite approach preamble. \\
 \texttt{run\_simulation()}        & Build, wire, run, collect logs for one SEA config. \\
@@ -495,77 +901,103 @@ Steps 1--6 are the standard CT pipeline (identical to the rigid-tendon controlle
 \end{tabular}
 \end{table}
 
-\subsection{SEACableController --- LeafSystem}
+\subsection{SEACableActuator --- Pure Actuator LeafSystem}
 
-\begin{lstlisting}[caption={Core spring force computation (antagonistic cable model).}]
-def _spring_force(self, l_m, l_m_des, q, q_dot):
-    delta     = l_m - self._r_p * q[1]           # spring extension
-    l_m_dot   = self._omega_m * (l_m_des - l_m)  # motor velocity
-    delta_dot = l_m_dot - self._r_p * q_dot[1]
-    F_raw = self._k_s * delta + self._b_c * delta_dot
-    # Antagonistic decomposition
-    T_green = max(F_raw,  0.0)   # retracting cable
-    T_red   = max(-F_raw, 0.0)   # extending cable
-    F_cable = T_green - T_red    # net signed force = F_raw
-    return F_cable, delta, l_m_dot, T_green, T_red
+The \texttt{SEACableActuator} (\texttt{actuators/sea.py}) is a pure physics model with no control law.  It accepts desired torques $[\tau_1, \tau_2]$ and outputs actual torques after motor + spring dynamics.  Motor dynamics are delegated to a pluggable \texttt{MotorDynamics} object (\texttt{actuators/motor\_dynamics.py}).
+
+\begin{lstlisting}[caption={Motor dynamics class hierarchy (actuators/motor\_dynamics.py).}]
+class MotorMode(Enum):
+    TORQUE   = "torque"       # 2nd-order rotor dynamics (default)
+    POSITION = "position"     # 1st-order position servo (legacy)
+
+class MotorDynamics(ABC):            # shared interface
+    def step(self, state, tau2_des, q2, q2_dot) -> np.ndarray: ...
+    def compute_spring_force(self, state, ...) -> tuple: ...
+
+class TorqueMotor(MotorDynamics):    # J_m * theta_ddot = tau_m - b_m * theta_dot - r_p*F/N
+class PositionServoMotor(MotorDynamics):  # l_dot = omega_b * (l_des - l)
+\end{lstlisting}
+
+\begin{lstlisting}[caption={TorqueMotor: cable force in linear coordinates + semi-implicit Euler.}]
+class TorqueMotor(MotorDynamics):
+    def _cable_force_raw(self, theta_m, theta_m_dot, q2, q2_dot):
+        delta_lin     = self._r_p * (theta_m / self._N - q2)
+        delta_dot_lin = self._r_p * (theta_m_dot / self._N - q2_dot)
+        F_raw = self._k_s * delta_lin + self._b_c * delta_dot_lin
+        return F_raw, delta_lin
+
+    def step(self, state, tau2_des, q2, q2_dot):
+        theta_m, theta_m_dot = state[0], state[1]
+        tau_m = tau2_des / self._N
+        F_raw, _ = self._cable_force_raw(theta_m, theta_m_dot, q2, q2_dot)
+        tau_spring_motor = self._r_p * F_raw / self._N
+        theta_m_ddot = (tau_m - self._b_m * theta_m_dot
+                        - tau_spring_motor) / self._J_m
+        # Semi-implicit Euler (velocity first, then position)
+        theta_m_dot_new = theta_m_dot + self._dt * theta_m_ddot
+        theta_m_new     = theta_m     + self._dt * theta_m_dot_new
+        return np.array([theta_m_new, theta_m_dot_new])
 \end{lstlisting}
 
 \begin{codemath}
 \begin{align}
-    \delta &= \lm - \rp \, q_2 \tag{spring extension} \\
-    \dot{\delta} &= \lmd - \rp \, \dot{q}_2 \tag{extension rate} \\
+    \delta &= \rp \cdot (\thetam / N - q_2) \tag{spring extension [m]} \\
+    \dot{\delta} &= \rp \cdot (\dot{\thetam} / N - \dot{q}_2) \tag{extension rate} \\
     F_{\mathrm{raw}} &= \ks \, \delta + \bc \, \dot{\delta} \tag{spring--damper} \\
     F_{\mathrm{cable}} &= T_{\mathrm{green}} - T_{\mathrm{red}} = F_{\mathrm{raw}} \tag{net antagonistic force}
 \end{align}
 \end{codemath}
 
-\begin{lstlisting}[caption={Motor update (discrete) and torque application.}]
+\begin{lstlisting}[caption={SEACableActuator delegates to MotorDynamics (actuators/sea.py).}]
 def _update_motor(self, context, discrete_state):
-    l_m = context.get_discrete_state(self._l_m_idx).value()[0]
-    _, l_m_des, _, _, _ = self._solve(context)
-    l_m_new = l_m + self._dt * self._omega_m * (l_m_des - l_m)
-    discrete_state.get_mutable_vector(self._l_m_idx).SetFromVector(
-        np.array([l_m_new]))
+    motor_state = ... # read from Drake discrete state
+    tau_des = self._tau_port.Eval(context)
+    q, q_dot = self._read_joint_state(context)
+    new_state = self._motor.step(motor_state, tau_des[1], q[1], q_dot[1])
+    # write new_state back to Drake discrete state
 
 def _calc_actuation(self, context, output):
-    tau_des, l_m_des, q, q_dot, _ = self._solve(context)
-    l_m = context.get_discrete_state(self._l_m_idx).value()[0]
-    F_cable, _, _, _, _ = self._spring_force(l_m, l_m_des, q, q_dot)
+    tau_des  = self._tau_port.Eval(context)
+    motor_state = ... # read from Drake discrete state
+    q, q_dot = self._read_joint_state(context)
+    F_cable, _, _, _, _, _ = self._motor.compute_spring_force(
+        motor_state, tau_des[1], q[1], q_dot[1])
     tau_out = np.array([
-        tau_des[0],            # J1: rigid direct drive
-        self._r_p * F_cable,   # J2: SEA cable spring
+        tau_des[0],              # J1: pass-through (rigid)
+        self._r_p * F_cable,     # J2: SEA cable spring
     ])
     output.SetFromVector(np.clip(tau_out, -self._tau_max, self._tau_max))
 \end{lstlisting}
 
 \begin{codemath}
 \begin{align}
-    \lm[k+1] &= \lm[k] + \Delta t \cdot \wm \cdot (\lm^{\mathrm{des}} - \lm[k]) \tag{motor servo} \\
-    \tau_1 &= \tau_{1,\mathrm{des}} \tag{rigid J1} \\
-    \tau_2 &= \rp \cdot F_{\mathrm{cable}} \tag{SEA J2}
+    \text{Torque mode:}\quad & \Jm \ddot{\thetam} = \tau_m - b_{\mathrm{m}} \dot{\thetam} - \rp F / N \tag{rotor EOM} \\
+    \text{Position mode:}\quad & \lm[k{+}1] = \lm[k] + \Delta t \cdot \wb \cdot (\lm^{\mathrm{des}} - \lm[k]) \tag{motor servo} \\
+    & \tau_1 = \tau_{1,\mathrm{des}} \tag{rigid J1} \\
+    & \tau_2 = \rp \cdot F_{\mathrm{cable}} \tag{SEA J2}
 \end{align}
 \end{codemath}
 
 
 \subsection{Diagnostics Output Port}
 
-The controller exposes an 8-element diagnostics vector for logging:
+The \texttt{SEACableActuator} exposes an 8-element diagnostics vector for logging:
 
 \begin{table}[H]
 \centering
-\caption{Diagnostics vector layout.}
-\begin{tabular}{clcl}
+\caption{Diagnostics vector layout (8 elements).  Slots 0--1 depend on motor mode.}
+\begin{tabular}{clcll}
 \toprule
-\textbf{Index} & \textbf{Name} & \textbf{Symbol} & \textbf{Units} \\
+\textbf{Idx} & \textbf{Name} & \textbf{Symbol} & \textbf{Torque mode} & \textbf{Position mode} \\
 \midrule
-0 & Motor cable displacement & $\lm$ & m \\
-1 & Desired motor position & $\lm^{\mathrm{des}}$ & m \\
-2 & Spring extension & $\delta$ & m \\
-3 & Net cable force & $F_{\mathrm{cable}}$ & N \\
-4 & CT desired $\tau_1$ & $\tau_{1,\mathrm{des}}$ & Nm \\
-5 & CT desired $\tau_2$ & $\tau_{2,\mathrm{des}}$ & Nm \\
-6 & Green cable tension & $T_{\mathrm{green}}$ & N \\
-7 & Red cable tension & $T_{\mathrm{red}}$ & N \\
+0 & Motor state (primary)   & --- & $\thetam / N$ [rad] & $\lm$ [m] \\
+1 & Motor state (secondary) & --- & $\dot{\thetam} / N$ [rad/s] & $\lm^{\mathrm{des}}$ [m] \\
+2 & Spring extension & $\delta$ & \multicolumn{2}{c}{m} \\
+3 & Net cable force & $F_{\mathrm{cable}}$ & \multicolumn{2}{c}{N} \\
+4 & CT desired $\tau_1$ & $\tau_{1,\mathrm{des}}$ & \multicolumn{2}{c}{Nm} \\
+5 & CT desired $\tau_2$ & $\tau_{2,\mathrm{des}}$ & \multicolumn{2}{c}{Nm} \\
+6 & Green cable tension & $T_{\mathrm{green}}$ & \multicolumn{2}{c}{N} \\
+7 & Red cable tension & $T_{\mathrm{red}}$ & \multicolumn{2}{c}{N} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -603,14 +1035,14 @@ When $\delta = 0$ (no tension), the spring is at its rest fraction.  Under load,
 
 \subsection{Real-Time Update}
 
-During each simulation visualization tick, the spring extension $\delta$ is read from the controller's diagnostics port and passed to the drawing function:
+During each simulation visualization tick, the spring extension $\delta$ is read from the SEA actuator's diagnostics port and passed to the drawing function:
 
 \begin{lstlisting}[caption={Visualization tick with live spring extension.}]
 def _viz_tick():
     _ctx = simulator.get_mutable_context()
     _pc  = plant.GetMyMutableContextFromRoot(_ctx)
-    _ctrl_ctx = ctrl.GetMyMutableContextFromRoot(_ctx)
-    _diag = ctrl.GetOutputPort("diagnostics").Eval(_ctrl_ctx)
+    _sea_ctx = sea.GetMyMutableContextFromRoot(_ctx)
+    _diag = sea.GetOutputPort("diagnostics").Eval(_sea_ctx)
     _delta = _diag[2]   # spring extension delta [m]
     manipulator.compute_tangents(plant, _pc)
     draw_cables(meshcat, plant, _pc, manipulator, _rig,
@@ -636,9 +1068,9 @@ In the rigid-tendon model (companion document):
 
 \begin{itemize}[leftmargin=2em]
     \item $\tau_2 = \rp \cdot F_{\mathrm{cable}}$ --- torque mediated by spring + motor
-    \item One additional state ($\lm$), one additional ODE (motor servo)
+    \item Motor states: torque mode $[\thetam, \dot{\thetam}]$ (2 states), position mode $[\lm]$ (1 state)
     \item Cable tensions are \emph{physically meaningful}: they determine the actual force
-    \item Torque lag increases with softer spring (lower $\ks$) or slower motor (lower $\wm$)
+    \item Torque lag increases with softer spring (lower $\ks$) or slower motor
 \end{itemize}
 
 \begin{table}[H]
@@ -649,12 +1081,13 @@ In the rigid-tendon model (companion document):
 \textbf{Property} & \textbf{Rigid Tendon} & \textbf{SEA Cable} \\
 \midrule
 Joint-2 torque source & CT output directly & Spring force $\times$ $\rp$ \\
-Cable dynamics & None & $\dot{\lm} = \wm(\lm^{\mathrm{des}} - \lm)$ \\
+Cable dynamics & None & Torque: $\Jm \ddot{\thetam} = \tau_m - b_{\mathrm{m}} \dot{\thetam} - \rp F/N$ \\
+             &      & Position: $\dot{\lm} = \wb(\lm^{\mathrm{des}} - \lm)$ \\
 Spring state & N/A & $\delta = \lm - \rp q_2$ \\
 Antagonistic cables & Post-hoc only & Physics: bidirectional \\
-Torque bandwidth & Infinite & Limited by $\ks$, $\wm$ \\
+Torque bandwidth & Infinite & Limited by $\ks$, motor dynamics \\
 Tracking accuracy & Best possible & Degrades with soft spring \\
-Extra parameters & 0 & 3 ($\ks$, $\bc$, $\wm$) \\
+Extra parameters & 0 & Torque: 3 ($\ks$, $\bc$, $\Jm$); Position: 3 ($\ks$, $\bc$, $\wb$) \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -691,9 +1124,10 @@ python script_cup_manipulator_pendulam_tendon_with_spring_sea_pydrake.py \
 \toprule
 \textbf{Flag} & \textbf{Symbol} & \textbf{Default} & \textbf{Description} \\
 \midrule
-\texttt{--spring-stiffness} & $\ks$ & 3.0 N/m & Cable spring stiffness \\
+\texttt{--sea-mode}          & ---   & torque & Motor dynamics mode (\texttt{torque} or \texttt{position}) \\
+\texttt{--spring-stiffness} & $\ks$ & 3000 N/m & Cable spring stiffness \\
 \texttt{--cable-damping}    & $\bc$ & 2.0 N$\cdot$s/m & Cable dashpot damping \\
-\texttt{--motor-bandwidth}  & $\wm$ & 30.0 rad/s & Motor position servo bandwidth \\
+\texttt{--motor-bandwidth}  & $\wb$ & 100 rad/s & Position-mode servo bandwidth (conservative; open-loop $1/\tau_m \approx 400$) \\
 \texttt{--compare}          & ---   & off & Run compliant + rigid, overlay plots \\
 \texttt{--compare-rigid-ks} & ---   & 5000 N/m & Stiffness for ``rigid'' comparison \\
 \bottomrule
@@ -706,7 +1140,7 @@ python script_cup_manipulator_pendulam_tendon_with_spring_sea_pydrake.py \
 \label{sec:ct}
 % ============================================================================
 
-The SEA cable model (Section~\ref{sec:physics}) sits \emph{between} the controller and the plant.  The \textbf{Computed Torque (CT)} controller is the inner layer that decides what torque \emph{should} be applied.  This section documents the complete CT pipeline as implemented in the \texttt{\_solve()} method of \texttt{SEACableController}.
+The SEA cable model (Section~\ref{sec:physics}) sits \emph{between} the controller and the plant.  The \textbf{Computed Torque (CT)} controller is the inner layer that decides what torque \emph{should} be applied.  This section documents the complete CT pipeline as implemented in the \texttt{\_solve()} method of \texttt{ComputedTorqueController} (\texttt{controller/controller.py}).
 
 \subsection{Inverse Kinematics: Task Space $\to$ Joint Space}
 
@@ -727,7 +1161,7 @@ Key implementation details:
     \item \textbf{Fallback}: If IK fails, the last-known-good solution is held.
 \end{itemize}
 
-\begin{lstlisting}[caption={IK warm-start in SEACableController.\_solve().}]
+\begin{lstlisting}[caption={IK warm-start in ComputedTorqueController.\_solve().}]
 seed = self._last_q_des if np.any(self._last_q_des != 0) else q
 q_des, ok = self._manip.ik._solve_2r_core(self._L1, self._L2, ee_des, seed)
 if ok:
@@ -863,7 +1297,7 @@ The motor must wind the cable past the joint-angle position by exactly the sprin
 
 \subsection{Per-Timestep Cache}
 
-Both \texttt{ComputedTorqueController} and \texttt{SEACableController} cache the full solve result per simulation timestep.  Since Drake evaluates output ports lazily (actuation, diagnostics, and joint\_positions may each trigger \texttt{\_solve()}), caching avoids 3$\times$ redundant IK + inverse-dynamics calls:
+The \texttt{ComputedTorqueController} caches its full solve result per simulation timestep.  Since Drake evaluates output ports lazily (actuation, joint\_positions, torques\_raw, and cable\_tensions may each trigger \texttt{\_solve()}), caching avoids 4$\times$ redundant IK + inverse-dynamics calls:
 
 \begin{lstlisting}[caption={Timestep-keyed cache avoids redundant solves.}]
 def _solve(self, context):
@@ -943,7 +1377,7 @@ The \texttt{run\_simulation()} function builds a complete Drake diagram, initial
 
 \subsection{Drake Diagram Wiring}
 
-\begin{archbox}{System Diagram}
+\begin{archbox}{System Diagram (Two-Block Architecture)}
 \begin{center}
 \begin{tikzpicture}[
     node distance=0.5cm and 0.8cm,
@@ -956,20 +1390,24 @@ The \texttt{run\_simulation()} function builds a complete Drake diagram, initial
     \node[block=drakeblue, below=0.15cm of ee] (vel) {Vel\_ref};
     \node[block=drakeblue, below=0.15cm of vel] (acc) {Acc\_ref};
 
-    \node[block=seaorange, right=1.2cm of vel] (ctrl) {\textbf{SEACableController}\\{\tiny CT + SEA cable}};
-    \node[block=darkred, right=1.2cm of ctrl] (plant) {\textbf{MultibodyPlant}\\{\tiny 2-DOF}};
+    \node[block=drakegreen, right=1.2cm of vel] (ct) {\textbf{CT Controller}\\{\tiny IK + PD + Inv.\,Dyn.}};
+    \node[block=seaorange, right=1.0cm of ct] (sea) {\textbf{SEA Actuator}\\{\tiny Motor + Spring}};
+    \node[block=darkred, right=1.0cm of sea] (plant) {\textbf{MultibodyPlant}\\{\tiny 2-DOF}};
 
-    \draw[arr=drakeblue] (ee.east)  -- ++(0.3,0) |- (ctrl.west);
-    \draw[arr=drakeblue] (vel.east) -- (ctrl.west);
-    \draw[arr=drakeblue] (acc.east) -- ++(0.3,0) |- (ctrl.west);
-    \draw[arr=seaorange]  (ctrl) -- (plant) node[midway, above, port] {$[\tau_1, \tau_2]$};
-    \draw[arr=darkred]    (plant.south) -- ++(0,-0.5) -| (ctrl.south)
-        node[pos=0.25, below, port] {plant\_state};
+    \draw[arr=drakeblue] (ee.east)  -- ++(0.3,0) |- (ct.west);
+    \draw[arr=drakeblue] (vel.east) -- (ct.west);
+    \draw[arr=drakeblue] (acc.east) -- ++(0.3,0) |- (ct.west);
+    \draw[arr=drakegreen] (ct) -- (sea) node[midway, above, port] {$\btau_{\mathrm{des}}$};
+    \draw[arr=seaorange]  (sea) -- (plant) node[midway, above, port] {$[\tau_1, \tau_2^{\mathrm{SEA}}]$};
+    \draw[arr=darkred]    (plant.south) -- ++(0,-0.6) -| (ct.south)
+        node[pos=0.2, below, port] {plant\_state};
+    \draw[arr=darkred]    (plant.south) -- ++(0,-0.6) -| (sea.south);
 
     % Loggers
-    \node[block=drakegreen, right=0.8cm of plant] (log) {7~Loggers\\{\tiny state, act, diag,\\q\_des, ref, vel, acc}};
-    \draw[arr=drakegreen, dashed] (plant.east) -- (log.west);
-    \draw[arr=drakegreen, dashed] (ctrl.north) |- ++(2.8,0.6) -| (log.north);
+    \node[block=gray, right=0.8cm of plant] (log) {7~Loggers\\{\tiny state, act, diag,\\q\_des, ref, vel, acc}};
+    \draw[arr=gray, dashed] (plant.east) -- (log.west);
+    \draw[arr=gray, dashed] (sea.north) |- ++(2.0,0.6) -| (log.north);
+    \draw[arr=gray, dashed] (ct.north) |- ++(4.5,0.9) -| (log.north);
 \end{tikzpicture}
 \end{center}
 \end{archbox}
@@ -980,10 +1418,11 @@ The \texttt{run\_simulation()} function builds a complete Drake diagram, initial
     \item \textbf{Config}: Create \texttt{CupManipulatorTendon} config with joint angles, damping, stiffness
     \item \textbf{Plant}: Load URDF, weld base, add actuators, add optional \texttt{RevoluteSpring}, finalize
     \item \textbf{Trajectory}: Build rectangle trajectory + move-to-start preamble
-    \item \textbf{Controller}: Add \texttt{SEACableController} with SEA parameters ($\ks$, $\bc$, $\wm$) and CT gains ($K_p$, $K_d$)
-    \item \textbf{Wire}: Connect trajectory sources $\to$ controller $\to$ plant, plus state feedback
-    \item \textbf{Log}: 7~\texttt{LogVectorOutput} systems record state, actuation, diagnostics, IK solution, and all 3~trajectory references
-    \item \textbf{Initialize}: Patch zero-mass bodies (Onshape URDF artifacts), set initial $\bq$, set $\lm = \rp \cdot q_2$ (spring at rest)
+    \item \textbf{Controller}: Add \texttt{ComputedTorqueController} with CT gains ($K_p$, $K_d$, $\tau_{\max}$)
+    \item \textbf{Actuator}: Add \texttt{SEACableActuator} with motor mode, SEA parameters ($\ks$, $\bc$, $\tau_{\max}$), and motor config
+    \item \textbf{Wire}: Trajectory $\to$ CT $\to$ SEA $\to$ Plant, plus state feedback to both CT and SEA
+    \item \textbf{Log}: 7~\texttt{LogVectorOutput} systems: state and actuation from SEA, diagnostics from SEA, q\_des from CT, plus 3~trajectory references
+    \item \textbf{Initialize}: Patch zero-mass bodies (Onshape URDF artifacts), set initial $\bq$, call \texttt{sea.initialize\_spring\_at\_rest(ctx, q2)} ($\delta = 0$)
     \item \textbf{Run}: Advance in 0.1\,s chunks until Ctrl-C; update cable visualization each chunk
 \end{enumerate}
 
@@ -1035,20 +1474,21 @@ Joint velocity/acceleration references are reconstructed via $\bJ^{-1}$:
 
 \begin{table}[H]
 \centering
-\caption{Figure 2 layout (4 rows $\times$ 2 columns).}
+\caption{Figure 2 layout (5 rows $\times$ 2 columns).}
 \begin{tabular}{cll}
 \toprule
 \textbf{Row} & \textbf{Left} & \textbf{Right} \\
 \midrule
 0 & EE Position X [mm]  & EE Position Y [mm] \\
 1 & $\tau_2$ desired vs applied (spring lag) & EE XY path overlay \\
-2 & Motor cable $\lm$ vs joint side $\rp q_2$ & Spring extension $\delta$ \& cable force $F$ \\
-3 & Torque tracking error (shaded, RMS) & EE tracking error $|\bm{p}_{\mathrm{act}} - \bm{p}_{\mathrm{ref}}|$ [mm] \\
+2 & Motor cable $\lm$ vs joint side $\rp q_2$ & Spring extension $\delta$ [mm] \\
+3 & Cable tension $F$ [N] (cable can only pull) & Green / Red cable tensions [N] \\
+4 & Torque tracking error (shaded, RMS) & EE tracking error $|\bm{p}_{\mathrm{act}} - \bm{p}_{\mathrm{ref}}|$ [mm] \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Row~2 is the most informative for understanding SEA dynamics: the \textbf{gap} between $\lm$ and $\rp q_2$ is the spring extension $\delta$, which grows with softer springs.  Row~3 shows the \textbf{torque RMS error} (spring lag) and the resulting \textbf{EE tracking error} in mm.
+Row~2 is the most informative for understanding SEA dynamics: the \textbf{gap} between $\lm$ and $\rp q_2$ is the spring extension $\delta$, which grows with softer springs.  Row~3 decomposes the net cable force into antagonistic green (retracting) and red (extending) tensions.  Row~4 shows the \textbf{torque RMS error} (spring lag) and the resulting \textbf{EE tracking error} in mm.
 
 \subsection{Comparison Mode}
 
@@ -1059,6 +1499,118 @@ When \texttt{--compare} is passed, two simulations run back-to-back:
 \end{enumerate}
 
 Both datasets are overlaid on the same plots, showing exactly how spring compliance degrades tracking performance.  The EE XY path plot is particularly revealing: the compliant system cuts corners and lags behind the reference.
+
+
+% ============================================================================
+\section{Simulation Results: Stiffness Sweep}
+\label{sec:results}
+% ============================================================================
+
+This section presents results from four simulations using the \textbf{torque-mode} motor model (CubeMars AK60-6) with identical CT gains ($K_p = 100$, $K_d = 40$, $\zeta = 2.0$, $\omega_n = 10$\,rad/s) and varying spring stiffness $\ks \in \{30,\; 300,\; 3000,\; 30\,000\}$\,N/m.  All runs track a rectangular EE trajectory.
+
+\subsection{Near-Rigid: $\ks = 30\,000$\,N/m}
+
+With very high stiffness, the SEA cable behaves nearly identically to a rigid tendon.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/sea_ct_3x3_ks30000_20260411_131829.png}
+    \caption{CT 3$\times$3 performance panel at $\ks = 30\,000$\,N/m.  EE position (top-left) tracks the rectangular reference closely.  Joint positions (middle-left) follow desired values with minimal lag.  Applied torque (bottom-left, dashed) almost perfectly overlays desired torque---the spring is stiff enough that $\delta_{\mathrm{ss}} = \tau_2 / (\ks \rp) \approx 0$ and the SEA acts as a rigid passthrough.  Cable tensions alternate between green and red at rectangle corners as the torque direction reverses.  The EE path (bottom-right) tightly follows the reference rectangle.}
+    \label{fig:ct_ks30000}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/sea_cable_ks30000_20260411_131829.png}
+    \caption{SEA 5$\times$2 diagnostics at $\ks = 30\,000$\,N/m.  Spring extension $\delta$ (row~2, right) peaks at $\pm 0.02$\,mm---essentially zero.  Motor cable $\lm$ and joint-side $\rp q_2$ (row~2, left) are nearly superimposed, confirming negligible spring deflection.  Torque tracking RMS error is only 0.004\,Nm.  EE tracking error (row~4, right) is dominated by the move-to-start preamble; steady-state tracking stays below 5\,mm.}
+    \label{fig:cable_ks30000}
+\end{figure}
+
+
+\subsection{Moderate Stiffness: $\ks = 3\,000$\,N/m}
+
+An order of magnitude softer, the spring compliance becomes visible but tracking remains good.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/sea_ct_3x3_ks3000_20260411_125341.png}
+    \caption{CT 3$\times$3 performance at $\ks = 3\,000$\,N/m.  EE position tracking remains close to the reference.  Velocity and acceleration show slight deviations at rectangle corners.  Applied torque $\tau_2$ (bottom-left, dashed) follows desired torque closely but with a visible phase lag at transients---the spring cannot respond instantaneously.  Cable tensions peak at $\approx 0.5$\,N during the sharp direction changes.}
+    \label{fig:ct_ks3000}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/sea_cable_ks3000_20260411_125341.png}
+    \caption{SEA diagnostics at $\ks = 3\,000$\,N/m.  Spring extension $\delta$ (row~2, right) now reaches $\pm 0.2$\,mm---an order of magnitude larger than $\ks = 30\,000$.  The gap between $\lm$ and $\rp q_2$ (row~2, left) is visible but small.  Torque tracking RMS error is 0.014\,Nm, $3.5\times$ worse than the near-rigid case.  EE tracking error remains below $\approx 20$\,mm, with peaks at corners where the spring cannot follow the sudden torque demand.}
+    \label{fig:cable_ks3000}
+\end{figure}
+
+
+\subsection{Compliant: $\ks = 300$\,N/m}
+
+At this stiffness the spring lag becomes the dominant error source.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/sea_ct_3x3_ks300_20260411_125410.png}
+    \caption{CT 3$\times$3 performance at $\ks = 300$\,N/m.  EE position shows noticeable deviation from reference at rectangle corners.  Joint positions (middle row) show $q_2$ actual lagging behind desired by several degrees during fast direction changes.  Applied $\tau_2$ (bottom-left) now clearly lags the desired torque with visible phase shift.  Cable tensions are smaller (peak $\approx 0.4$\,N) because the spring absorbs more energy before transmitting it.}
+    \label{fig:ct_ks300}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/sea_cable_ks300_20260411_125410.png}
+    \caption{SEA diagnostics at $\ks = 300$\,N/m.  Spring extension $\delta$ (row~2, right) reaches $\pm 2$\,mm---$10\times$ larger than $\ks = 3\,000$.  The gap between $\lm$ and $\rp q_2$ (row~2, left) is now clearly visible, showing the motor leading the joint.  Torque tracking RMS error is 0.018\,Nm.  EE tracking error peaks at $\approx 20$\,mm, primarily at corners.  In torque mode, reducing $\ks$ by $10\times$ lowers the motor--spring resonance $\omega_n$ by $\sqrt{10} \approx 3.2\times$, which slows the motor response and slightly worsens torque tracking ($0.014 \to 0.018$\,Nm RMS).  However, the softer spring also reduces force per unit deflection ($F = \ks \delta$), so the overall degradation is moderate.}
+    \label{fig:cable_ks300}
+\end{figure}
+
+
+\subsection{Very Soft: $\ks = 30$\,N/m}
+
+At this extreme, the spring dominates the entire system response.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/sea_ct_3x3_ks30_20260411_125524.png}
+    \caption{CT 3$\times$3 performance at $\ks = 30$\,N/m.  EE position (top row) shows significant deviation from reference---the arm overshoots corners and lags on straight segments.  Joint-2 position (middle-left, red) deviates substantially from desired (dashed), with the joint settling slowly after each direction change.  Applied $\tau_2$ is heavily filtered by the soft spring, with large phase lag.  The EE path (bottom-right) departs noticeably from the rectangle, cutting corners and exhibiting hysteresis.}
+    \label{fig:ct_ks30}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/sea_cable_ks30_20260411_125524.png}
+    \caption{SEA diagnostics at $\ks = 30$\,N/m.  Spring extension $\delta$ (row~2, right) reaches $\pm 15$\,mm---nearly $1000\times$ the near-rigid case.  Motor cable $\lm$ and joint side $\rp q_2$ (row~2, left) diverge dramatically: the motor must travel far ahead of the joint to stretch the soft spring enough to produce the required force.  Torque tracking RMS error is 0.038\,Nm ($10\times$ worse than near-rigid).  EE tracking peaks at $\approx 25$\,mm.  The cable force (row~3) is smaller in magnitude because $F = \ks \delta$ with small $\ks$, even though $\delta$ is large.}
+    \label{fig:cable_ks30}
+\end{figure}
+
+
+\subsection{Stiffness Sweep Summary}
+
+\begin{table}[H]
+\centering
+\caption{Effect of spring stiffness on tracking quality (torque mode, CubeMars AK60-6).}
+\label{tab:stiffness_sweep}
+\begin{tabular}{rcccc}
+\toprule
+$\ks$ [N/m] & $\delta_{\mathrm{peak}}$ [mm] & $\tau_2$ RMS error [Nm] & EE error peak [mm] & Behaviour \\
+\midrule
+30\,000 & 0.02   & 0.004 & $<5$  & Near-rigid, minimal lag \\
+3\,000  & 0.2    & 0.014 & $\sim$20 & Slight lag at corners \\
+300     & 2      & 0.018 & $\sim$20 & Visible torque lag, larger $\delta$ \\
+30      & 15     & 0.038 & $\sim$25 & Heavy lag, large motor excursion \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{resultbox}
+\textbf{Key observations from the stiffness sweep:}
+\begin{enumerate}[leftmargin=2em]
+    \item \textbf{Spring extension scales as $1/\ks$}: $\delta_{\mathrm{ss}} = \tau / (\ks \rp)$, so halving $\ks$ doubles the motor excursion needed.
+    \item \textbf{Torque RMS error scales sublinearly with $\ks$}: Reducing $\ks$ by $1000\times$ (30\,000 $\to$ 30) only increases torque error by $\sim 10\times$, because softer springs also produce less force per unit lag.
+    \item \textbf{EE tracking is dominated by transients}: Steady-state tracking is similar across all stiffnesses; the differences appear at rectangle corners where sudden torque changes expose the spring bandwidth limit.
+    \item \textbf{Motor excursion is the practical constraint}: At $\ks = 30$\,N/m, the motor drum must displace $\pm 15$\,mm beyond the joint position---approaching the physical travel limits of a real cable drive.
+\end{enumerate}
+\end{resultbox}
 
 
 % ============================================================================
@@ -1084,12 +1636,29 @@ Both datasets are overlaid on the same plots, showing exactly how spring complia
 \end{align}
 
 \medskip
-\textbf{SEA Cable Model (Joint 2):}
+\textbf{SEA Cable Model (Joint 2) --- Torque Mode (default):}
+\begin{align}
+    \text{Spring extension:}\quad
+        & \delta = \rp \!\left(\frac{\thetam}{N} - q_2\right) \\[4pt]
+    \text{Cable force:}\quad
+        & F = \ks \, \delta + \bc \, \dot{\delta} \\[4pt]
+    \text{Rotor dynamics:}\quad
+        & \Jm \, \ddot{\thetam} = \frac{\tau_{2,\mathrm{des}}}{N} - b_{\mathrm{m}} \, \dot{\thetam} - \frac{\rp \cdot F}{N} \\[4pt]
+    \text{Tensions:}\quad
+        & T_{\mathrm{green}} = \max(F, 0), \quad
+          T_{\mathrm{red}} = \max(-F, 0) \\[4pt]
+    \text{Joint torque:}\quad
+        & \tau_2 = \rp \cdot (T_{\mathrm{green}} - T_{\mathrm{red}})
+          = \rp \cdot F
+\end{align}
+
+\medskip
+\textbf{SEA Cable Model (Joint 2) --- Position Mode (legacy):}
 \begin{align}
     \text{Spring extension:}\quad
         & \delta = \lm - \rp \, q_2 \\[4pt]
     \text{Motor servo:}\quad
-        & \lmd = \wm \, (\lm^{\mathrm{des}} - \lm) \\[4pt]
+        & \lmd = \wb \, (\lm^{\mathrm{des}} - \lm) \\[4pt]
     \text{Motor target:}\quad
         & \lm^{\mathrm{des}} = \rp \, q_2 + \frac{\tau_{2,\mathrm{des}}}{\ks \, \rp} \\[4pt]
     \text{Spring--damper:}\quad

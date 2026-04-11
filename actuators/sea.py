@@ -6,6 +6,15 @@ Series Elastic Actuator (SEA) model for the cable-driven joint.
 SEACableActuator is a pure actuator model -- it contains no control law.
 It sits between any torque-output controller and the plant, modelling
 the physical cable compliance on joint 2.
+
+Motor dynamics are delegated to a pluggable ``MotorDynamics`` object (see
+``actuators.motor_dynamics``).  Two modes are supported:
+
+  - **torque** (default) — 2nd-order rotor dynamics driven by torque command.
+    Uses CubeMars MIT torque mode.  Parameters: ``J_m``, ``b_m`` from motor
+    datasheet.
+  - **position** — 1st-order position servo with bandwidth ``ω_m``.  Legacy
+    mode for motors running a factory position controller.
 """
 
 from __future__ import annotations
@@ -19,7 +28,16 @@ from pydrake.all import (
     BasicVector,
 )
 
+from actuators.motor_dynamics import (
+    MotorDynamics,
+    MotorMode,
+    PositionServoMotor,
+    TorqueMotor,
+    create_motor_dynamics,
+)
+
 if TYPE_CHECKING:
+    from actuators.motor import MotorModelConfig
     from robots.cup_manipulator_tendon import CupManipulatorTendon
 
 
@@ -36,23 +54,42 @@ class SEACableActuator(LeafSystem):
 
     Physical topology (joint 2 only)
     ─────────────────────────────────
+    ::
+
         Motor drum → cable → Big Pulley → SPRING → Link 2 anchor
 
-    State variable
-    ──────────────
-        l_m  [m]  — motor-side cable displacement (wound on drum)
+    Motor dynamics modes
+    ────────────────────
+    The motor model is selected via the ``motor_mode`` parameter (or by
+    passing a pre-built ``MotorDynamics`` instance):
 
-    SEA equations (unilateral cable model)
-    ─────────────────────────────────────────
-        δ       = l_m − r_p · q₂                        spring extension  [m]
-        l̇_m    = ω_m · (l_m_des − l_m)                  motor position servo
-        l_m_des = r_p · q₂ + τ₂_des / (k_s · r_p)       steady-state inversion
-        F_raw   = k_s · δ + b_c · (l̇_m − r_p · q̇₂)     spring–damper force
+    **Torque mode** (default, ``MotorMode.TORQUE``)
+
+        2nd-order rotor dynamics — matches CubeMars MIT torque mode::
+
+            J_m · θ̈_m = τ_m − b_m · θ̇_m − τ_s / N
+
+        where ``τ_m = τ₂_des / N`` and
+        ``τ_s = k_s · (θ_m/N − q₂) + b_c · (θ̇_m/N − q̇₂)``.
+
+        State: ``[θ_m, θ̇_m]`` (motor-side angle and velocity).
+
+    **Position mode** (``MotorMode.POSITION``)
+
+        1st-order position servo with bandwidth ``ω_m``::
+
+            l̇_m = ω_m · (l_m_des − l_m)
+
+        State: ``[l_m]`` (cable displacement).
+
+    Unilateral cable model
+    ──────────────────────
+    ::
 
         Cables can only PULL (tension ≥ 0), never push:
-          δ > 0 → green taut:  T_green = max(F_raw, 0),  T_red = 0
-          δ < 0 → red taut:    T_green = 0,  T_red = max(−F_raw, 0)
-          δ = 0 → both slack:  T_green = T_red = 0
+          δ > 0  →  green taut:  T_green = max(F_raw, 0),  T_red = 0
+          δ < 0  →  red taut:    T_green = 0,  T_red = max(−F_raw, 0)
+          δ = 0  →  both slack:  T_green = T_red = 0
 
         τ₂_out  = r_p · (T_green − T_red)
 
@@ -74,48 +111,82 @@ class SEACableActuator(LeafSystem):
     Output ports
     ────────────
         ``actuation``     [2]   actual torques [τ₁, r_p·F_cable]  [Nm]
-        ``diagnostics``   [8]   [l_m, l_m_des, δ, F_cable,
+        ``diagnostics``   [8]   [motor_pos, motor_aux, δ, F_cable,
                                  τ₁_des, τ₂_des, T_green, T_red]
+
+        The first two diagnostic slots are motor-mode dependent:
+
+        +-----------+-----------------------------+----------------------------+
+        | Mode      | slot [0]                    | slot [1]                   |
+        +===========+=============================+============================+
+        | torque    | θ_m / N  (joint-side pos)   | θ̇_m / N  (joint-side vel) |
+        +-----------+-----------------------------+----------------------------+
+        | position  | l_m      (cable displ.)     | l_m_des  (target displ.)   |
+        +-----------+-----------------------------+----------------------------+
     """
 
     def __init__(
         self,
-        plant:       MultibodyPlant,
-        manipulator: "CupManipulatorTendon",
-        k_s:         float = 200.0,
-        b_c:         float = 2.0,
-        omega_m:     float = 30.0,
-        tau_max:     float = 10.0,
-        dt:          float = 0.002,
+        plant:          MultibodyPlant,
+        manipulator:    "CupManipulatorTendon",
+        k_s:            float = 200.0,
+        b_c:            float = 2.0,
+        tau_max:        float = 10.0,
+        dt:             float = 0.002,
+        motor_mode:     MotorMode = MotorMode.TORQUE,
+        motor_cfg:      "MotorModelConfig | None" = None,
+        omega_m:        float | None = None,
+        motor_dynamics: MotorDynamics | None = None,
     ):
         """
         Parameters
         ----------
-        plant       : Finalized MultibodyPlant.
-        manipulator : CupManipulatorTendon instance (provides PULLEY_RADIUS).
-        k_s         : Cable spring stiffness  [N/m].
-        b_c         : Cable dashpot damping    [N·s/m].
-        omega_m     : Motor position servo bandwidth  [rad/s].
-        tau_max     : Output torque saturation  [Nm].
-        dt          : Discrete update period  [s].
+        plant          Finalized MultibodyPlant.
+        manipulator    CupManipulatorTendon instance (provides PULLEY_RADIUS).
+        k_s            Cable spring stiffness  [N/m].
+        b_c            Cable dashpot damping    [N·s/m].
+        tau_max        Output torque saturation  [Nm].
+        dt             Discrete update period  [s].
+        motor_mode     Which motor dynamics to use (default: TORQUE).
+        motor_cfg      Motor datasheet config (required for torque mode).
+        omega_m        Motor bandwidth [rad/s] (position mode only).
+                       Defaults to ``motor_cfg.max_velocity_joint``.
+        motor_dynamics Pre-built MotorDynamics instance.  When provided,
+                       ``motor_mode``, ``motor_cfg``, and ``omega_m`` are
+                       ignored.
         """
         super().__init__()
         self._plant   = plant
         self._manip   = manipulator
         self._k_s     = float(k_s)
         self._b_c     = float(b_c)
-        self._omega_m = float(omega_m)
         self._tau_max = float(tau_max)
         self._dt      = float(dt)
         self._r_p     = manipulator.PULLEY_RADIUS
+
+        # ── Motor dynamics ───────────────────────────────────────────────────
+        if motor_dynamics is not None:
+            self._motor = motor_dynamics
+        else:
+            self._motor = create_motor_dynamics(
+                mode=motor_mode,
+                motor_cfg=motor_cfg,
+                k_s=k_s, b_c=b_c, r_p=self._r_p, dt=dt,
+                omega_m=omega_m,
+            )
+        self._motor_mode = (
+            motor_mode if motor_dynamics is None
+            else (MotorMode.TORQUE if isinstance(motor_dynamics, TorqueMotor)
+                  else MotorMode.POSITION)
+        )
 
         # Velocity-vector indices for [q1, q2] in Drake's nv-vector
         j1 = manipulator.get_joint_by_name(plant, manipulator.JT1_NAME)
         j2 = manipulator.get_joint_by_name(plant, manipulator.JT2_NAME)
         self._v_idx = [j1.velocity_start(), j2.velocity_start()]
 
-        # ── Discrete state: l_m ──────────────────────────────────────────────
-        self._l_m_idx = self.DeclareDiscreteState(1)
+        # ── Discrete state: motor internal state ─────────────────────────────
+        self._motor_state_idx = self.DeclareDiscreteState(self._motor.num_states)
         self.DeclarePeriodicDiscreteUpdateEvent(dt, 0.0, self._update_motor)
 
         # ── Ports ────────────────────────────────────────────────────────────
@@ -125,6 +196,11 @@ class SEACableActuator(LeafSystem):
 
         self.DeclareVectorOutputPort("actuation",   2, self._calc_actuation)
         self.DeclareVectorOutputPort("diagnostics", 8, self._calc_diagnostics)
+
+    @property
+    def motor_mode(self) -> MotorMode:
+        """Active motor dynamics mode."""
+        return self._motor_mode
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
@@ -138,61 +214,26 @@ class SEACableActuator(LeafSystem):
         q_dot = np.array([v_all[self._v_idx[0]], v_all[self._v_idx[1]]])
         return q, q_dot
 
-    def _spring_force(self, l_m, l_m_des, q2, q2_dot):
-        """Compute cable force with unilateral (slack) cable model.
-
-        Two cables wrap the pulley in opposite directions.  Each cable
-        can only pull (tension >= 0), never push.  When one side is
-        taut the other is slack and transmits zero force.
-
-        Returns (F_cable, delta, l_m_dot, T_green, T_red).
-        """
-        delta     = l_m - self._r_p * q2          # + = green stretched
-        l_m_dot   = self._omega_m * (l_m_des - l_m)
-        delta_dot = l_m_dot - self._r_p * q2_dot
-        F_raw     = self._k_s * delta + self._b_c * delta_dot
-
-        if delta > 0.0:
-            # Green cable taut, red cable slack
-            T_green = float(max(F_raw, 0.0))    # cable can only pull
-            T_red   = 0.0
-        elif delta < 0.0:
-            # Red cable taut, green cable slack
-            T_green = 0.0
-            T_red   = float(max(-F_raw, 0.0))   # cable can only pull
-        else:
-            # Both cables at rest
-            T_green = 0.0
-            T_red   = 0.0
-
-        F_cable = T_green - T_red   # unilateral: only one side active
-        return F_cable, delta, l_m_dot, T_green, T_red
-
-    def _compute_l_m_des(self, tau2_des, q2):
-        """Steady-state spring inversion: l_m_des = r_p·q₂ + τ₂/(k_s·r_p)."""
-        return self._r_p * q2 + tau2_des / (self._k_s * self._r_p)
-
-    # ── Discrete update: first-order motor position servo ─────────────────────
+    # ── Discrete update: delegates to motor dynamics ──────────────────────────
 
     def _update_motor(self, context, discrete_state):
-        """Euler-step: l_m ← l_m + dt · ω_m · (l_m_des − l_m)."""
-        l_m     = context.get_discrete_state(self._l_m_idx).value()[0]
-        tau_des = self._tau_port.Eval(context)
-        q, _    = self._read_joint_state(context)
-        l_m_des = self._compute_l_m_des(tau_des[1], q[1])
-        l_m_new = l_m + self._dt * self._omega_m * (l_m_des - l_m)
-        discrete_state.get_mutable_vector(self._l_m_idx).SetFromVector(
-            np.array([l_m_new]),
-        )
+        """Advance motor state by one timestep via the motor dynamics model."""
+        motor_state = context.get_discrete_state(self._motor_state_idx).value().copy()
+        tau_des     = self._tau_port.Eval(context)
+        q, q_dot    = self._read_joint_state(context)
+        new_state   = self._motor.step(motor_state, tau_des[1], q[1], q_dot[1])
+        discrete_state.get_mutable_vector(self._motor_state_idx).SetFromVector(new_state)
 
     # ── Output port callbacks ─────────────────────────────────────────────────
 
     def _calc_actuation(self, context, output):
-        tau_des = self._tau_port.Eval(context)
-        l_m     = context.get_discrete_state(self._l_m_idx).value()[0]
-        q, q_dot = self._read_joint_state(context)
-        l_m_des  = self._compute_l_m_des(tau_des[1], q[1])
-        F_cable, _, _, _, _ = self._spring_force(l_m, l_m_des, q[1], q_dot[1])
+        tau_des     = self._tau_port.Eval(context)
+        motor_state = context.get_discrete_state(self._motor_state_idx).value()
+        q, q_dot    = self._read_joint_state(context)
+
+        F_cable, _, _, _, _, _ = self._motor.compute_spring_force(
+            motor_state, tau_des[1], q[1], q_dot[1],
+        )
         tau_out = np.array([
             tau_des[0],              # J1: pass-through (rigid)
             self._r_p * F_cable,     # J2: SEA cable spring
@@ -200,16 +241,16 @@ class SEACableActuator(LeafSystem):
         output.SetFromVector(np.clip(tau_out, -self._tau_max, self._tau_max))
 
     def _calc_diagnostics(self, context, output):
-        tau_des = self._tau_port.Eval(context)
-        l_m     = context.get_discrete_state(self._l_m_idx).value()[0]
-        q, q_dot = self._read_joint_state(context)
-        l_m_des  = self._compute_l_m_des(tau_des[1], q[1])
-        F_cable, delta, _, T_green, T_red = self._spring_force(
-            l_m, l_m_des, q[1], q_dot[1],
+        tau_des     = self._tau_port.Eval(context)
+        motor_state = context.get_discrete_state(self._motor_state_idx).value()
+        q, q_dot    = self._read_joint_state(context)
+
+        F_cable, delta, T_green, T_red, s0, s1 = self._motor.compute_spring_force(
+            motor_state, tau_des[1], q[1], q_dot[1],
         )
         output.SetFromVector(np.array([
-            l_m,          # [0]  motor cable displacement       [m]
-            l_m_des,      # [1]  desired motor cable position   [m]
+            s0,           # [0]  motor pos (l_m or θ_m/N)      [m or rad]
+            s1,           # [1]  motor aux (l_m_des or θ̇_m/N)
             delta,        # [2]  spring extension δ             [m]
             F_cable,      # [3]  net cable force                [N]
             tau_des[0],   # [4]  desired τ₁ (pass-through)     [Nm]
@@ -219,7 +260,7 @@ class SEACableActuator(LeafSystem):
         ]))
 
     def initialize_spring_at_rest(self, context, q2_init: float) -> None:
-        """Set l_m = r_p · q₂ so the spring starts with δ = 0 (no pre-load).
+        """Set motor state so the spring starts with δ = 0 (no pre-load).
 
         Call this on the SEACableActuator's own context from the diagram,
         before calling simulator.Initialize().
@@ -229,7 +270,5 @@ class SEACableActuator(LeafSystem):
         context  : The SEACableActuator's mutable context from the diagram.
         q2_init  : Initial joint-2 angle [rad] (user-order).
         """
-        l_m_init = self._r_p * q2_init
-        context.get_mutable_discrete_state(self._l_m_idx).SetFromVector(
-            np.array([l_m_init]),
-        )
+        init_state = self._motor.initial_state(q2_init)
+        context.get_mutable_discrete_state(self._motor_state_idx).SetFromVector(init_state)

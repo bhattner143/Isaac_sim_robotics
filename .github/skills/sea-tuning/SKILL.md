@@ -1,6 +1,6 @@
 ---
 name: sea-tuning
-description: "Tune SEA (Series Elastic Actuator) parameters for cable-driven manipulators. Use when: adjusting spring stiffness, cable damping, motor bandwidth, diagnosing tracking lag, oscillations, or cable slack."
+description: "Tune SEA (Series Elastic Actuator) parameters for cable-driven manipulators. Use when: adjusting spring stiffness, cable damping, motor bandwidth/inertia, diagnosing tracking lag, oscillations, or cable slack."
 argument-hint: "Describe the behavior you're seeing (e.g., 'tracking lags by 200ms' or 'joint 2 oscillates')"
 ---
 
@@ -11,15 +11,34 @@ argument-hint: "Describe the behavior you're seeing (e.g., 'tracking lags by 200
 - Spring oscillations or instability
 - Cable goes slack (δ < 0)
 - Tuning for a new trajectory speed or payload
+- Switching between torque and position motor modes
+
+## Motor Mode Selection
+
+Two motor dynamics modes are available via `--sea-mode`:
+
+| Mode | Flag | Best for | Key params |
+|------|------|----------|------------|
+| **Torque** (default) | `--sea-mode torque` | CubeMars MIT mode, hardware-accurate | `J_m`, `b_m` from motor datasheet |
+| **Position** (legacy) | `--sea-mode position` | Simple tuning, quick experiments | `ω_m` (motor bandwidth) |
+
+With **torque mode**, the motor resonance frequency is:
+```
+ω_n = sqrt(k_s / (N² · J_m))
+```
+For AK60-6 with k_s=300: ω_n ≈ 24 rad/s (4 Hz). Ensure `dt << 2π/ω_n`.
 
 ## Parameter Reference
 
-| Param | Symbol | Default | Range | Effect |
-|-------|--------|---------|-------|--------|
-| Spring stiffness | `k_s` | 200 N/m | 30–1000 | Higher = stiffer response, less lag, more force transmission |
-| Cable damping | `b_c` | 2.0 N·s/m | 0.5–10 | Higher = less oscillation, more energy loss |
-| Motor bandwidth | `ω_m` | 30 rad/s | 10–100 | Higher = faster motor servo, less phase lag |
-| Pulley radius | `r_p` | 47.75 mm | Fixed | Set by HTD 5M 60T belt geometry |
+| Param | Symbol | Default | Range | Mode | Effect |
+|-------|--------|---------|-------|------|--------|
+| Spring stiffness | `k_s` | 300 N/m | 30–1000 | both | Higher = stiffer response, less lag |
+| Cable damping | `b_c` | 2.0 N·s/m | 0.5–10 | both | Higher = less oscillation |
+| Motor bandwidth | `ω_m` | 11.17 rad/s | 10–100 | position | Higher = faster motor servo |
+| Rotor inertia | `J_m` | 3.3191e-5 kg·m² | datasheet | torque | Lower = faster response |
+| Motor damping | `b_m` | viscous/N² | datasheet | torque | Higher = more rotor damping |
+| Gear ratio | `N` | 6 | datasheet | torque | From `MotorModelConfig` |
+| Pulley radius | `r_p` | 47.75 mm | fixed | both | Set by HTD 5M 60T belt |
 
 ## Tuning Procedure
 

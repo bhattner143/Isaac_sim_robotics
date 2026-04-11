@@ -105,8 +105,11 @@ from robots.cup_manipulator_tendon import (
     CupManipulatorTendon,
     create_cable_manipulator_config,
 )
-from controller.controller import SEACableController
+from controller.controller import ComputedTorqueController
+from actuators.sea import SEACableActuator
+from actuators.motor_dynamics import MotorMode
 from project_utils.viz_cables import draw_cables
+from actuators.motor import get_motor, MOTOR_CHOICES
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 _DT   = 0.002   # plant & controller timestep [s]
@@ -123,16 +126,31 @@ parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 )
 
+_mot = parser.add_argument_group("motor model  (elbow / joint 2)")
+_mot.add_argument("--motor", choices=MOTOR_CHOICES, default="AK60_6_KV80_Config",
+                  help="CubeMars motor model for the elbow joint.")
+
 _sea = parser.add_argument_group("SEA cable model  (joint 2)")
-_sea.add_argument("--spring-stiffness", type=float, default=3.0,
+_sea.add_argument("--sea-mode",  choices=["torque", "position"], default="torque",
+                  help="Motor dynamics mode: 'torque' = 2nd-order rotor dynamics "
+                       "(MIT torque mode, default), 'position' = 1st-order position servo.")
+_sea.add_argument("--spring-stiffness", type=float, default=30000 ,
                   metavar="K_S",
                   help="Cable spring stiffness k_s [N/m].  Lower → more lag.")
 _sea.add_argument("--cable-damping",    type=float, default=2.0,
                   metavar="B_C",
                   help="Cable dashpot damping b_c [N·s/m]")
-_sea.add_argument("--motor-bandwidth",  type=float, default=30.0,
+# Motor open-loop bandwidth from datasheet: ω_b = 1/τ_m ≈ 400 rad/s (AK60-6).
+# However, this is the *open-loop mechanical* bandwidth, not the closed-loop
+# position-servo bandwidth.  Real closed-loop bandwidth is 2–5× lower depending
+# on the motor's internal PID tuning.  We default to a conservative 100 rad/s
+# since CubeMars does not publish a closed-loop position bandwidth spec.
+_DEFAULT_MOTOR_BW = 100.0  # rad/s  (conservative closed-loop estimate)
+_sea.add_argument("--motor-bandwidth",  type=float, default=None,
                   metavar="W_M",
-                  help="Motor position servo bandwidth ω_m [rad/s].")
+                  help="Motor position servo bandwidth ω_m [rad/s].  "
+                       f"Default: {_DEFAULT_MOTOR_BW} rad/s (conservative; "
+                       "open-loop 1/τ_m ≈ 400 rad/s).")
 _sea.add_argument("--compare",          action="store_true",
                   help="Run spring sim AND a near-rigid sim, overlay plots.")
 _sea.add_argument("--compare-rigid-ks", type=float, default=5000.0,
@@ -144,8 +162,8 @@ _ct.add_argument("--ct-kp",      type=float, default=100.0,
                  help="CT position gain Kp [1/s²]")
 _ct.add_argument("--ct-kd",      type=float, default=40.0,
                  help="CT velocity gain Kd [1/s]")
-_ct.add_argument("--ct-tau-max", type=float, default=10.0,
-                 help="Torque saturation [Nm]")
+_ct.add_argument("--ct-tau-max", type=float, default=None,
+                 help="Torque saturation [Nm].  Default: motor peak_torque_joint.")
 
 _sim = parser.add_argument_group("simulation")
 _sim.add_argument("--duration",       type=float, default=10.0,
@@ -175,6 +193,29 @@ _traj.add_argument("--traj-v-corner",     type=float, default=0.05)
 _traj.add_argument("--traj-corner-blend", type=float, default=0.35)
 
 args = parser.parse_args()
+
+# ─── Motor-derived defaults ───────────────────────────────────────────────────
+_motor = get_motor(args.motor)
+_motor_mode = MotorMode(args.sea_mode)
+if args.motor_bandwidth is None:
+    args.motor_bandwidth = _DEFAULT_MOTOR_BW  # see comment at --motor-bandwidth definition
+if args.ct_tau_max is None:
+    args.ct_tau_max = _motor.peak_torque_joint          # saturation from datasheet
+
+_mode_label = "torque (2nd-order rotor)" if _motor_mode == MotorMode.TORQUE else "position (1st-order servo)"
+print(colored(
+    f"\n  Motor: {args.motor}  —  SEA mode: {_mode_label}"
+    f"\n    gear ratio      = {_motor.gear_ratio}"
+    f"\n    peak torque     = {_motor.peak_torque_joint} Nm  (τ_max)"
+    f"\n    continuous τ    = {_motor.continuous_torque_joint} Nm"
+    f"\n    max joint vel   = {_motor.max_velocity_joint:.2f} rad/s"
+    f"  ({_motor.max_velocity_joint * 60 / (2 * np.pi):.1f} rpm)"
+    f"\n    viscous damping = {_motor.viscous_damping_joint} Nm·s/rad"
+    f"\n    rotor inertia   = {_motor.rotor_inertia_joint:.5f} kg·m²  (reflected)"
+    f"\n    → ω_m = {args.motor_bandwidth:.2f} rad/s"
+    f"   τ_max = {args.ct_tau_max:.1f} Nm",
+    "yellow",
+))
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -284,10 +325,14 @@ def run_simulation(
     omega_m: float,
     label: str,
     meshcat,
+    motor_mode: MotorMode = MotorMode.TORQUE,
 ) -> dict:
     """Build, run, and collect logs for a single SEA configuration."""
+    _mode_str = "torque (2nd-order)" if motor_mode == MotorMode.TORQUE else "position (1st-order)"
     print(colored(f"\n{'=' * 60}", "cyan"))
-    print(colored(f"  SEA Simulation: {label}", "cyan"))
+    print(colored(f"  SEA Simulation: {label}  [{_mode_str}]", "cyan"))
+    print(colored(f"  Motor: {args.motor}  (τ_peak={_motor.peak_torque_joint} Nm, "
+                  f"τ_cont={_motor.continuous_torque_joint} Nm)", "cyan"))
     print(colored(f"  k_s={ks} N/m   b_c={b_c} N·s/m   ω_m={omega_m} rad/s", "cyan"))
     print(colored(f"{'=' * 60}", "cyan"))
 
@@ -360,15 +405,26 @@ def run_simulation(
             L1, L2, p0, np.array([np.deg2rad(5.0), np.deg2rad(15.0)]),
         )
 
-    # ── 4. Controller ────────────────────────────────────────────────────────
-    ctrl = builder.AddSystem(
-        SEACableController(
+    # ── 4. Controller + Actuator (two-block architecture) ────────────────────
+    ct = builder.AddSystem(
+        ComputedTorqueController(
             plant, manipulator,
-            k_s=ks, b_c=b_c, omega_m=omega_m,
             Kp=args.ct_kp, Kd=args.ct_kd, tau_max=args.ct_tau_max,
         ),
     )
-    ctrl.set_name(f"SEA_ctrl_ks{ks:.0f}")
+    ct.set_name("CT_ctrl")
+
+    sea = builder.AddSystem(
+        SEACableActuator(
+            plant, manipulator,
+            k_s=ks, b_c=b_c,
+            tau_max=args.ct_tau_max, dt=_DT,
+            motor_mode=motor_mode,
+            motor_cfg=_motor,
+            omega_m=omega_m,
+        ),
+    )
+    sea.set_name(f"SEA_ks{ks:.0f}_{motor_mode.value}")
 
     # Preamble-aware looping trajectory source
     class _PreambleSrc(LeafSystem):
@@ -395,18 +451,20 @@ def run_simulation(
     vel_src.set_name("Vel_ref")
     acc_src.set_name("Acc_ref")
 
-    # ── 5. Wire ──────────────────────────────────────────────────────────────
-    builder.Connect(ee_src.get_output_port(),           ctrl.GetInputPort("desired_ee_pos"))
-    builder.Connect(vel_src.get_output_port(),          ctrl.GetInputPort("ee_vel_ref"))
-    builder.Connect(acc_src.get_output_port(),          ctrl.GetInputPort("ee_acc_ref"))
-    builder.Connect(plant.get_state_output_port(),      ctrl.GetInputPort("plant_state"))
-    builder.Connect(ctrl.GetOutputPort("actuation"),    plant.get_actuation_input_port())
+    # ── 5. Wire  (Trajectory → CT → SEA → Plant) ─────────────────────────────
+    builder.Connect(ee_src.get_output_port(),           ct.GetInputPort("desired_ee_pos"))
+    builder.Connect(vel_src.get_output_port(),          ct.GetInputPort("ee_vel_ref"))
+    builder.Connect(acc_src.get_output_port(),          ct.GetInputPort("ee_acc_ref"))
+    builder.Connect(plant.get_state_output_port(),      ct.GetInputPort("plant_state"))
+    builder.Connect(ct.GetOutputPort("actuation"),      sea.GetInputPort("tau_desired"))
+    builder.Connect(plant.get_state_output_port(),      sea.GetInputPort("plant_state"))
+    builder.Connect(sea.GetOutputPort("actuation"),     plant.get_actuation_input_port())
 
     # ── 6. Loggers ───────────────────────────────────────────────────────────
     log_state = LogVectorOutput(plant.get_state_output_port(),          builder)
-    log_act   = LogVectorOutput(ctrl.GetOutputPort("actuation"),        builder)
-    log_diag  = LogVectorOutput(ctrl.GetOutputPort("diagnostics"),      builder)
-    log_qdes  = LogVectorOutput(ctrl.GetOutputPort("joint_positions"),  builder)
+    log_act   = LogVectorOutput(sea.GetOutputPort("actuation"),         builder)
+    log_diag  = LogVectorOutput(sea.GetOutputPort("diagnostics"),       builder)
+    log_qdes  = LogVectorOutput(ct.GetOutputPort("joint_positions"),    builder)
     log_ref   = LogVectorOutput(ee_src.get_output_port(),               builder)
     log_vel   = LogVectorOutput(vel_src.get_output_port(),              builder)
     log_acc   = LogVectorOutput(acc_src.get_output_port(),              builder)
@@ -432,11 +490,9 @@ def run_simulation(
     plant.SetVelocities(plant_ctx, np.zeros(plant.num_velocities()))
 
     # Set initial motor cable position = r_p · q₂_init  (spring at rest: δ=0)
-    ctrl_ctx = ctrl.GetMyMutableContextFromRoot(sim_ctx)
+    sea_ctx = sea.GetMyMutableContextFromRoot(sim_ctx)
+    sea.initialize_spring_at_rest(sea_ctx, q_init[1])
     l_m_init = manipulator.PULLEY_RADIUS * q_init[1]
-    ctrl_ctx.get_mutable_discrete_state(ctrl._l_m_idx).SetFromVector(
-        np.array([l_m_init]),
-    )
 
     ee0 = manipulator.get_end_effector_position(plant, plant_ctx)
     print(colored(
@@ -461,9 +517,9 @@ def run_simulation(
             return
         _ctx = simulator.get_mutable_context()
         _pc  = plant.GetMyMutableContextFromRoot(_ctx)
-        # Read spring extension δ from controller diagnostics
-        _ctrl_ctx = ctrl.GetMyMutableContextFromRoot(_ctx)
-        _diag = ctrl.GetOutputPort("diagnostics").Eval(_ctrl_ctx)
+        # Read spring extension δ from SEA diagnostics
+        _sea_ctx = sea.GetMyMutableContextFromRoot(_ctx)
+        _diag = sea.GetOutputPort("diagnostics").Eval(_sea_ctx)
         _delta = _diag[2]  # spring extension δ [m]
         manipulator.compute_tangents(plant, _pc)
         draw_cables(meshcat, plant, _pc, manipulator, _rig,
@@ -477,7 +533,7 @@ def run_simulation(
         if args.move_duration > 0.0 else ""
     )
     print(colored(
-        f"\n▶  SEA Cable — {label}"
+        f"\n▶  SEA Cable — {label}   Motor: {args.motor}"
         f"\n   k_s = {ks} N/m   b_c = {b_c} N·s/m   ω_m = {omega_m} rad/s"
         f"\n   CT:  Kp={args.ct_kp}   Kd={args.ct_kd}   ωn={wn:.1f} rad/s   ζ={zeta:.2f}"
         f"\n   {_move_info}Looping — lap={args.duration:.1f} s  (runs until Ctrl-C)"
@@ -527,6 +583,20 @@ def run_simulation(
     _,     vel_data   = _get(log_vel)
     _,     acc_data   = _get(log_acc)
 
+    # Truncate to shortest common sample count (CT, SEA, and plant are
+    # separate LeafSystems whose loggers may record slightly different counts).
+    N = min(len(t_log), state_data.shape[1], act_data.shape[1],
+            diag_data.shape[1], qdes_data.shape[1],
+            ref_data.shape[1], vel_data.shape[1], acc_data.shape[1])
+    t_log      = t_log[:N]
+    state_data = state_data[:, :N]
+    act_data   = act_data[:, :N]
+    diag_data  = diag_data[:, :N]
+    qdes_data  = qdes_data[:, :N]
+    ref_data   = ref_data[:, :N]
+    vel_data   = vel_data[:, :N]
+    acc_data   = acc_data[:, :N]
+
     # FK for actual EE position
     nq       = plant.num_positions()
     ee_x_act = np.zeros(len(t_log))
@@ -564,11 +634,15 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
         Row 1: Joint position / velocity / acceleration
         Row 2: Torques  |  Cable tensions  |  EE XY path
 
-    Figure 2  (4×2) — SEA-specific diagnostics:
+    Figure 2  (5×2) — SEA-specific diagnostics:
         Row 0: EE position X and Y
         Row 1: Torque desired-vs-applied  |  EE XY path
-        Row 2: Motor cable vs joint side  |  Spring extension + cable force
-        Row 3: Torque tracking error  |  EE tracking error
+        Row 2: Motor cable vs joint side  |  Spring extension δ
+        Row 3: Cable tension F_cable      |  Green/Red tensions
+        Row 4: Torque tracking error      |  EE tracking error
+
+    All y-axes are clipped to the 99th percentile to avoid initial
+    transients dominating the view.
     """
     datasets = [("Spring", data_spring, "tab:blue")]
     if data_rigid is not None:
@@ -638,6 +712,7 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
     fig1, axes1 = plt.subplots(3, 3, figsize=(18, 11))
     fig1.suptitle(
         f"SEA Computed Torque — {ks_label}{rid_info}   "
+        f"Motor: {args.motor}   "
         f"Kp={args.ct_kp}  Kd={args.ct_kd}  "
         f"ωn={wn:.1f} rad/s  ζ={zeta:.2f}",
         fontsize=12, fontweight="bold",
@@ -708,8 +783,7 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
     ax.axhline( args.ct_tau_max, color='k', ls=':', lw=0.8, label=f'±{args.ct_tau_max} Nm')
     ax.axhline(-args.ct_tau_max, color='k', ls=':', lw=0.8)
     ax.axhline(0, color='k', lw=0.5)
-    _tau_peak = max(np.abs(np.concatenate([tau1_des, tau2_des])).max(), args.ct_tau_max) * 1.15
-    ax.set_ylim(-_tau_peak, _tau_peak)
+    ax.set_ylim(*_pct_ylim(tau1_des, tau2_des, tau1_act, tau2_act))
     ax.set_title('Torque: required (solid) vs applied (dashed)')
     ax.set_ylabel('[Nm]'); ax.set_xlabel('Time [s]')
     ax.legend(fontsize=7, ncol=2); ax.grid(True, alpha=0.4)
@@ -720,6 +794,7 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
     ax.plot(t, tau2_des / r_p, 'k--', lw=0.8,
             label=f'F_net=τ2/r_p  (r_p={r_p*1e3:.1f} mm)')
     ax.axhline(0, color='k', lw=0.5)
+    ax.set_ylim(*_pct_ylim(T_green, T_red))
     ax.set_title('Cable Tensions'); ax.set_ylabel('[N]'); ax.set_xlabel('Time [s]')
     ax.legend(fontsize=7); ax.grid(True, alpha=0.4)
 
@@ -737,15 +812,15 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
     fig1.tight_layout()
 
     # ════════════════════════════════════════════════════════════════════
-    # FIGURE 2:  4 × 2 — SEA-specific diagnostics
+    # FIGURE 2:  5 × 2 — SEA-specific diagnostics
     # ════════════════════════════════════════════════════════════════════
-    fig2 = plt.figure(figsize=(16, 14))
-    gs   = GridSpec(4, 2, figure=fig2, hspace=0.48, wspace=0.35)
-    axes2 = [[fig2.add_subplot(gs[r, c]) for c in range(2)] for r in range(4)]
+    fig2 = plt.figure(figsize=(16, 17))
+    gs   = GridSpec(5, 2, figure=fig2, hspace=0.55, wspace=0.35)
+    axes2 = [[fig2.add_subplot(gs[r, c]) for c in range(2)] for r in range(5)]
 
     fig2.suptitle(
         "Series Elastic Actuator — Cable compliance effect on joint-2 tracking\n"
-        f"{ks_label}{rid_info}",
+        f"{ks_label}{rid_info}   Motor: {args.motor}",
         fontsize=12, fontweight="bold",
     )
 
@@ -774,6 +849,7 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
     axes2[1][0].plot(t, tau1_des, "g-",  lw=1.0, alpha=0.5, label="τ₁ desired")
     axes2[1][0].plot(t, tau1_act, "g--", lw=0.8, alpha=0.5, label="τ₁ actual")
     axes2[1][0].axhline(0, color="k", lw=0.5)
+    axes2[1][0].set_ylim(*_pct_ylim(tau1_des, tau2_des, tau1_act, tau2_act))
     axes2[1][0].set_title("Torque: CT desired vs applied (spring lag visible on τ₂)")
     axes2[1][0].set_ylabel("[Nm]")
     axes2[1][0].legend(fontsize=7, ncol=2); axes2[1][0].grid(True, alpha=0.4)
@@ -789,7 +865,7 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
     ax_xy.set_title("EE XY Path"); ax_xy.set_xlabel("X [m]"); ax_xy.set_ylabel("Y [m]")
     ax_xy.legend(fontsize=7); ax_xy.grid(True, alpha=0.4)
 
-    # ── Row 2: Motor cable vs joint side | Spring extension + cable force ──
+    # ── Row 2: Motor cable vs joint side | Spring extension δ ───────────
     l_m     = diag[0]
     l_m_des = diag[1]
     delta   = diag[2]
@@ -799,6 +875,7 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
     axes2[2][0].plot(t, l_m     * 1e3, "b-",  lw=1.5, label="l_m (motor cable) [mm]")
     axes2[2][0].plot(t, l_m_des * 1e3, "b--", lw=1.2, label="l_m_des [mm]")
     axes2[2][0].plot(t, q2_rp   * 1e3, "r-",  lw=1.5, label="r_p·q₂ (joint side) [mm]")
+    axes2[2][0].set_ylim(*_pct_ylim(l_m * 1e3, l_m_des * 1e3, q2_rp * 1e3))
     axes2[2][0].set_title(
         "Motor cable l_m vs joint side r_p·q₂\n"
         "(gap = spring extension δ)"
@@ -808,36 +885,53 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
 
     ax_d = axes2[2][1]
     ax_d.plot(t, delta * 1e3, color="purple", lw=1.5, label="δ = spring extension [mm]")
-    ax_d_twin = ax_d.twinx()
-    ax_d_twin.plot(t, F_cable, color="orange", lw=1.5, label="F_cable [N]")
     ax_d.axhline(0, color="k", lw=0.5)
+    ax_d.set_ylim(*_pct_ylim(delta * 1e3))
     ax_d.set_title(
-        f"Spring extension δ  &  cable tension\n"
-        f"k_s = {d_s['k_s']:.0f} N/m  →  F = k_s·δ + b_c·δ̇  (cable can only pull)"
+        f"Spring extension δ\n"
+        f"k_s = {d_s['k_s']:.0f} N/m"
     )
-    ax_d.set_ylabel("δ [mm]", color="purple")
-    ax_d_twin.set_ylabel("F [N]", color="orange")
-    lines_d, labs_d = ax_d.get_legend_handles_labels()
-    lines_t, labs_t = ax_d_twin.get_legend_handles_labels()
-    ax_d.legend(lines_d + lines_t, labs_d + labs_t, fontsize=7, loc="upper right")
-    ax_d.grid(True, alpha=0.4)
+    ax_d.set_ylabel("δ [mm]")
+    ax_d.legend(fontsize=7); ax_d.grid(True, alpha=0.4)
 
-    # ── Row 3: Torque tracking error | EE tracking error ─────────────────
+    # ── Row 3: Cable tension (separate) | Cable tension breakdown ────────
+    ax_ft = axes2[3][0]
+    ax_ft.plot(t, F_cable, color="orange", lw=1.5, label="F_cable [N]")
+    ax_ft.axhline(0, color="k", lw=0.5)
+    ax_ft.set_ylim(*_pct_ylim(F_cable))
+    ax_ft.set_title(
+        f"Cable tension  F = k_s·δ + b_c·δ̇\n"
+        f"k_s = {d_s['k_s']:.0f} N/m  (cable can only pull)"
+    )
+    ax_ft.set_ylabel("F [N]")
+    ax_ft.legend(fontsize=7); ax_ft.grid(True, alpha=0.4)
+
+    ax_tens = axes2[3][1]
+    ax_tens.plot(t, T_green, "g-", lw=1.2, label="T_green (retract)")
+    ax_tens.plot(t, T_red,   "r-", lw=1.2, label="T_red (extend)")
+    ax_tens.axhline(0, color="k", lw=0.5)
+    ax_tens.set_ylim(*_pct_ylim(T_green, T_red))
+    ax_tens.set_title("Green / Red cable tensions")
+    ax_tens.set_ylabel("[N]")
+    ax_tens.legend(fontsize=7); ax_tens.grid(True, alpha=0.4)
+
+    # ── Row 4: Torque tracking error | EE tracking error ─────────────────
     tau_err = tau2_des - tau2_act
-    axes2[3][0].plot(t, tau2_des, "r-",  lw=1.2, label="τ₂ desired")
-    axes2[3][0].plot(t, tau2_act, "b-",  lw=1.2, label="τ₂ actual")
-    axes2[3][0].fill_between(
+    axes2[4][0].plot(t, tau2_des, "r-",  lw=1.2, label="τ₂ desired")
+    axes2[4][0].plot(t, tau2_act, "b-",  lw=1.2, label="τ₂ actual")
+    axes2[4][0].fill_between(
         t, tau2_des, tau2_act,
         where=(np.abs(tau_err) > 0.01),
         alpha=0.25, color="red", label="|error|",
     )
-    axes2[3][0].axhline(0, color="k", lw=0.5)
+    axes2[4][0].axhline(0, color="k", lw=0.5)
+    axes2[4][0].set_ylim(*_pct_ylim(tau2_des, tau2_act))
     rms_err = np.sqrt(np.mean(tau_err ** 2))
-    axes2[3][0].set_title(
+    axes2[4][0].set_title(
         f"τ₂ tracking error (shaded = lag)   RMS = {rms_err:.3f} Nm"
     )
-    axes2[3][0].set_ylabel("[Nm]"); axes2[3][0].set_xlabel("Time [s]")
-    axes2[3][0].legend(fontsize=7); axes2[3][0].grid(True, alpha=0.4)
+    axes2[4][0].set_ylabel("[Nm]"); axes2[4][0].set_xlabel("Time [s]")
+    axes2[4][0].legend(fontsize=7); axes2[4][0].grid(True, alpha=0.4)
 
     for lbl_, d_, col_ in datasets:
         t_d = d_["t"]
@@ -846,11 +940,12 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
             d_["ee_y"] - np.interp(t_d, d_["t"], d_["ref"][1]),
         ) * 1e3
         ls_ = "-" if lbl_ == "Spring" else "--"
-        axes2[3][1].plot(t_d, ee_err, color=col_, ls=ls_, lw=1.4,
+        axes2[4][1].plot(t_d, ee_err, color=col_, ls=ls_, lw=1.4,
                         label=f"{lbl_} k_s={d_['k_s']:.0f}")
-    axes2[3][1].set_title("EE tracking error |p_act − p_ref|")
-    axes2[3][1].set_ylabel("[mm]"); axes2[3][1].set_xlabel("Time [s]")
-    axes2[3][1].legend(fontsize=7); axes2[3][1].grid(True, alpha=0.4)
+    axes2[4][1].set_ylim(*_pct_ylim(ee_err))
+    axes2[4][1].set_title("EE tracking error |p_act − p_ref|")
+    axes2[4][1].set_ylabel("[mm]"); axes2[4][1].set_xlabel("Time [s]")
+    axes2[4][1].legend(fontsize=7); axes2[4][1].grid(True, alpha=0.4)
 
     fig2.tight_layout(rect=[0, 0, 1, 0.95])
 
@@ -889,6 +984,7 @@ def main():
         omega_m=args.motor_bandwidth,
         label=f"Spring  k_s={args.spring_stiffness} N/m",
         meshcat=meshcat,
+        motor_mode=_motor_mode,
     )
 
     data_rigid = None
@@ -899,6 +995,7 @@ def main():
             omega_m=args.motor_bandwidth * 5,   # faster motor for "rigid"
             label=f"Rigid  k_s={args.compare_rigid_ks} N/m",
             meshcat=meshcat,
+            motor_mode=_motor_mode,
         )
 
     plot_sea_results(data_spring, data_rigid)
