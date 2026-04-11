@@ -111,8 +111,8 @@ class SEACableActuator(LeafSystem):
     Output ports
     ────────────
         ``actuation``     [2]   actual torques [τ₁, r_p·F_cable]  [Nm]
-        ``diagnostics``   [8]   [motor_pos, motor_aux, δ, F_cable,
-                                 τ₁_des, τ₂_des, T_green, T_red]
+        ``diagnostics``   [9]   [motor_pos, motor_aux, δ, F_cable,
+                                 τ₁_des, τ₂_des, T_green, T_red, τ_motor]
 
         The first two diagnostic slots are motor-mode dependent:
 
@@ -195,7 +195,7 @@ class SEACableActuator(LeafSystem):
         self._state_port = self.DeclareVectorInputPort("plant_state",  nstate)
 
         self.DeclareVectorOutputPort("actuation",   2, self._calc_actuation)
-        self.DeclareVectorOutputPort("diagnostics", 8, self._calc_diagnostics)
+        self.DeclareVectorOutputPort("diagnostics", 9, self._calc_diagnostics)
 
     @property
     def motor_mode(self) -> MotorMode:
@@ -257,6 +257,8 @@ class SEACableActuator(LeafSystem):
             tau_des[1],   # [5]  desired τ₂ (before spring)    [Nm]
             T_green,      # [6]  retracting cable tension       [N]
             T_red,        # [7]  extending cable tension        [N]
+            self._motor.compute_motor_torque(motor_state, tau_des[1]),
+                          # [8]  motor-side electromagnetic τ   [Nm]
         ]))
 
     def initialize_spring_at_rest(self, context, q2_init: float) -> None:

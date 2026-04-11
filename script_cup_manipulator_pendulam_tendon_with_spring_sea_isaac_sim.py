@@ -151,6 +151,8 @@ from controller.trajectory import (
     build_move_to_start,
 )
 from actuators.sea_isaacsim import SEACableActuatorNP
+from actuators.motor_dynamics import MotorMode
+from actuators.motor import get_motor, MOTOR_CHOICES
 from project_utils.viz_cables_isaacsim import CableVisualizerIsaac
 
 # Spring zigzag generator (from cable module — used for spring USD prims)
@@ -186,25 +188,38 @@ parser.add_argument('--tilt-pitch', type=float, default=0.0)
 # Joint properties
 parser.add_argument('--joint-damping', type=float, nargs=2, default=[0.05, 0.05],
                     metavar=('D1', 'D2'))
-parser.add_argument('--joint-stiffness', type=float, nargs=2, default=[0.5, 0.5],
+parser.add_argument('--joint-stiffness', type=float, nargs=2, default=[0.0, 0.0],
                     metavar=('K1', 'K2'))
 
 # CT gains
-parser.add_argument('--ct-kp', type=float, default=800.0,
+parser.add_argument('--ct-kp', type=float, default=100.0,
                     help='CT position gain Kp [s⁻²]')
 parser.add_argument('--ct-kd', type=float, default=40.0,
                     help='CT velocity gain Kd [s⁻¹]')
-parser.add_argument('--ct-tau-max', type=float, default=50.0,
-                    help='Torque saturation [Nm]')
+parser.add_argument('--ct-tau-max', type=float, default=None,
+                    help='Torque saturation [Nm].  Default: motor peak_torque_joint.')
+
+# Motor model
+_mot = parser.add_argument_group("motor model  (elbow / joint 2)")
+_mot.add_argument('--motor', choices=MOTOR_CHOICES, default='AK60_6_KV80_Config',
+                  help='CubeMars motor model for the elbow joint.')
 
 # SEA parameters
 _sea = parser.add_argument_group("SEA cable model (joint 2)")
-_sea.add_argument('--spring-stiffness', type=float, default=20.0, metavar='K_S',
+_sea.add_argument('--sea-mode', choices=['torque', 'position'], default='torque',
+                  help="Motor dynamics mode: 'torque' = 2nd-order rotor, "
+                       "'position' = 1st-order servo.")
+_sea.add_argument('--spring-stiffness', type=float, default=3000, metavar='K_S',
                   help='Cable spring stiffness k_s [N/m]. Lower → more lag.')
 _sea.add_argument('--cable-damping', type=float, default=2.0, metavar='B_C',
                   help='Cable dashpot damping b_c [N·s/m]')
-_sea.add_argument('--motor-bandwidth', type=float, default=30.0, metavar='W_M',
-                  help='Motor position servo bandwidth ω_m [rad/s]')
+_DEFAULT_MOTOR_BW = 100.0  # rad/s  (conservative closed-loop estimate)
+_sea.add_argument('--motor-bandwidth', type=float, default=None, metavar='W_M',
+                  help='Motor position servo bandwidth ω_m [rad/s].  '
+                       f'Default: {_DEFAULT_MOTOR_BW} rad/s (position mode only).')
+_sea.add_argument('--motor-substeps', type=int, default=None, metavar='N',
+                  help='Motor integrator sub-steps per physics step.  '
+                       'Default: auto-computed for numerical stability.')
 
 # Trajectory
 parser.add_argument('--traj-shape', type=str, default='rect',
@@ -217,8 +232,8 @@ parser.add_argument('--traj-y-range', type=float, nargs=2, default=[-0.08, 0.08]
 parser.add_argument('--traj-cx', type=float, default=0.4)
 parser.add_argument('--traj-cy', type=float, default=0.0)
 parser.add_argument('--traj-radius', type=float, default=0.1)
-parser.add_argument('--traj-v-max', type=float, default=0.08)
-parser.add_argument('--traj-v-corner', type=float, default=0.02)
+parser.add_argument('--traj-v-max', type=float, default=0.9)
+parser.add_argument('--traj-v-corner', type=float, default=0.05)
 parser.add_argument('--traj-corner-blend', type=float, default=0.35)
 
 # Move to start
@@ -230,6 +245,29 @@ parser.add_argument('--home-joints', type=float, nargs=2, default=None,
                     metavar=('Q1_DEG', 'Q2_DEG'))
 
 args = parser.parse_args()
+
+# ─── Motor-derived defaults ───────────────────────────────────────────────────
+_motor = get_motor(args.motor)
+_motor_mode = MotorMode(args.sea_mode)
+if args.motor_bandwidth is None:
+    args.motor_bandwidth = _DEFAULT_MOTOR_BW
+if args.ct_tau_max is None:
+    args.ct_tau_max = _motor.peak_torque_joint
+
+_mode_label = ("torque (2nd-order rotor)" if _motor_mode == MotorMode.TORQUE
+               else "position (1st-order servo)")
+print(colored(
+    f"\n  Motor: {args.motor}  —  SEA mode: {_mode_label}"
+    f"\n    gear ratio      = {_motor.gear_ratio}"
+    f"\n    peak torque     = {_motor.peak_torque_joint} Nm  (τ_max)"
+    f"\n    continuous τ    = {_motor.continuous_torque_joint} Nm"
+    f"\n    max joint vel   = {_motor.max_velocity_joint:.2f} rad/s"
+    f"  ({_motor.max_velocity_joint * 60 / (2 * np.pi):.1f} rpm)"
+    f"\n    rotor inertia   = {_motor.rotor_inertia_joint:.5f} kg·m²  (reflected)"
+    f"\n    → ω_m = {args.motor_bandwidth:.2f} rad/s"
+    f"   τ_max = {args.ct_tau_max:.1f} Nm",
+    "yellow",
+))
 
 # ============================================================================
 # PATHS & CONFIG
@@ -488,13 +526,14 @@ def run_sea(args):
 
     print("\n" + "=" * 80)
     print(colored(
-        "SEA CABLE — Isaac Sim (no Drake)",
+        f"SEA CABLE — Isaac Sim  [{_mode_label}]",
         "cyan", attrs=["bold"],
     ))
     print(colored(
         f"  k_s = {args.spring_stiffness} N/m   "
         f"b_c = {args.cable_damping} N·s/m   "
-        f"ω_m = {args.motor_bandwidth} rad/s",
+        f"ω_m = {args.motor_bandwidth} rad/s"
+        f"   motor={args.motor}  mode={args.sea_mode}",
         "cyan",
     ))
     print("=" * 80)
@@ -615,19 +654,29 @@ def run_sea(args):
         r_p=r_p,
         k_s=args.spring_stiffness,
         b_c=args.cable_damping,
-        omega_m=args.motor_bandwidth,
         tau_max=args.ct_tau_max,
         dt=args.dt,
+        motor_mode=_motor_mode,
+        motor_cfg=_motor,
+        omega_m=args.motor_bandwidth,
+        motor_substeps=args.motor_substeps,
     )
     sea.initialize(q_init[1])
+    print(colored(
+        f"  ✓ SEA: k_s={args.spring_stiffness} N/m  b_c={args.cable_damping} N·s/m  "
+        f"motor_substeps={sea.motor_substeps}  "
+        f"(dt_motor={args.dt / sea.motor_substeps:.4f} s)",
+        "green",
+    ))
 
     print(colored(
-        f"\n▶  SEA CABLE — Isaac Sim"
+        f"\n▶  SEA CABLE — Isaac Sim  ({_mode_label})"
         f"\n   CT:  Kp={args.ct_kp}  Kd={args.ct_kd}"
         f"   →  ωn={wn:.1f} rad/s  ζ={zeta:.2f}"
         f"\n   SEA: k_s={args.spring_stiffness} N/m  "
         f"b_c={args.cable_damping} N·s/m  "
         f"ω_m={args.motor_bandwidth} rad/s"
+        f"\n   Motor: {args.motor}  mode={args.sea_mode}"
         f"\n   tau_max={args.ct_tau_max} Nm   dt={args.dt*1e3:.1f} ms"
         f"\n   Press Ctrl-C to stop and show plots.",
         "cyan",
@@ -650,6 +699,7 @@ def run_sea(args):
     log_l_m_des   = np.zeros(max_steps)
     log_delta     = np.zeros(max_steps)
     log_F_cable   = np.zeros(max_steps)
+    log_tau_motor = np.zeros(max_steps)           # motor-side torque [Nm]
 
     # ── 14. Simulation loop ─────────────────────────────────────────────────
     step = 0
@@ -695,7 +745,23 @@ def run_sea(args):
 
             # Computed torque → desired torques
             ct_out = ct.compute(q, q_dot, q_des, q_dot_ref, q_ddot_ref, M, h)
-            tau_desired = ct_out.tau_raw  # pre-clip CT output → SEA input
+            tau_desired = ct_out.tau_clip  # clipped CT output → SEA input
+
+            # Warn if CT torque was clipped (torque saturation)
+            if np.any(np.abs(ct_out.tau_raw) > ct.tau_max):
+                _raw_max = np.max(np.abs(ct_out.tau_raw))
+                print(colored(
+                    f"  ⚠ Torque saturation at t={t:.3f}s: "
+                    f"|τ_raw|_max={_raw_max:.2f} Nm > τ_limit={ct.tau_max:.1f} Nm",
+                    "yellow",
+                ))
+            elif np.any(np.abs(ct_out.tau_raw) > 0.8 * ct.tau_max):
+                _raw_max = np.max(np.abs(ct_out.tau_raw))
+                print(colored(
+                    f"  ⚠ Torque near limit at t={t:.3f}s: "
+                    f"|τ_raw|_max={_raw_max:.2f} Nm  (80% of {ct.tau_max:.1f} Nm)",
+                    "yellow",
+                ))
 
             # SEA actuator: spring-mediated torque for joint 2
             tau_applied, sea_diag = sea.step(tau_desired, q, q_dot)
@@ -719,6 +785,7 @@ def run_sea(args):
                 log_l_m_des[step]   = sea_diag.l_m_des
                 log_delta[step]     = sea_diag.delta
                 log_F_cable[step]   = sea_diag.F_cable
+                log_tau_motor[step] = sea_diag.tau_motor
 
             # Update cable visualization (every N steps)
             if step % _CABLE_UPDATE_INTERVAL == 0:
@@ -770,6 +837,7 @@ def run_sea(args):
     log_l_m_des   = log_l_m_des[:n]
     log_delta     = log_delta[:n]
     log_F_cable   = log_F_cable[:n]
+    log_tau_motor = log_tau_motor[:n]
 
     laps_done = int(max(0.0, t - move_duration) / args.duration)
     print(colored(
@@ -784,6 +852,7 @@ def run_sea(args):
         log_tau_des, log_tau_sea, log_tens,
         log_ee_ref, log_ee_vel_ref, log_ee_acc_ref,
         log_l_m, log_l_m_des, log_delta, log_F_cable,
+        log_tau_motor,
         main_traj, L1, L2, r_p, ct, args,
     )
 
@@ -861,6 +930,7 @@ def plot_sea_results(
     t, q, q_dot, q_des, tau_des, tau_sea, tens,
     ee_ref, ee_vel_ref, ee_acc_ref,
     l_m, l_m_des, delta, F_cable,
+    tau_motor,
     main_traj, L1, L2, r_p, ct, args,
 ):
     """Generate two figures: standard 3×3 + SEA-specific 4×2."""
@@ -1015,9 +1085,9 @@ def plot_sea_results(
     print(colored(f"\n  📊 Figure 1 saved: {fname1}", "green"))
 
     # ═══════════════════════════════════════════════════════════════════════
-    # FIGURE 2: SEA-specific diagnostics (4×2)
+    # FIGURE 2: SEA-specific diagnostics (5×2)
     # ═══════════════════════════════════════════════════════════════════════
-    fig2, axes2 = plt.subplots(4, 2, figsize=(14, 14))
+    fig2, axes2 = plt.subplots(5, 2, figsize=(14, 17))
     fig2.suptitle(
         f'SEA Diagnostics — k_s={args.spring_stiffness} N/m   '
         f'b_c={args.cable_damping} N·s/m   '
@@ -1081,8 +1151,29 @@ def plot_sea_results(
     labs = [l.get_label() for l in lns]
     ax.legend(lns, labs, fontsize=7); ax.grid(True, alpha=0.4)
 
-    # Row 3: Torque tracking error | EE tracking error
+    # Row 3: Motor-side torque
+    _peak_motor = _motor.peak_torque_joint / _motor.gear_ratio
     ax = axes2[3, 0]
+    ax.plot(t, tau_motor, 'm-', lw=1.5, label='τ_motor (elbow)')
+    ax.axhline( _peak_motor, color='k', ls='--', lw=1.0, label=f'±peak = {_peak_motor:.2f} Nm')
+    ax.axhline(-_peak_motor, color='k', ls='--', lw=1.0)
+    ax.axhline(0, color='k', lw=0.5)
+    ax.set_title(f'Motor-Side Torque  (N={_motor.gear_ratio})')
+    ax.set_ylabel('[Nm]'); ax.set_xlabel('Time [s]')
+    ax.legend(fontsize=7); ax.grid(True, alpha=0.4)
+
+    ax = axes2[3, 1]
+    ax.plot(t, tau_des[:, 1], 'r-', lw=1.2, label='τ₂ desired (joint)')
+    ax.plot(t, tau_motor * _motor.gear_ratio, 'm--', lw=1.2, label='τ_motor × N (reflected)')
+    ax.axhline( args.ct_tau_max, color='k', ls='--', lw=1.0, label=f'±τ_max = {args.ct_tau_max:.1f} Nm')
+    ax.axhline(-args.ct_tau_max, color='k', ls='--', lw=1.0)
+    ax.axhline(0, color='k', lw=0.5)
+    ax.set_title('Joint-Side: Desired vs Motor-Reflected')
+    ax.set_ylabel('[Nm]'); ax.set_xlabel('Time [s]')
+    ax.legend(fontsize=7); ax.grid(True, alpha=0.4)
+
+    # Row 4: Torque tracking error | EE tracking error
+    ax = axes2[4, 0]
     tau_err = tau_des[:, 1] - tau_sea[:, 1]
     ax.plot(t, tau_err, 'r-', lw=1.2)
     ax.axhline(0, color='k', lw=0.5)
@@ -1090,7 +1181,7 @@ def plot_sea_results(
     ax.set_ylabel('[Nm]'); ax.set_xlabel('Time [s]')
     ax.grid(True, alpha=0.4)
 
-    ax = axes2[3, 1]
+    ax = axes2[4, 1]
     ee_err = np.sqrt((ee_x - ee_ref[:, 0])**2 + (ee_y - ee_ref[:, 1])**2) * 1e3
     ax.plot(t, ee_err, 'b-', lw=1.2)
     ax.axhline(0, color='k', lw=0.5)

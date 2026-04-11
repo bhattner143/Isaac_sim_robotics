@@ -119,6 +119,8 @@ from controller.trajectory import (
     build_move_to_start,
 )
 from actuators.sea_isaacsim import SEACableActuatorNP, SEADiagnostics
+from actuators.motor_dynamics import MotorMode
+from actuators.motor import get_motor, MOTOR_CHOICES
 
 import matplotlib
 matplotlib.use('Agg')  # non-interactive — works headless & within Isaac Sim
@@ -143,22 +145,39 @@ parser.add_argument("--dt", type=float, default=1.0 / 100.0,
                     help="Physics timestep [s] (default: 0.01)")
 parser.add_argument("--move-duration", type=float, default=3.0,
                     help="Move-to-start preamble duration [s] (default: 3.0)")
-parser.add_argument("--ct-kp", type=float, default=800.0,
-                    help="CT position gain Kp [s^-2] (default: 800)")
-parser.add_argument("--ct-kd", type=float, default=57.0,
-                    help="CT velocity gain Kd [s^-1] (default: 57, critically damped for Kp=800)")
-parser.add_argument("--ct-tau-max", type=float, default=50.0,
-                    help="Torque saturation [Nm] (default: 50)")
+parser.add_argument("--ct-kp", type=float, default=100.0,
+                    help="CT position gain Kp [s^-2] (default: 100)")
+parser.add_argument("--ct-kd", type=float, default=40.0,
+                    help="CT velocity gain Kd [s^-1] (default: 40, overdamped for Kp=100)")
+parser.add_argument("--ct-tau-max", type=float, default=None,
+                    help="Torque saturation [Nm].  Default: motor peak_torque_joint.")
+# Motor model
+parser.add_argument("--motor", choices=MOTOR_CHOICES, default="AK60_6_KV80_Config",
+                    help="CubeMars motor model for the elbow joint.")
 # SEA parameters
+parser.add_argument("--sea-mode", choices=["torque", "position"], default="torque",
+                    help="Motor dynamics mode: 'torque' = 2nd-order rotor, "
+                         "'position' = 1st-order servo.")
 parser.add_argument("--spring-stiffness", type=float, default=5000.0, metavar="K_S",
                     help="SEA cable spring stiffness k_s [N/m] (default: 5000)")
 parser.add_argument("--cable-damping", type=float, default=5.0, metavar="B_C",
                     help="SEA cable dashpot damping b_c [N·s/m] (default: 5)")
-parser.add_argument("--motor-bandwidth", type=float, default=500.0, metavar="W_M",
-                    help="SEA motor servo bandwidth ω_m [rad/s] (default: 500)")
-parser.add_argument("--no-sea", action="store_true", default=False,
+_DEFAULT_MOTOR_BW_MULTI = 500.0
+parser.add_argument("--motor-bandwidth", type=float, default=None, metavar="W_M",
+                    help=f"SEA motor servo bandwidth ω_m [rad/s] "
+                         f"(default: {_DEFAULT_MOTOR_BW_MULTI}, position mode only)")parser.add_argument("--motor-substeps", type=int, default=None, metavar="N",
+                    help="Motor integrator sub-steps per physics step. "
+                         "Default: auto-computed for numerical stability.")parser.add_argument("--no-sea", action="store_true", default=False,
                     help="Bypass SEA — apply CT torques directly (for diagnostics)")
 args = parser.parse_args()
+
+# ─── Motor-derived defaults ───────────────────────────────────────────────────
+_motor_cfg = get_motor(args.motor)
+_motor_mode_multi = MotorMode(args.sea_mode)
+if args.motor_bandwidth is None:
+    args.motor_bandwidth = _DEFAULT_MOTOR_BW_MULTI
+if args.ct_tau_max is None:
+    args.ct_tau_max = _motor_cfg.peak_torque_joint
 
 N = args.num_envs
 GRID_COLS = math.ceil(math.sqrt(N))
@@ -335,9 +354,12 @@ for i in range(N):
         r_p=r_p,
         k_s=args.spring_stiffness,
         b_c=args.cable_damping,
-        omega_m=args.motor_bandwidth,
         tau_max=args.ct_tau_max,
         dt=args.dt,
+        motor_mode=_motor_mode_multi,
+        motor_cfg=_motor_cfg,
+        omega_m=args.motor_bandwidth,
+        motor_substeps=args.motor_substeps,
     )
     q_cur = manips[i].get_positions_user_order()
     sea.initialize(q_cur[1])
@@ -448,7 +470,7 @@ while step < max_steps and not _stop_requested:
             if args.no_sea:
                 tau_applied = ct_out.tau_clip
                 sea_diag = SEADiagnostics(
-                    l_m=0, l_m_des=0, delta=0, F_cable=0,
+                    motor_pos=0, motor_aux=0, delta=0, F_cable=0,
                     tau1_des=float(tau_desired[0]),
                     tau2_des=float(tau_desired[1]),
                     T_green=0, T_red=0,

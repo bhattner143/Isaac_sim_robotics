@@ -16,6 +16,7 @@ SEACableActuator
 from __future__ import annotations
 
 import numpy as np
+import warnings
 from typing import TYPE_CHECKING
 
 from pydrake.all import (
@@ -122,6 +123,7 @@ class ComputedTorqueController(LeafSystem):
         self._tau_clip_cache = np.zeros(2)  # clipped actuation output
         self._tau_raw_cache  = np.zeros(2)  # pre-clip inverse-dynamics torques
         self._tens_cache     = np.zeros(2)  # [T_green, T_red]
+        self._last_warn_t    = -np.inf      # torque saturation warning throttle
 
         nstate = plant.num_multibody_states()
         self._ee_port    = self.DeclareVectorInputPort("desired_ee_pos", 2)
@@ -183,7 +185,17 @@ class ComputedTorqueController(LeafSystem):
         ])
         J_inv      = np.linalg.pinv(J)          # well-conditioned away from singularities
         q_dot_ref  = J_inv @ ee_vel_ref          # [rad/s]
-        q_ddot_ref = J_inv @ ee_acc_ref          # [rad/s²]
+
+        # Correct acceleration mapping: ẍ = J·q̈ + J̇·q̇  ⟹  q̈ = J⁻¹·(ẍ − J̇·q̇)
+        q1d_dot, q2d_dot = q_dot_ref
+        q12d_dot = q1d_dot + q2d_dot
+        Jdot = np.array([
+            [-self._L1 * c1 * q1d_dot - self._L2 * c12 * q12d_dot,
+             -self._L2 * c12 * q12d_dot],
+            [-self._L1 * s1 * q1d_dot - self._L2 * s12 * q12d_dot,
+             -self._L2 * s12 * q12d_dot],
+        ])
+        q_ddot_ref = J_inv @ (ee_acc_ref - Jdot @ q_dot_ref)  # [rad/s²]
 
         # ── Full CT law with feedforward ─────────────────────────────────────
         a_des_user = q_ddot_ref + self._Kp * (q_des - q) + self._Kd * (q_dot_ref - q_dot)
@@ -212,6 +224,23 @@ class ComputedTorqueController(LeafSystem):
         tau_raw  = np.array([tau1, tau2])
         tau_clip = np.clip(np.array([tau1, tau2_cmd]), -self._tau_max, self._tau_max)
         tens     = np.array([T_green, T_red])
+
+        # Torque saturation warning (throttled to at most once per 0.5 s)
+        _raw_max = float(np.max(np.abs(tau_raw)))
+        if _raw_max > self._tau_max and (t - self._last_warn_t) > 0.5:
+            self._last_warn_t = t
+            warnings.warn(
+                f"Torque saturation at t={t:.3f}s: "
+                f"|τ_raw|_max={_raw_max:.2f} Nm > τ_limit={self._tau_max:.1f} Nm",
+                stacklevel=2,
+            )
+        elif _raw_max > 0.8 * self._tau_max and (t - self._last_warn_t) > 0.5:
+            self._last_warn_t = t
+            warnings.warn(
+                f"Torque near limit at t={t:.3f}s: "
+                f"|τ_raw|_max={_raw_max:.2f} Nm  (80% of {self._tau_max:.1f} Nm)",
+                stacklevel=2,
+            )
 
         # Cache all results for this timestep
         self._t_cache        = t

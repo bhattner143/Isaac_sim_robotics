@@ -148,6 +148,18 @@ class MotorDynamics(ABC):
         F_cable = T_green - T_red
         return F_cable, T_green, T_red
 
+    def compute_motor_torque(
+        self,
+        state:    np.ndarray,
+        tau2_des: float,
+    ) -> float:
+        """Motor-side electromagnetic torque command [Nm].
+
+        Default returns NaN (not applicable for position-servo mode).
+        Overridden by ``TorqueMotor`` to return ``τ₂_des / N``.
+        """
+        return float('nan')
+
 
 # ── Position-servo motor (1st-order) ──────────────────────────────────────────
 
@@ -307,6 +319,10 @@ class TorqueMotor(MotorDynamics):
         motor_pos_joint = theta_m / self._N      # equivalent of l_m  [rad]
         motor_vel_joint = theta_m_dot / self._N   # equivalent of l_m_dot  [rad/s]
         return F_cable, delta_lin, T_green, T_red, motor_pos_joint, motor_vel_joint
+
+    def compute_motor_torque(self, state, tau2_des):
+        """Motor-side electromagnetic torque command: τ_m = τ₂_des / N  [Nm]."""
+        return tau2_des / self._N
 
 
 # ── Factory ────────────────────────────────────────────────────────────────────

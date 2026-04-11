@@ -112,7 +112,7 @@ from project_utils.viz_cables import draw_cables
 from actuators.motor import get_motor, MOTOR_CHOICES
 
 # ─── Constants ────────────────────────────────────────────────────────────────
-_DT   = 0.002   # plant & controller timestep [s]
+_DT   = 0.01   # plant & controller timestep [s]
 _URDF = "model_using_onshape_to_robot/manipulator_cable/manipulator_cable_obj.urdf"
 _M_PATCH = SpatialInertia(
     mass=0.3, p_PScm_E=np.zeros(3), G_SP_E=UnitInertia(1e-2, 1e-2, 1e-2),
@@ -134,7 +134,7 @@ _sea = parser.add_argument_group("SEA cable model  (joint 2)")
 _sea.add_argument("--sea-mode",  choices=["torque", "position"], default="torque",
                   help="Motor dynamics mode: 'torque' = 2nd-order rotor dynamics "
                        "(MIT torque mode, default), 'position' = 1st-order position servo.")
-_sea.add_argument("--spring-stiffness", type=float, default=30000 ,
+_sea.add_argument("--spring-stiffness", type=float, default=30 ,
                   metavar="K_S",
                   help="Cable spring stiffness k_s [N/m].  Lower → more lag.")
 _sea.add_argument("--cable-damping",    type=float, default=2.0,
@@ -665,6 +665,7 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
     tau1_des = diag[4]; tau2_des = diag[5]
     tau1_act = act[0];  tau2_act = act[1]
     T_green  = diag[6]; T_red = diag[7]
+    tau_motor = diag[8] if diag.shape[0] > 8 else np.full(len(t), float('nan'))
 
     # ── Derived signals ──────────────────────────────────────────────────
     q1_act     = state[0]; q2_act     = state[1]
@@ -814,9 +815,9 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
     # ════════════════════════════════════════════════════════════════════
     # FIGURE 2:  5 × 2 — SEA-specific diagnostics
     # ════════════════════════════════════════════════════════════════════
-    fig2 = plt.figure(figsize=(16, 17))
-    gs   = GridSpec(5, 2, figure=fig2, hspace=0.55, wspace=0.35)
-    axes2 = [[fig2.add_subplot(gs[r, c]) for c in range(2)] for r in range(5)]
+    fig2 = plt.figure(figsize=(16, 20))
+    gs   = GridSpec(6, 2, figure=fig2, hspace=0.55, wspace=0.35)
+    axes2 = [[fig2.add_subplot(gs[r, c]) for c in range(2)] for r in range(6)]
 
     fig2.suptitle(
         "Series Elastic Actuator — Cable compliance effect on joint-2 tracking\n"
@@ -915,23 +916,45 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
     ax_tens.set_ylabel("[N]")
     ax_tens.legend(fontsize=7); ax_tens.grid(True, alpha=0.4)
 
-    # ── Row 4: Torque tracking error | EE tracking error ─────────────────
+    # ── Row 4: Motor-side torque ─────────────────────────────────────────
+    _peak_motor = _motor.peak_torque_joint / _motor.gear_ratio
+    axes2[4][0].plot(t, tau_motor, "m-", lw=1.5, label="τ_motor (elbow)")
+    axes2[4][0].axhline( _peak_motor, color="k", ls="--", lw=1.0,
+                         label=f"±peak = {_peak_motor:.2f} Nm")
+    axes2[4][0].axhline(-_peak_motor, color="k", ls="--", lw=1.0)
+    axes2[4][0].axhline(0, color="k", lw=0.5)
+    axes2[4][0].set_title(f"Motor-Side Torque  (N={_motor.gear_ratio})")
+    axes2[4][0].set_ylabel("[Nm]")
+    axes2[4][0].legend(fontsize=7); axes2[4][0].grid(True, alpha=0.4)
+
+    axes2[4][1].plot(t, tau2_des, "r-", lw=1.2, label="τ₂ desired (joint)")
+    axes2[4][1].plot(t, tau_motor * _motor.gear_ratio, "m--", lw=1.2,
+                     label="τ_motor × N (reflected)")
+    axes2[4][1].axhline( args.ct_tau_max, color="k", ls="--", lw=1.0,
+                         label=f"±τ_max = {args.ct_tau_max:.1f} Nm")
+    axes2[4][1].axhline(-args.ct_tau_max, color="k", ls="--", lw=1.0)
+    axes2[4][1].axhline(0, color="k", lw=0.5)
+    axes2[4][1].set_title("Joint-Side: Desired vs Motor-Reflected")
+    axes2[4][1].set_ylabel("[Nm]")
+    axes2[4][1].legend(fontsize=7); axes2[4][1].grid(True, alpha=0.4)
+
+    # ── Row 5: Torque tracking error | EE tracking error ─────────────────
     tau_err = tau2_des - tau2_act
-    axes2[4][0].plot(t, tau2_des, "r-",  lw=1.2, label="τ₂ desired")
-    axes2[4][0].plot(t, tau2_act, "b-",  lw=1.2, label="τ₂ actual")
-    axes2[4][0].fill_between(
+    axes2[5][0].plot(t, tau2_des, "r-",  lw=1.2, label="τ₂ desired")
+    axes2[5][0].plot(t, tau2_act, "b-",  lw=1.2, label="τ₂ actual")
+    axes2[5][0].fill_between(
         t, tau2_des, tau2_act,
         where=(np.abs(tau_err) > 0.01),
         alpha=0.25, color="red", label="|error|",
     )
-    axes2[4][0].axhline(0, color="k", lw=0.5)
-    axes2[4][0].set_ylim(*_pct_ylim(tau2_des, tau2_act))
+    axes2[5][0].axhline(0, color="k", lw=0.5)
+    axes2[5][0].set_ylim(*_pct_ylim(tau2_des, tau2_act))
     rms_err = np.sqrt(np.mean(tau_err ** 2))
-    axes2[4][0].set_title(
+    axes2[5][0].set_title(
         f"τ₂ tracking error (shaded = lag)   RMS = {rms_err:.3f} Nm"
     )
-    axes2[4][0].set_ylabel("[Nm]"); axes2[4][0].set_xlabel("Time [s]")
-    axes2[4][0].legend(fontsize=7); axes2[4][0].grid(True, alpha=0.4)
+    axes2[5][0].set_ylabel("[Nm]"); axes2[5][0].set_xlabel("Time [s]")
+    axes2[5][0].legend(fontsize=7); axes2[5][0].grid(True, alpha=0.4)
 
     for lbl_, d_, col_ in datasets:
         t_d = d_["t"]
@@ -940,12 +963,12 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
             d_["ee_y"] - np.interp(t_d, d_["t"], d_["ref"][1]),
         ) * 1e3
         ls_ = "-" if lbl_ == "Spring" else "--"
-        axes2[4][1].plot(t_d, ee_err, color=col_, ls=ls_, lw=1.4,
+        axes2[5][1].plot(t_d, ee_err, color=col_, ls=ls_, lw=1.4,
                         label=f"{lbl_} k_s={d_['k_s']:.0f}")
-    axes2[4][1].set_ylim(*_pct_ylim(ee_err))
-    axes2[4][1].set_title("EE tracking error |p_act − p_ref|")
-    axes2[4][1].set_ylabel("[mm]"); axes2[4][1].set_xlabel("Time [s]")
-    axes2[4][1].legend(fontsize=7); axes2[4][1].grid(True, alpha=0.4)
+    axes2[5][1].set_ylim(*_pct_ylim(ee_err))
+    axes2[5][1].set_title("EE tracking error |p_act − p_ref|")
+    axes2[5][1].set_ylabel("[mm]"); axes2[5][1].set_xlabel("Time [s]")
+    axes2[5][1].legend(fontsize=7); axes2[5][1].grid(True, alpha=0.4)
 
     fig2.tight_layout(rect=[0, 0, 1, 0.95])
 
