@@ -2,3 +2,6 @@
 	path = drake-ros
 	url = https://github.com/bhattner143/drake-ros.git
 	branch = bhattner143/pubsub-test
+[submodule "contraction-theory"]
+	path = contraction-theory
+	url = https://github.com/bhattner143/contraction-theory.git
