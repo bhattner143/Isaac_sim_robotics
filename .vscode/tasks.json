@@ -583,6 +583,113 @@
             },
             "group": "build",
             "problemMatcher": []
+        },
+        {
+            "label": "🤖 PPO Train: Headless",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/rl/train_ppo_residual.py --render headless --total-timesteps ${input:totalTimesteps} --traj-type rect --wandb"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🤖 PPO Train: Native",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/rl/train_ppo_residual.py --render native --total-timesteps ${input:totalTimesteps} --traj-type rect --wandb"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "📊 PPO Eval: Headless (select checkpoint)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/rl/eval_ppo_residual.py --render headless --model ${input:checkpointModel}"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "📊 PPO Eval: Native (select checkpoint)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/rl/eval_ppo_residual.py --render native --model ${input:checkpointModel}"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        }
+    ],
+    "inputs": [
+        {
+            "id": "totalTimesteps",
+            "type": "pickString",
+            "description": "Total training timesteps (~episodes = steps / 2000)",
+            "options": [
+                {"label": "5 episodes   (10 000 steps)",    "value": "10000"},
+                {"label": "10 episodes  (20 000 steps)",    "value": "20000"},
+                {"label": "20 episodes  (40 000 steps)",    "value": "40000"},
+                {"label": "50 episodes  (100 000 steps)",   "value": "100000"},
+                {"label": "250 episodes (500 000 steps)",   "value": "500000"},
+                {"label": "500 episodes (1 000 000 steps)", "value": "1000000"},
+                {"label": "1000 episodes (2 000 000 steps)", "value": "2000000"}
+                ],
+            "default": "500000"
+        },
+        {
+            "id": "checkpointModel",
+            "type": "promptString",
+            "description": "Path to PPO checkpoint (without .zip extension)",
+            "default": "rl/checkpoints/ppo_residual_latest"
         }
     ]
 }

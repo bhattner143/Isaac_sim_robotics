@@ -104,6 +104,90 @@
             "justMyCode": false,
             "cwd": "${workspaceFolder}",
             "envFile": "${workspaceFolder}/.env.isaacsim6"
+        },
+        {
+            "name": "🤖 PPO Train: Headless",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/rl/train_ppo_residual.py",
+            "python": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
+            "args": [
+                "--render", "headless",
+                "--total-timesteps", "${input:totalTimesteps}",
+                "--traj-type", "rect"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env.isaacsim"
+        },
+        {
+            "name": "🤖 PPO Train: Native",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/rl/train_ppo_residual.py",
+            "python": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
+            "args": [
+                "--render", "native",
+                "--total-timesteps", "${input:totalTimesteps}",
+                "--traj-type", "rect"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env.isaacsim"
+        },
+        {
+            "name": "📊 PPO Eval: Headless (select checkpoint)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/rl/eval_ppo_residual.py",
+            "python": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
+            "args": [
+                "--render", "headless",
+                "--model", "${input:checkpointModel}",
+                "--compare-baseline"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env.isaacsim"
+        },
+        {
+            "name": "📊 PPO Eval: Native (select checkpoint)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/rl/eval_ppo_residual.py",
+            "python": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
+            "args": [
+                "--render", "native",
+                "--model", "${input:checkpointModel}",
+                "--compare-baseline"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env.isaacsim"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "totalTimesteps",
+            "type": "pickString",
+            "description": "Total training timesteps (~episodes = steps / 2000)",
+            "options": [
+                {"label": "50 episodes  (100 000 steps)",   "value": "100000"},
+                {"label": "250 episodes (500 000 steps)",   "value": "500000"},
+                {"label": "500 episodes (1 000 000 steps)", "value": "1000000"},
+                {"label": "1000 episodes (2 000 000 steps)", "value": "2000000"}
+            ],
+            "default": "500000"
+        },
+        {
+            "id": "checkpointModel",
+            "type": "promptString",
+            "description": "Path to PPO checkpoint (without .zip extension)",
+            "default": "rl/checkpoints/ppo_residual_latest"
         }
     ]
 }

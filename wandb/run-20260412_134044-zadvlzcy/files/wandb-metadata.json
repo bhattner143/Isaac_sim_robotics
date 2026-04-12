@@ -1,0 +1,49 @@
+{
+  "os": "Linux-6.17.0-20-generic-x86_64-with-glibc2.39",
+  "python": "CPython 3.11.15",
+  "startedAt": "2026-04-12T12:40:44.625349Z",
+  "args": [
+    "--render",
+    "headless",
+    "--total-timesteps",
+    "40000",
+    "--traj-type",
+    "rect",
+    "--wandb"
+  ],
+  "program": "/home/morph-lab-ws-ubuntu-admin/Documents/Isaac_sim_robotics/rl/train_ppo_residual.py",
+  "codePath": "rl/train_ppo_residual.py",
+  "codePathLocal": "rl/train_ppo_residual.py",
+  "git": {
+    "remote": "https://github.com/bhattner143/Isaac_sim_robotics.git",
+    "commit": "ee742389c50f1ce42a39c89a136c7d9bf395a1fc"
+  },
+  "email": "dbhatta2@ic.ac.uk",
+  "root": "/home/morph-lab-ws-ubuntu-admin/Documents/Isaac_sim_robotics",
+  "host": "morph-lab-ws-ubuntu-admin-3XS-Custom-1851",
+  "executable": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
+  "cpu_count": 24,
+  "cpu_count_logical": 24,
+  "gpu": "NVIDIA GeForce RTX 5090",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "3933356630016",
+      "used": "291814989824"
+    }
+  },
+  "memory": {
+    "total": "134399561728"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA GeForce RTX 5090",
+      "memoryTotal": "34190917632",
+      "cudaCores": 21760,
+      "architecture": "Blackwell",
+      "uuid": "GPU-28aad728-6dad-3496-0399-54cedd3c96f4"
+    }
+  ],
+  "cudaVersion": "13.0",
+  "writerId": "03njw6ci7q6uacm24p0v4nda7fx2c6po"
+}

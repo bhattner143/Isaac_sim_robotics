@@ -28,7 +28,6 @@ wheels/
 *.synctex.gz
 *.fdb_latexmk
 *.fls
-*.pdf
 
 # USD files (binary)
 *.usdc
@@ -38,6 +37,11 @@ venv/
 ENV/
 env/
 env_isaacsim/
+
+# Secrets — never commit API keys
+.env
+.env.*
+!.env.example
 
 # IDEs
 .idea/

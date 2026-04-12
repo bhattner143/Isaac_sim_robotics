@@ -1,0 +1,2485 @@
+diff --git a/.gitignore b/.gitignore
+index 3778a44..d5b4e4e 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -28,7 +28,6 @@ wheels/
+ *.synctex.gz
+ *.fdb_latexmk
+ *.fls
+-*.pdf
+ 
+ # USD files (binary)
+ *.usdc
+@@ -39,6 +38,11 @@ ENV/
+ env/
+ env_isaacsim/
+ 
++# Secrets — never commit API keys
++.env
++.env.*
++!.env.example
++
+ # IDEs
+ .idea/
+ *.swp
+diff --git a/.vscode/launch.json b/.vscode/launch.json
+index c6445d6..2ae5131 100644
+--- a/.vscode/launch.json
++++ b/.vscode/launch.json
+@@ -104,6 +104,90 @@
+             "justMyCode": false,
+             "cwd": "${workspaceFolder}",
+             "envFile": "${workspaceFolder}/.env.isaacsim6"
++        },
++        {
++            "name": "🤖 PPO Train: Headless",
++            "type": "debugpy",
++            "request": "launch",
++            "program": "${workspaceFolder}/rl/train_ppo_residual.py",
++            "python": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
++            "args": [
++                "--render", "headless",
++                "--total-timesteps", "${input:totalTimesteps}",
++                "--traj-type", "rect"
++            ],
++            "console": "integratedTerminal",
++            "justMyCode": false,
++            "cwd": "${workspaceFolder}",
++            "envFile": "${workspaceFolder}/.env.isaacsim"
++        },
++        {
++            "name": "🤖 PPO Train: Native",
++            "type": "debugpy",
++            "request": "launch",
++            "program": "${workspaceFolder}/rl/train_ppo_residual.py",
++            "python": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
++            "args": [
++                "--render", "native",
++                "--total-timesteps", "${input:totalTimesteps}",
++                "--traj-type", "rect"
++            ],
++            "console": "integratedTerminal",
++            "justMyCode": false,
++            "cwd": "${workspaceFolder}",
++            "envFile": "${workspaceFolder}/.env.isaacsim"
++        },
++        {
++            "name": "📊 PPO Eval: Headless (select checkpoint)",
++            "type": "debugpy",
++            "request": "launch",
++            "program": "${workspaceFolder}/rl/eval_ppo_residual.py",
++            "python": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
++            "args": [
++                "--render", "headless",
++                "--model", "${input:checkpointModel}",
++                "--compare-baseline"
++            ],
++            "console": "integratedTerminal",
++            "justMyCode": false,
++            "cwd": "${workspaceFolder}",
++            "envFile": "${workspaceFolder}/.env.isaacsim"
++        },
++        {
++            "name": "📊 PPO Eval: Native (select checkpoint)",
++            "type": "debugpy",
++            "request": "launch",
++            "program": "${workspaceFolder}/rl/eval_ppo_residual.py",
++            "python": "/home/morph-lab-ws-ubuntu-admin/anaconda3/envs/env_isaacsim/bin/python",
++            "args": [
++                "--render", "native",
++                "--model", "${input:checkpointModel}",
++                "--compare-baseline"
++            ],
++            "console": "integratedTerminal",
++            "justMyCode": false,
++            "cwd": "${workspaceFolder}",
++            "envFile": "${workspaceFolder}/.env.isaacsim"
++        }
++    ],
++    "inputs": [
++        {
++            "id": "totalTimesteps",
++            "type": "pickString",
++            "description": "Total training timesteps (~episodes = steps / 2000)",
++            "options": [
++                {"label": "50 episodes  (100 000 steps)",   "value": "100000"},
++                {"label": "250 episodes (500 000 steps)",   "value": "500000"},
++                {"label": "500 episodes (1 000 000 steps)", "value": "1000000"},
++                {"label": "1000 episodes (2 000 000 steps)", "value": "2000000"}
++            ],
++            "default": "500000"
++        },
++        {
++            "id": "checkpointModel",
++            "type": "promptString",
++            "description": "Path to PPO checkpoint (without .zip extension)",
++            "default": "rl/checkpoints/ppo_residual_latest"
+         }
+     ]
+ }
+diff --git a/.vscode/tasks.json b/.vscode/tasks.json
+index 73bcd33..c9d07f6 100644
+--- a/.vscode/tasks.json
++++ b/.vscode/tasks.json
+@@ -583,6 +583,113 @@
+             },
+             "group": "build",
+             "problemMatcher": []
++        },
++        {
++            "label": "🤖 PPO Train: Headless",
++            "type": "shell",
++            "command": "bash",
++            "args": [
++                "-c",
++                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/rl/train_ppo_residual.py --render headless --total-timesteps ${input:totalTimesteps} --traj-type rect --wandb"
++            ],
++            "options": {
++                "cwd": "${workspaceFolder}"
++            },
++            "group": "build",
++            "presentation": {
++                "echo": true,
++                "reveal": "always",
++                "focus": true,
++                "panel": "dedicated",
++                "clear": true
++            },
++            "problemMatcher": []
++        },
++        {
++            "label": "🤖 PPO Train: Native",
++            "type": "shell",
++            "command": "bash",
++            "args": [
++                "-c",
++                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/rl/train_ppo_residual.py --render native --total-timesteps ${input:totalTimesteps} --traj-type rect --wandb"
++            ],
++            "options": {
++                "cwd": "${workspaceFolder}"
++            },
++            "group": "build",
++            "presentation": {
++                "echo": true,
++                "reveal": "always",
++                "focus": true,
++                "panel": "dedicated",
++                "clear": true
++            },
++            "problemMatcher": []
++        },
++        {
++            "label": "📊 PPO Eval: Headless (select checkpoint)",
++            "type": "shell",
++            "command": "bash",
++            "args": [
++                "-c",
++                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/rl/eval_ppo_residual.py --render headless --model ${input:checkpointModel}"
++            ],
++            "options": {
++                "cwd": "${workspaceFolder}"
++            },
++            "group": "build",
++            "presentation": {
++                "echo": true,
++                "reveal": "always",
++                "focus": true,
++                "panel": "dedicated",
++                "clear": true
++            },
++            "problemMatcher": []
++        },
++        {
++            "label": "📊 PPO Eval: Native (select checkpoint)",
++            "type": "shell",
++            "command": "bash",
++            "args": [
++                "-c",
++                "source /home/morph-lab-ws-ubuntu-admin/Documents/isaacsim/_build/linux-x86_64/release/setup_conda_env.sh && eval \"$(conda shell.bash hook 2>/dev/null)\" && conda activate env_isaacsim && python ${workspaceFolder}/rl/eval_ppo_residual.py --render native --model ${input:checkpointModel}"
++            ],
++            "options": {
++                "cwd": "${workspaceFolder}"
++            },
++            "group": "build",
++            "presentation": {
++                "echo": true,
++                "reveal": "always",
++                "focus": true,
++                "panel": "dedicated",
++                "clear": true
++            },
++            "problemMatcher": []
++        }
++    ],
++    "inputs": [
++        {
++            "id": "totalTimesteps",
++            "type": "pickString",
++            "description": "Total training timesteps (~episodes = steps / 2000)",
++            "options": [
++                {"label": "5 episodes   (10 000 steps)",    "value": "10000"},
++                {"label": "10 episodes  (20 000 steps)",    "value": "20000"},
++                {"label": "20 episodes  (40 000 steps)",    "value": "40000"},
++                {"label": "50 episodes  (100 000 steps)",   "value": "100000"},
++                {"label": "250 episodes (500 000 steps)",   "value": "500000"},
++                {"label": "500 episodes (1 000 000 steps)", "value": "1000000"},
++                {"label": "1000 episodes (2 000 000 steps)", "value": "2000000"}
++                ],
++            "default": "500000"
++        },
++        {
++            "id": "checkpointModel",
++            "type": "promptString",
++            "description": "Path to PPO checkpoint (without .zip extension)",
++            "default": "rl/checkpoints/ppo_residual_latest"
+         }
+     ]
+ }
+diff --git a/cart_pendulum_dynamics_impulse.png b/cart_pendulum_dynamics_impulse.png
+deleted file mode 100644
+index f641abb..0000000
+Binary files a/cart_pendulum_dynamics_impulse.png and /dev/null differ
+diff --git a/cart_pendulum_dynamics_ramp.png b/cart_pendulum_dynamics_ramp.png
+deleted file mode 100644
+index ea5cb9f..0000000
+Binary files a/cart_pendulum_dynamics_ramp.png and /dev/null differ
+diff --git a/cart_pendulum_dynamics_sinusoid.png b/cart_pendulum_dynamics_sinusoid.png
+deleted file mode 100644
+index 52a0db5..0000000
+Binary files a/cart_pendulum_dynamics_sinusoid.png and /dev/null differ
+diff --git a/cart_pendulum_dynamics_step.png b/cart_pendulum_dynamics_step.png
+deleted file mode 100644
+index cd8c7a7..0000000
+Binary files a/cart_pendulum_dynamics_step.png and /dev/null differ
+diff --git a/pendulum_lqr_control_block_diagram.png b/pendulum_lqr_control_block_diagram.png
+deleted file mode 100644
+index 305dd06..0000000
+Binary files a/pendulum_lqr_control_block_diagram.png and /dev/null differ
+diff --git a/pendulum_lqr_control_phase_portrait.png b/pendulum_lqr_control_phase_portrait.png
+deleted file mode 100644
+index 447a4e7..0000000
+Binary files a/pendulum_lqr_control_phase_portrait.png and /dev/null differ
+diff --git a/pendulum_no_control_block_diagram.png b/pendulum_no_control_block_diagram.png
+deleted file mode 100644
+index ebd4e4c..0000000
+Binary files a/pendulum_no_control_block_diagram.png and /dev/null differ
+diff --git a/pendulum_no_control_phase_portrait.png b/pendulum_no_control_phase_portrait.png
+deleted file mode 100644
+index c845891..0000000
+Binary files a/pendulum_no_control_phase_portrait.png and /dev/null differ
+diff --git a/plots/eval_ppo_detail_20260411_195823.png b/plots/eval_ppo_detail_20260411_195823.png
+deleted file mode 100644
+index ac3f350..0000000
+Binary files a/plots/eval_ppo_detail_20260411_195823.png and /dev/null differ
+diff --git a/plots/eval_ppo_detail_20260412_091806.png b/plots/eval_ppo_detail_20260412_091806.png
+deleted file mode 100644
+index 2625dbd..0000000
+Binary files a/plots/eval_ppo_detail_20260412_091806.png and /dev/null differ
+diff --git a/plots/eval_ppo_overview_20260411_195823.png b/plots/eval_ppo_overview_20260411_195823.png
+deleted file mode 100644
+index c74efd9..0000000
+Binary files a/plots/eval_ppo_overview_20260411_195823.png and /dev/null differ
+diff --git a/plots/eval_ppo_overview_20260412_091806.png b/plots/eval_ppo_overview_20260412_091806.png
+deleted file mode 100644
+index f3c72fb..0000000
+Binary files a/plots/eval_ppo_overview_20260412_091806.png and /dev/null differ
+diff --git a/requirements_env_isaacsim.txt b/requirements_env_isaacsim.txt
+index 1d8ef09..2516b6e 100644
+--- a/requirements_env_isaacsim.txt
++++ b/requirements_env_isaacsim.txt
+@@ -127,6 +127,7 @@ typing-inspection==0.4.1
+ urllib3==2.5.0
+ usd-core==25.11
+ uvicorn==0.29.0
++wandb
+ watchdog==4.0.0
+ websockets==12.0
+ wheel==0.46.3
+diff --git a/rl/checkpoints/ppo_residual_500000_steps.zip b/rl/checkpoints/ppo_residual_500000_steps.zip
+deleted file mode 100644
+index 74d38f3..0000000
+Binary files a/rl/checkpoints/ppo_residual_500000_steps.zip and /dev/null differ
+diff --git a/rl/checkpoints/ppo_residual_final_20260411_181233.zip b/rl/checkpoints/ppo_residual_final_20260411_181233.zip
+deleted file mode 100644
+index d0ac457..0000000
+Binary files a/rl/checkpoints/ppo_residual_final_20260411_181233.zip and /dev/null differ
+diff --git a/rl/checkpoints/ppo_residual_final_20260411_235422.zip b/rl/checkpoints/ppo_residual_final_20260411_235422.zip
+deleted file mode 100644
+index 7c8b4cd..0000000
+Binary files a/rl/checkpoints/ppo_residual_final_20260411_235422.zip and /dev/null differ
+diff --git a/rl/checkpoints/ppo_residual_latest.zip b/rl/checkpoints/ppo_residual_latest.zip
+deleted file mode 100644
+index 7c8b4cd..0000000
+Binary files a/rl/checkpoints/ppo_residual_latest.zip and /dev/null differ
+diff --git a/rl/eval_ppo_residual.py b/rl/eval_ppo_residual.py
+index 39e0679..f68b6d4 100644
+--- a/rl/eval_ppo_residual.py
++++ b/rl/eval_ppo_residual.py
+@@ -15,19 +15,23 @@ Usage::
+     # Evaluate latest checkpoint
+     python rl/eval_ppo_residual.py
+ 
+-    # Evaluate a specific checkpoint
+-    python rl/eval_ppo_residual.py --model rl/checkpoints/ppo_residual_final_20260410_150000
++    # Evaluate a specific checkpoint (inside a run folder)
++    python rl/eval_ppo_residual.py --model rl/checkpoints/run_20260412_153000/best_model
+ 
+     # With rendering
+-    python rl/eval_ppo_residual.py --render native --model rl/checkpoints/ppo_residual_latest
++    python rl/eval_ppo_residual.py --render native
+ 
+-    # Compare against CT-only baseline
+-    python rl/eval_ppo_residual.py --compare-baseline
++    # Save plots to a specific directory
++    python rl/eval_ppo_residual.py --plots-dir rl/checkpoints/run_20260412_153000/plots
++
++    # Log plots to Weights & Biases
++    python rl/eval_ppo_residual.py --wandb --model rl/checkpoints/run_20260412_153000/best_model
+ """
+ 
+ import os
+ import sys
+ import math
++import json
+ import argparse
+ import time
+ from pathlib import Path
+@@ -95,42 +99,51 @@ def _sigint_handler(sig, frame):
+ 
+ signal.signal(signal.SIGINT, _sigint_handler)
+ 
+-# ── Args ─────────────────────────────────────────────────────────────────────
+-parser = argparse.ArgumentParser(description="Evaluate residual-RL PPO agent")
+-parser.add_argument("--render", default=_render_mode, choices=["native", "headless"])
+-parser.add_argument("--model", type=str, default="rl/checkpoints/ppo_residual_latest",
+-                    help="Path to trained model (without .zip)")
+-parser.add_argument("--duration", type=float, default=20.0)
+-parser.add_argument("--dt", type=float, default=0.01)
+-parser.add_argument("--compare-baseline", action="store_true", default=True,
+-                    help="Also run CT-only for comparison (default: True)")
+-parser.add_argument("--no-compare-baseline", dest="compare_baseline",
+-                    action="store_false",
+-                    help="Skip CT-only baseline run")
+-parser.add_argument("--move-duration", type=float, default=3.0)
+-parser.add_argument("--ct-kp", type=float, default=100.0)
+-parser.add_argument("--ct-kd", type=float, default=40.0)
+-parser.add_argument("--ct-tau-max", type=float, default=None,
+-                    help="Torque saturation [Nm]. Default: motor peak.")
+-parser.add_argument("--motor", choices=MOTOR_CHOICES, default="AK60_6_KV80_Config")
+-parser.add_argument("--sea-mode", choices=["torque", "position"], default="torque")
+-parser.add_argument("--spring-stiffness", type=float, default=30.0)
+-parser.add_argument("--cable-damping", type=float, default=2.0)
+-parser.add_argument("--motor-bandwidth", type=float, default=100.0)
+-parser.add_argument("--motor-substeps", type=int, default=None)
+-parser.add_argument("--residual-max", type=float, default=5.0)
+-parser.add_argument("--traj-type", default="rect", choices=["circle", "rect", "line"])
+-args = parser.parse_args()
+-
+-# Motor-derived defaults
+-_motor = get_motor(args.motor)
+-_motor_mode = MotorMode(args.sea_mode)
+-if args.ct_tau_max is None:
+-    args.ct_tau_max = _motor.peak_torque_joint
+-
+-
+-def build_scene(render_mode, args):
+-    """Build Isaac Sim scene and return all components."""
++# ── Optional W&B ─────────────────────────────────────────────────────────────
++_WANDB_AVAILABLE = False
++try:
++    import wandb
++    _WANDB_AVAILABLE = True
++except ImportError:
++    pass
++
++
++# ═══════════════════════════════════════════════════════════════════════════════
++# Motor defaults
++# ═══════════════════════════════════════════════════════════════════════════════
++
++def resolve_motor_defaults(args):
++    """Resolve motor config and apply motor-derived defaults.
++
++    Args:
++        args: parsed Namespace
++
++    Returns:
++        motor:      MotorConfig dataclass
++        motor_mode: MotorMode enum
++    """
++    motor = get_motor(args.motor)
++    motor_mode = MotorMode(args.sea_mode)
++    if args.ct_tau_max is None:
++        args.ct_tau_max = motor.peak_torque_joint
++    return motor, motor_mode
++
++
++def build_scene(args, motor, motor_mode):
++    """Build Isaac Sim scene for evaluation.
++
++    Sets up the manipulator, physics world, CT controller, SEA, and trajectory.
++    This mirrors the training scene setup but for a single evaluation run.
++
++    Args:
++        args:       parsed Namespace with all configuration parameters
++        motor:      MotorConfig dataclass
++        motor_mode: MotorMode enum
++
++    Returns:
++        Tuple: (robot, world, ct, sea, traj_source, L1, L2, r_p)
++    """
++    # Load and initialize the manipulator model
+     PROJECT_ROOT = Path(__file__).resolve().parent.parent
+     URDF_PATH = str(
+         PROJECT_ROOT / "model_using_onshape_to_robot"
+@@ -147,6 +160,7 @@ def build_scene(render_mode, args):
+     robot = CupManipulatorTendonIsaac(config, enable_visualization=False)
+     robot.prepare_usd()
+ 
++    # Create physics world (same setup as training, but typically shorter duration)
+     world = World(stage_units_in_meters=1.0, physics_dt=args.dt, rendering_dt=args.dt)
+     world.scene.add_default_ground_plane()
+     robot.load_urdf(world)
+@@ -162,20 +176,24 @@ def build_scene(render_mode, args):
+     robot.initialize_dynamics_view(world)
+     robot.set_initial_positions()
+ 
++    # Get manipulator geometry parameters
+     L1, L2 = robot._get_link_lengths()
+     r_p = robot.r_p
+ 
++    # Build trajectory — lap_duration matches training (episode_steps * dt)
++    lap_dur = args.lap_duration if args.lap_duration is not None else args.duration
+     if args.traj_type == "circle":
+-        main_traj = CircleTrajectory(cx=0.4, cy=0.00, radius=0.1, lap_duration=8.0, N=60)
++        main_traj = CircleTrajectory(cx=0.4, cy=0.00, radius=0.1, lap_duration=lap_dur, N=60)
+     elif args.traj_type == "rect":
+         main_traj = RectTrajectory(
+             x_range=(0.49, 0.51), y_range=(-0.08, 0.08),
+-            lap_duration=8.0, N=60, v_max=0.9, v_corner=0.05, corner_blend=0.35,
++            lap_duration=lap_dur, N=60, v_max=0.9, v_corner=0.05, corner_blend=0.35,
+         )
+     else:
+         from controller.trajectory import LineTrajectory
+-        main_traj = LineTrajectory(cx=0.4, cy=0.0, radius=0.1, lap_duration=8.0, N=60)
++        main_traj = LineTrajectory(cx=0.4, cy=0.0, radius=0.1, lap_duration=lap_dur, N=60)
+ 
++    # Build preamble to move EE to trajectory start
+     q_cur = robot.get_positions_user_order()
+     ee_cur = forward_kinematics_2r(L1, L2, *q_cur)
+     preamble = build_move_to_start(
+@@ -184,13 +202,14 @@ def build_scene(render_mode, args):
+     )
+     traj_source = PreambleTrajectorySource(preamble, main_traj)
+ 
++    # Initialize CT controller and SEA actuator (same as training)
+     ct = ComputedTorqueController(Kp=args.ct_kp, Kd=args.ct_kd,
+                                   tau_max=args.ct_tau_max, pulley_radius=r_p)
+ 
+     sea = SEACableActuatorNP(
+         r_p=r_p, k_s=args.spring_stiffness, b_c=args.cable_damping,
+         tau_max=args.ct_tau_max, dt=args.dt,
+-        motor_mode=_motor_mode, motor_cfg=_motor,
++        motor_mode=motor_mode, motor_cfg=motor,
+         omega_m=args.motor_bandwidth, motor_substeps=args.motor_substeps,
+     )
+     sea.initialize(q_cur[1])
+@@ -199,8 +218,31 @@ def build_scene(render_mode, args):
+ 
+ 
+ def run_episode(env, model=None, max_steps=2000, label="RL"):
+-    """Run one episode. If model is None, uses zero residual (CT-only)."""
++    """
++    Run one episode and log all state/action/reward data.
++    
++    If model is None, uses zero residual torques (CT-only baseline).
++    If model is provided, uses the trained PPO policy for residual torques.
++    
++    Args:
++      env: ManipulatorResidualEnv instance
++      model: PPO model, or None for zero residual (CT-only)
++      max_steps: Max steps per episode
++      label: Label for this run ("CT only" or "CT + RL")
++    
++    Returns:
++      Dict with logged trajectories:
++        - t: time array [s]
++        - ee_err_mm: end-effector tracking error [mm]
++        - ee_actual, ee_ref: EE positions [m]
++        - tau_residual, tau_ct, tau_applied: torques [Nm]
++        - delta: SEA spring extension [rad]
++        - tau_motor, F_cable, l_m, l_m_des: detailed SEA states
++        - label: run label
++    """
+     obs, info = env.reset()
++    
++    # Initialize logging buffers
+     log_ee_err = []
+     log_tau_res = []
+     log_tau_ct = []
+@@ -214,17 +256,21 @@ def run_episode(env, model=None, max_steps=2000, label="RL"):
+     log_l_m = []
+     log_l_m_des = []
+ 
++    # Simulate one episode
+     for step in range(max_steps):
+         if _stop_requested:
+             break
+ 
++        # Get action from policy or zero (CT-only)
+         if model is not None:
+-            action, _ = model.predict(obs, deterministic=True)
++            action, _ = model.predict(obs, deterministic=True)  # Use policy (no exploration noise)
+         else:
+-            action = np.zeros(env.action_space.shape)
++            action = np.zeros(env.action_space.shape)  # Zero residual → CT only
+ 
++        # Step environment
+         obs, reward, terminated, truncated, info = env.step(action)
+ 
++        # Log data from info dict
+         log_t.append(info.get("t", step * 0.01))
+         log_ee_err.append(info.get("ee_error_mm", 0.0))
+         log_tau_res.append(info.get("tau_residual", np.zeros(2)).copy())
+@@ -233,6 +279,7 @@ def run_episode(env, model=None, max_steps=2000, label="RL"):
+         log_ee_actual.append(info.get("ee_actual", np.zeros(2)).copy())
+         log_ee_ref.append(info.get("ee_ref", np.zeros(2)).copy())
+ 
++        # Log detailed SEA diagnostics (if available)
+         diag = env.unwrapped._last_sea_diag
+         if diag:
+             log_delta.append(diag.delta)
+@@ -250,6 +297,7 @@ def run_episode(env, model=None, max_steps=2000, label="RL"):
+         if terminated or truncated:
+             break
+ 
++    # Package results
+     return {
+         "t": np.array(log_t),
+         "ee_err_mm": np.array(log_ee_err),
+@@ -268,232 +316,513 @@ def run_episode(env, model=None, max_steps=2000, label="RL"):
+ 
+ 
+ # ═════════════════════════════════════════════════════════════════════════════
+-# Main
++# Plots directory resolution
+ # ═════════════════════════════════════════════════════════════════════════════
+-print("\n[eval] Setting up scene…")
+-robot, world, ct, sea, traj_source, L1, L2, r_p = build_scene(args.render, args)
+-
+-max_steps = int(args.duration / args.dt)
+-
+-env = ManipulatorResidualEnv(
+-    robot=robot, world=world, ct_controller=ct, sea_actuator=sea,
+-    traj_source=traj_source, L1=L1, L2=L2, dt=args.dt,
+-    max_episode_steps=max_steps, residual_max=args.residual_max,
+-    render_mode=args.render,
+-    solve_ik_fn=solve_2r_ik, fk_fn=forward_kinematics_2r,
+-    ik_to_jt_fn=ik_to_joint_space_references,
+-)
+ 
+-# Load trained model
+-model_path = Path(_PROJECT_ROOT) / args.model
+-print(f"[eval] Loading model: {model_path}")
+-model = PPO.load(str(model_path), env=env)
++def resolve_plots_dir(args):
++    """Determine plots output directory.
++
++    Priority:
++      1. Explicit --plots-dir
++      2. Auto-detect: if model lives inside a run folder (run_*/), use run_*/plots/
++      3. Fallback: <project_root>/plots/
+ 
+-results = []
++    Args:
++        args: parsed Namespace
+ 
+-# ── Run CT-only baseline first (if comparing) ──────────────────────────────
+-if args.compare_baseline:
+-    print(f"[eval] Running CT-only baseline ({max_steps} steps)…")
+-    baseline_data = run_episode(env, model=None, max_steps=max_steps, label="CT only")
+-    results.append(baseline_data)
+-    # Re-initialize SEA for next run
+-    sea.initialize(robot.get_positions_user_order()[1])
++    Returns:
++        plots_dir: Path (created if needed)
++    """
++    if args.plots_dir is not None:
++        plots_dir = Path(_PROJECT_ROOT) / args.plots_dir
++    else:
++        model_path = Path(_PROJECT_ROOT) / args.model
++        for parent in [model_path.parent, model_path.parent.parent]:
++            if parent.name.startswith("run_") and (parent / "args.json").exists():
++                plots_dir = parent / "plots"
++                break
++        else:
++            plots_dir = Path(_PROJECT_ROOT) / "plots"
+ 
+-# ── Run with RL policy ──────────────────────────────────────────────────────
+-print(f"[eval] Running CT+RL episode ({max_steps} steps)…")
+-rl_data = run_episode(env, model=model, max_steps=max_steps, label="CT + RL")
+-results.append(rl_data)
++    plots_dir.mkdir(parents=True, exist_ok=True)
++    return plots_dir
+ 
+-signal.signal(signal.SIGINT, _orig_sigint)
+ 
+ # ═════════════════════════════════════════════════════════════════════════════
+-# Colours: CT-only = gray/red, CT+RL = blue/green
++# W&B setup (eval)
+ # ═════════════════════════════════════════════════════════════════════════════
+-_COLORS = {"CT only": "tab:red", "CT + RL": "tab:blue"}
+ 
+-_peak_motor = _motor.peak_torque_joint / _motor.gear_ratio
++def setup_wandb(args):
++    """Initialize W&B for eval logging (if --wandb flag is set).
++
++    Loads API key from rl/.env.wandb, creates a wandb run tagged "eval".
++
++    Args:
++        args: parsed Namespace
++
++    Returns:
++        wandb_run: active wandb.Run or None
++    """
++    if not args.wandb or not _WANDB_AVAILABLE:
++        return None
++
++    env_file = Path(__file__).resolve().parent / ".env.wandb"
++    if env_file.exists():
++        for line in env_file.read_text().splitlines():
++            line = line.strip()
++            if line and not line.startswith("#") and "=" in line:
++                key, _, val = line.partition("=")
++                os.environ.setdefault(key.strip(), val.strip())
++
++    wandb_run = wandb.init(
++        project=args.wandb_project,
++        entity=args.wandb_entity,
++        config=vars(args),
++        tags=["eval"],
++        job_type="eval",
++    )
++    print(f"[eval] W&B run: {wandb_run.url}")
++    return wandb_run
+ 
+-plots_dir = Path(_PROJECT_ROOT) / "plots"
+-plots_dir.mkdir(exist_ok=True)
+-stamp = time.strftime("%Y%m%d_%H%M%S")
+ 
+ # ═════════════════════════════════════════════════════════════════════════════
+-# Figure 1: Overview (3 × 2)  — matches multi-instance layout
++# Plotting
+ # ═════════════════════════════════════════════════════════════════════════════
+-fig, axes = plt.subplots(3, 2, figsize=(16, 16))
+-fig.suptitle(
+-    f"Eval Residual RL  —  {args.traj_type}  "
+-    f"(Kp={args.ct_kp}, Kd={args.ct_kd}, "
+-    f"k_s={args.spring_stiffness}, ω_m={args.motor_bandwidth})",
+-    fontsize=13, fontweight="bold",
+-)
+ 
+-# [0,0] — XY PATH
+-ax = axes[0, 0]
+-for r in results:
+-    c = _COLORS.get(r["label"], "tab:blue")
+-    ax.plot(r["ee_ref"][:, 0] * 1e3, r["ee_ref"][:, 1] * 1e3,
+-            "--", color="gray", lw=1.0, alpha=0.5)
+-    ax.plot(r["ee_actual"][:, 0] * 1e3, r["ee_actual"][:, 1] * 1e3,
+-            "-", color=c, lw=1.5, label=r["label"])
+-    ax.plot(r["ee_actual"][0, 0] * 1e3, r["ee_actual"][0, 1] * 1e3,
+-            "o", color=c, ms=6)
+-ax.set_xlabel("X [mm]"); ax.set_ylabel("Y [mm]")
+-ax.set_title("EE Path  (solid=actual, dashed=ref)")
+-ax.set_aspect("equal")
+-ax.legend(fontsize=9, loc="best"); ax.grid(True, alpha=0.4)
+-
+-# [0,1] — TRACKING ERROR vs TIME
+-ax = axes[0, 1]
+-for r in results:
+-    c = _COLORS.get(r["label"], "tab:blue")
+-    ax.plot(r["t"], r["ee_err_mm"], "-", color=c, lw=1.2, label=r["label"])
+-ax.axvline(args.move_duration, color="k", lw=0.8, ls="--", label="preamble end")
+-# Add mean lines (post-preamble)
+-for r in results:
+-    c = _COLORS.get(r["label"], "tab:blue")
+-    mask = r["t"] > args.move_duration
+-    if mask.any():
+-        m = r["ee_err_mm"][mask].mean()
+-        ax.axhline(m, color=c, lw=0.9, ls=":",
+-                   label=f'{r["label"]} mean={m:.1f} mm')
+-ax.set_xlabel("Time [s]"); ax.set_ylabel("EE error [mm]")
+-ax.set_title("Tracking Error")
+-ax.legend(fontsize=8, loc="best"); ax.grid(True, alpha=0.4)
+-
+-# [1,0] — τ₂ DESIRED vs SEA-APPLIED
+-ax = axes[1, 0]
+-for r in results:
+-    c = _COLORS.get(r["label"], "tab:blue")
+-    ax.plot(r["t"], r["tau_ct"][:, 1], "-", color=c, lw=1.0, alpha=0.5)
+-    ax.plot(r["t"], r["tau_applied"][:, 1], "--", color=c, lw=1.2,
+-            label=r["label"])
+-ax.axhline(0, color="k", lw=0.5)
+-ax.set_xlabel("Time [s]"); ax.set_ylabel("τ₂ [Nm]")
+-ax.set_title("Joint-2 Torque  (solid=CT desired, dashed=SEA applied)")
+-ax.legend(fontsize=8, loc="best"); ax.grid(True, alpha=0.4)
+-
+-# [1,1] — SPRING EXTENSION δ
+-ax = axes[1, 1]
+-for r in results:
+-    c = _COLORS.get(r["label"], "tab:blue")
+-    ax.plot(r["t"], np.array(r["delta"]) * 1e3, "-", color=c, lw=1.2,
+-            label=r["label"])
+-ax.axhline(0, color="k", lw=0.5)
+-ax.set_xlabel("Time [s]"); ax.set_ylabel("δ [mm]")
+-ax.set_title("SEA Spring Extension δ")
+-ax.legend(fontsize=8, loc="best"); ax.grid(True, alpha=0.4)
+-
+-# [2,0] — MOTOR-SIDE TORQUE
+-ax = axes[2, 0]
+-for r in results:
+-    c = _COLORS.get(r["label"], "tab:blue")
+-    ax.plot(r["t"], r["tau_motor"], "-", color=c, lw=1.2, label=r["label"])
+-ax.axhline(+_peak_motor, color="k", ls="--", lw=1.0,
+-           label=f"±peak = {_peak_motor:.2f} Nm")
+-ax.axhline(-_peak_motor, color="k", ls="--", lw=1.0)
+-ax.axhline(0, color="k", lw=0.5)
+-ax.set_xlabel("Time [s]"); ax.set_ylabel("τ_motor [Nm]")
+-ax.set_title(f"Motor-Side Torque  (N={_motor.gear_ratio})")
+-ax.legend(fontsize=8, loc="best"); ax.grid(True, alpha=0.4)
+-
+-# [2,1] — RL RESIDUAL TORQUES (or cable force if no RL)
+-ax = axes[2, 1]
+-rl = next((r for r in results if r["label"] == "CT + RL"), results[-1])
+-ax.plot(rl["t"], rl["tau_residual"][:, 0], label="Δτ₁ (RL)", lw=1.0,
+-        color="tab:blue")
+-ax.plot(rl["t"], rl["tau_residual"][:, 1], label="Δτ₂ (RL)", lw=1.0,
+-        color="tab:cyan")
+-ax.axhline(0, color="k", lw=0.5)
+-ax.set_xlabel("Time [s]"); ax.set_ylabel("Residual τ [Nm]")
+-ax.set_title("RL Residual Torques")
+-ax.legend(fontsize=8, loc="best"); ax.grid(True, alpha=0.4)
+-
+-fig.tight_layout()
+-fname_overview = plots_dir / f"eval_ppo_overview_{stamp}.png"
+-fig.savefig(str(fname_overview), dpi=150, bbox_inches="tight")
+-plt.close(fig)
+-print(f"\n[eval] Overview figure saved: {fname_overview}")
++_COLORS = {"CT only": "tab:red", "CT + RL": "tab:blue"}
++
++
++def create_overview_plot(results, args, motor, plots_dir, stamp):
++    """Generate overview figure (3×2): side-by-side comparison of all runs.
++
++    Layout:
++      [0,0] End-effector XY path (actual vs reference)
++      [0,1] Tracking error vs time (post-preamble mean/max)
++      [1,0] Joint-2 torque: CT-desired vs SEA-applied
++      [1,1] SEA spring extension
++      [2,0] Motor-side torque (saturation limits)
++      [2,1] RL residual torques
++
++    Args:
++        results:   list of episode result dicts
++        args:      parsed Namespace
++        motor:     MotorConfig (for saturation limits)
++        plots_dir: Path to output directory
++        stamp:     timestamp string
++
++    Returns:
++        (fig, fname): matplotlib Figure and saved path
++    """
++    fig, axes = plt.subplots(3, 2, figsize=(16, 16))
++    fig.suptitle(
++        f"Eval Residual RL  —  {args.traj_type}  "
++        f"(Kp={args.ct_kp}, Kd={args.ct_kd}, "
++        f"k_s={args.spring_stiffness}, ω_m={args.motor_bandwidth})",
++        fontsize=13, fontweight="bold",
++    )
++
++    # [0,0] — XY PATH
++    ax = axes[0, 0]
++    for r in results:
++        c = _COLORS.get(r["label"], "tab:blue")
++        ax.plot(r["ee_ref"][:, 0] * 1e3, r["ee_ref"][:, 1] * 1e3,
++                "--", color="gray", lw=1.0, alpha=0.5)
++        ax.plot(r["ee_actual"][:, 0] * 1e3, r["ee_actual"][:, 1] * 1e3,
++                "-", color=c, lw=1.5, label=r["label"])
++        ax.plot(r["ee_actual"][0, 0] * 1e3, r["ee_actual"][0, 1] * 1e3,
++                "o", color=c, ms=6)
++    ax.set_xlabel("X [mm]"); ax.set_ylabel("Y [mm]")
++    ax.set_title("EE Path  (solid=actual, dashed=ref)")
++    ax.set_aspect("equal")
++    ax.legend(fontsize=9, loc="best"); ax.grid(True, alpha=0.4)
++
++    # [0,1] — TRACKING ERROR vs TIME
++    ax = axes[0, 1]
++    for r in results:
++        c = _COLORS.get(r["label"], "tab:blue")
++        ax.plot(r["t"], r["ee_err_mm"], "-", color=c, lw=1.2, label=r["label"])
++    ax.axvline(args.move_duration, color="k", lw=0.8, ls="--", label="preamble end")
++    for r in results:
++        c = _COLORS.get(r["label"], "tab:blue")
++        mask = r["t"] > args.move_duration
++        if mask.any():
++            m = r["ee_err_mm"][mask].mean()
++            ax.axhline(m, color=c, lw=0.9, ls=":",
++                       label=f'{r["label"]} mean={m:.1f} mm')
++    ax.set_xlabel("Time [s]"); ax.set_ylabel("EE error [mm]")
++    ax.set_title("Tracking Error")
++    ax.legend(fontsize=8, loc="best"); ax.grid(True, alpha=0.4)
++
++    # [1,0] — τ₂ DESIRED vs SEA-APPLIED
++    ax = axes[1, 0]
++    for r in results:
++        c = _COLORS.get(r["label"], "tab:blue")
++        ax.plot(r["t"], r["tau_ct"][:, 1], "-", color=c, lw=1.0, alpha=0.5)
++        ax.plot(r["t"], r["tau_applied"][:, 1], "--", color=c, lw=1.2,
++                label=r["label"])
++    ax.axhline(0, color="k", lw=0.5)
++    ax.set_xlabel("Time [s]"); ax.set_ylabel("τ₂ [Nm]")
++    ax.set_title("Joint-2 Torque  (solid=CT desired, dashed=SEA applied)")
++    ax.legend(fontsize=8, loc="best"); ax.grid(True, alpha=0.4)
++
++    # [1,1] — SPRING EXTENSION δ
++    ax = axes[1, 1]
++    for r in results:
++        c = _COLORS.get(r["label"], "tab:blue")
++        ax.plot(r["t"], np.array(r["delta"]) * 1e3, "-", color=c, lw=1.2,
++                label=r["label"])
++    ax.axhline(0, color="k", lw=0.5)
++    ax.set_xlabel("Time [s]"); ax.set_ylabel("δ [mm]")
++    ax.set_title("SEA Spring Extension δ")
++    ax.legend(fontsize=8, loc="best"); ax.grid(True, alpha=0.4)
++
++    # [2,0] — MOTOR-SIDE TORQUE
++    _peak_motor = motor.peak_torque_joint / motor.gear_ratio
++    ax = axes[2, 0]
++    for r in results:
++        c = _COLORS.get(r["label"], "tab:blue")
++        ax.plot(r["t"], r["tau_motor"], "-", color=c, lw=1.2, label=r["label"])
++    ax.axhline(+_peak_motor, color="k", ls="--", lw=1.0,
++               label=f"±peak = {_peak_motor:.2f} Nm")
++    ax.axhline(-_peak_motor, color="k", ls="--", lw=1.0)
++    ax.axhline(0, color="k", lw=0.5)
++    ax.set_xlabel("Time [s]"); ax.set_ylabel("τ_motor [Nm]")
++    ax.set_title(f"Motor-Side Torque  (N={motor.gear_ratio})")
++    ax.legend(fontsize=8, loc="best"); ax.grid(True, alpha=0.4)
++
++    # [2,1] — RL RESIDUAL TORQUES
++    ax = axes[2, 1]
++    rl = next((r for r in results if r["label"] == "CT + RL"), results[-1])
++    ax.plot(rl["t"], rl["tau_residual"][:, 0], label="Δτ₁ (RL)", lw=1.0,
++            color="tab:blue")
++    ax.plot(rl["t"], rl["tau_residual"][:, 1], label="Δτ₂ (RL)", lw=1.0,
++            color="tab:cyan")
++    ax.axhline(0, color="k", lw=0.5)
++    ax.set_xlabel("Time [s]"); ax.set_ylabel("Residual τ [Nm]")
++    ax.set_title("RL Residual Torques")
++    ax.legend(fontsize=8, loc="best"); ax.grid(True, alpha=0.4)
++
++    fig.tight_layout()
++    fname = plots_dir / f"eval_ppo_overview_{stamp}.png"
++    fig.savefig(str(fname), dpi=150, bbox_inches="tight")
++    print(f"\n[eval] Overview figure saved: {fname}")
++    return fig, fname
++
++
++def create_detail_plot(results, args, plots_dir, stamp):
++    """Generate per-mode detail figure (N_runs × 3).
++
++    For each run (CT-only, CT+RL), plot:
++      [i,0] End-effector XY path
++      [i,1] Tracking error vs time (with mean/max post-preamble)
++      [i,2] Motor cable length (desired vs actual)
++
++    Args:
++        results:   list of episode result dicts
++        args:      parsed Namespace
++        plots_dir: Path to output directory
++        stamp:     timestamp string
++
++    Returns:
++        (fig, fname): matplotlib Figure and saved path
++    """
++    n_runs = len(results)
++    fig, axes = plt.subplots(n_runs, 3, figsize=(18, 4 * n_runs), squeeze=False)
++    fig.suptitle(
++        f"Per-Mode Detail  —  {args.traj_type}  "
++        f"(Kp={args.ct_kp}, Kd={args.ct_kd}, "
++        f"k_s={args.spring_stiffness}, ω_m={args.motor_bandwidth})",
++        fontsize=13, fontweight="bold",
++    )
++
++    preamble_steps = int(args.move_duration / args.dt)
++
++    for i, r in enumerate(results):
++        c = _COLORS.get(r["label"], "tab:blue")
++
++        # Column 0: XY PATH
++        ax_xy = axes[i, 0]
++        ax_xy.plot(r["ee_ref"][:, 0] * 1e3, r["ee_ref"][:, 1] * 1e3,
++                   "--", color="gray", lw=1.0, alpha=0.7, label="ref")
++        ax_xy.plot(r["ee_actual"][:, 0] * 1e3, r["ee_actual"][:, 1] * 1e3,
++                   "-", color=c, lw=1.5, label="actual")
++        ax_xy.plot(r["ee_actual"][0, 0] * 1e3, r["ee_actual"][0, 1] * 1e3,
++                   "o", color=c, ms=6)
++        ax_xy.set_xlabel("X [mm]"); ax_xy.set_ylabel("Y [mm]")
++        ax_xy.set_title(f'{r["label"]} — EE Path')
++        ax_xy.set_aspect("equal")
++        ax_xy.legend(fontsize=8, loc="best"); ax_xy.grid(True, alpha=0.4)
++
++        # Column 1: TRACKING ERROR vs TIME
++        ax_err = axes[i, 1]
++        ax_err.plot(r["t"], r["ee_err_mm"], "-", color=c, lw=1.2)
++        ax_err.axvline(args.move_duration, color="k", lw=0.8, ls="--",
++                       label="preamble end")
++        n_logged = len(r["t"])
++        if n_logged > preamble_steps:
++            _mean_err = r["ee_err_mm"][preamble_steps:].mean()
++            _max_err = r["ee_err_mm"][preamble_steps:].max()
++            ax_err.axhline(_mean_err, color=c, lw=0.9, ls=":",
++                           label=f"mean={_mean_err:.1f} mm  max={_max_err:.1f} mm")
++        ax_err.set_xlabel("Time [s]"); ax_err.set_ylabel("EE error [mm]")
++        ax_err.set_title(f'{r["label"]} — Tracking Error')
++        ax_err.legend(fontsize=8, loc="best"); ax_err.grid(True, alpha=0.4)
++
++        # Column 2: MOTOR CABLE LENGTH l_m vs desired l_m_des
++        ax_sea = axes[i, 2]
++        ax_sea.plot(r["t"], np.array(r["l_m"]) * 1e3, "b-", lw=1.2,
++                    label="l_m (motor)")
++        ax_sea.plot(r["t"], np.array(r["l_m_des"]) * 1e3, "b--", lw=1.0,
++                    label="l_m_des")
++        ax_sea.axhline(0, color="k", lw=0.5)
++        ax_sea.set_xlabel("Time [s]"); ax_sea.set_ylabel("[mm]")
++        ax_sea.set_title(f'{r["label"]} — Motor Cable l_m')
++        ax_sea.legend(fontsize=8, loc="best"); ax_sea.grid(True, alpha=0.4)
++
++    fig.tight_layout()
++    fname = plots_dir / f"eval_ppo_detail_{stamp}.png"
++    fig.savefig(str(fname), dpi=150, bbox_inches="tight")
++    print(f"  Detail figure saved: {fname}")
++    return fig, fname
++
++
++def log_plots_to_wandb(wandb_run, fig_overview, fig_detail, summary_stats):
++    """Upload eval figures and summary metrics to W&B.
++
++    Args:
++        wandb_run:     active wandb.Run (or None)
++        fig_overview:  matplotlib Figure (overview)
++        fig_detail:    matplotlib Figure (detail)
++        summary_stats: dict of {label: {mean, max, std}}
++    """
++    if wandb_run is None:
++        return
++
++    wandb_run.log({
++        "eval/overview": wandb.Image(fig_overview),
++        "eval/detail": wandb.Image(fig_detail),
++    })
++
++    for label, stats in summary_stats.items():
++        prefix = "eval/" + label.replace(" ", "_").lower()
++        wandb_run.log({
++            f"{prefix}/mean_err_mm": stats["mean"],
++            f"{prefix}/max_err_mm": stats["max"],
++            f"{prefix}/std_err_mm": stats["std"],
++        })
++
++    print("[eval] Plots and metrics logged to W&B.")
++
++
++def print_summary(results, move_duration):
++    """Print evaluation summary statistics.
++
++    Args:
++        results:       list of episode result dicts
++        move_duration: preamble duration [s]
++
++    Returns:
++        summary_stats: dict of {label: {mean, max, std}}
++    """
++    summary_stats = {}
++    print(f"\n[eval] Summary (post-preamble, t > {move_duration}s):")
++    for r in results:
++        t = r["t"]
++        err = r["ee_err_mm"]
++        mask = t > move_duration
++        if mask.any():
++            stats = {
++                "mean": float(err[mask].mean()),
++                "max": float(err[mask].max()),
++                "std": float(err[mask].std()),
++            }
++            summary_stats[r["label"]] = stats
++            print(f"  {r['label']:12s}  mean={stats['mean']:.2f} mm  "
++                  f"max={stats['max']:.2f} mm  std={stats['std']:.2f} mm")
++    return summary_stats
++
++
++def cleanup(env, wandb_run=None):
++    """Close environment, simulation, and W&B.
++
++    Args:
++        env:       ManipulatorResidualEnv
++        wandb_run: active wandb.Run or None
++    """
++    env.close()
++    if wandb_run is not None:
++        wandb_run.finish()
++    simulation_app.close()
++
+ 
+ # ═════════════════════════════════════════════════════════════════════════════
+-# Figure 2: Per-mode detail  (N_runs × 3)  — matches per-robot layout
++# Main
+ # ═════════════════════════════════════════════════════════════════════════════
+-n_runs = len(results)
+-fig2, axes2 = plt.subplots(n_runs, 3, figsize=(18, 4 * n_runs), squeeze=False)
+-fig2.suptitle(
+-    f"Per-Mode Detail  —  {args.traj_type}  "
+-    f"(Kp={args.ct_kp}, Kd={args.ct_kd}, "
+-    f"k_s={args.spring_stiffness}, ω_m={args.motor_bandwidth})",
+-    fontsize=13, fontweight="bold",
+-)
+ 
+-preamble_steps = int(args.move_duration / args.dt)
+-
+-for i, r in enumerate(results):
+-    c = _COLORS.get(r["label"], "tab:blue")
+-
+-    # Column 0: XY PATH
+-    ax_xy = axes2[i, 0]
+-    ax_xy.plot(r["ee_ref"][:, 0] * 1e3, r["ee_ref"][:, 1] * 1e3,
+-               "--", color="gray", lw=1.0, alpha=0.7, label="ref")
+-    ax_xy.plot(r["ee_actual"][:, 0] * 1e3, r["ee_actual"][:, 1] * 1e3,
+-               "-", color=c, lw=1.5, label="actual")
+-    ax_xy.plot(r["ee_actual"][0, 0] * 1e3, r["ee_actual"][0, 1] * 1e3,
+-               "o", color=c, ms=6)
+-    ax_xy.set_xlabel("X [mm]"); ax_xy.set_ylabel("Y [mm]")
+-    ax_xy.set_title(f'{r["label"]} — EE Path')
+-    ax_xy.set_aspect("equal")
+-    ax_xy.legend(fontsize=8, loc="best"); ax_xy.grid(True, alpha=0.4)
+-
+-    # Column 1: TRACKING ERROR
+-    ax_err = axes2[i, 1]
+-    ax_err.plot(r["t"], r["ee_err_mm"], "-", color=c, lw=1.2)
+-    ax_err.axvline(args.move_duration, color="k", lw=0.8, ls="--",
+-                   label="preamble end")
+-    n_logged = len(r["t"])
+-    if n_logged > preamble_steps:
+-        _mean_err = r["ee_err_mm"][preamble_steps:].mean()
+-        _max_err = r["ee_err_mm"][preamble_steps:].max()
+-        ax_err.axhline(_mean_err, color=c, lw=0.9, ls=":",
+-                       label=f"mean={_mean_err:.1f} mm  max={_max_err:.1f} mm")
+-    ax_err.set_xlabel("Time [s]"); ax_err.set_ylabel("EE error [mm]")
+-    ax_err.set_title(f'{r["label"]} — Tracking Error')
+-    ax_err.legend(fontsize=8, loc="best"); ax_err.grid(True, alpha=0.4)
+-
+-    # Column 2: MOTOR CABLE l_m vs l_m_des
+-    ax_sea = axes2[i, 2]
+-    ax_sea.plot(r["t"], np.array(r["l_m"]) * 1e3, "b-", lw=1.2,
+-                label="l_m (motor)")
+-    ax_sea.plot(r["t"], np.array(r["l_m_des"]) * 1e3, "b--", lw=1.0,
+-                label="l_m_des")
+-    ax_sea.axhline(0, color="k", lw=0.5)
+-    ax_sea.set_xlabel("Time [s]"); ax_sea.set_ylabel("[mm]")
+-    ax_sea.set_title(f'{r["label"]} — Motor Cable l_m')
+-    ax_sea.legend(fontsize=8, loc="best"); ax_sea.grid(True, alpha=0.4)
+-
+-fig2.tight_layout()
+-fname_detail = plots_dir / f"eval_ppo_detail_{stamp}.png"
+-fig2.savefig(str(fname_detail), dpi=150, bbox_inches="tight")
+-plt.close(fig2)
+-print(f"  📊 Detail figure saved: {fname_detail}")
+-
+-# ── Summary stats ────────────────────────────────────────────────────────────
+-for r in results:
+-    t = r["t"]
+-    err = r["ee_err_mm"]
+-    mask = t > args.move_duration
+-    if mask.any():
+-        print(f"  {r['label']:12s}  mean={err[mask].mean():.2f} mm  "
+-              f"max={err[mask].max():.2f} mm  std={err[mask].std():.2f} mm")
+-
+-env.close()
+-simulation_app.close()
+-
+-# Open plot
+-import subprocess
+-try:
+-    subprocess.Popen(["eog", str(fname_overview)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+-except Exception:
+-    pass
++def main(args):
++    """Evaluation pipeline.
++
++    1. Build identical scene as used during training
++    2. Load the trained PPO policy
++    3. Run CT-only baseline (if --compare-baseline)
++    4. Run CT+RL (learned policy)
++    5. Generate comparison plots
++    6. Log to W&B (if enabled)
++    7. Print summary statistics
++
++    Args:
++        args: parsed Namespace
++    """
++    print("\n[eval] Setting up scene…")
++
++    # ── Motor + scene ────────────────────────────────────────────────────────
++    motor, motor_mode = resolve_motor_defaults(args)
++    robot, world, ct, sea, traj_source, L1, L2, r_p = build_scene(
++        args, motor, motor_mode,
++    )
++
++    # ── Plots + W&B ─────────────────────────────────────────────────────────
++    plots_dir = resolve_plots_dir(args)
++    stamp = time.strftime("%Y%m%d_%H%M%S")
++    wandb_run = setup_wandb(args)
++
++    # ── Environment + model ──────────────────────────────────────────────────
++    max_steps = int(args.duration / args.dt)
++    env = ManipulatorResidualEnv(
++        robot=robot, world=world, ct_controller=ct, sea_actuator=sea,
++        traj_source=traj_source, L1=L1, L2=L2, dt=args.dt,
++        max_episode_steps=max_steps, residual_max=args.residual_max,
++        render_mode=args.render,
++        solve_ik_fn=solve_2r_ik, fk_fn=forward_kinematics_2r,
++        ik_to_jt_fn=ik_to_joint_space_references,
++    )
++
++    model_path = Path(_PROJECT_ROOT) / args.model
++    print(f"[eval] Loading model: {model_path}")
++    model = PPO.load(str(model_path), env=env)
++
++    # ── Run episodes ─────────────────────────────────────────────────────────
++    results = []
++
++    if args.compare_baseline:
++        print(f"[eval] Running CT-only baseline ({max_steps} steps)…")
++        baseline_data = run_episode(env, model=None, max_steps=max_steps,
++                                    label="CT only")
++        results.append(baseline_data)
++        sea.initialize(robot.get_positions_user_order()[1])
++
++    print(f"[eval] Running CT+RL episode ({max_steps} steps)…")
++    rl_data = run_episode(env, model=model, max_steps=max_steps,
++                          label="CT + RL")
++    results.append(rl_data)
++
++    signal.signal(signal.SIGINT, _orig_sigint)
++
++    # ── Plots ────────────────────────────────────────────────────────────────
++    fig_overview, fname_overview = create_overview_plot(
++        results, args, motor, plots_dir, stamp,
++    )
++    fig_detail, fname_detail = create_detail_plot(
++        results, args, plots_dir, stamp,
++    )
++
++    # ── Summary + W&B ────────────────────────────────────────────────────────
++    summary_stats = print_summary(results, args.move_duration)
++    log_plots_to_wandb(wandb_run, fig_overview, fig_detail, summary_stats)
++
++    plt.close(fig_overview)
++    plt.close(fig_detail)
++
++    # ── Cleanup ──────────────────────────────────────────────────────────────
++    cleanup(env, wandb_run)
++
++    # Try to open the overview plot in default image viewer
++    import subprocess
++    try:
++        subprocess.Popen(["eog", str(fname_overview)],
++                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    except Exception:
++        pass
++
++    print("[eval] Done.")
++
++
++# ═════════════════════════════════════════════════════════════════════════════
++# Entry point
++# ═════════════════════════════════════════════════════════════════════════════
+ 
+-print("[eval] Done.")
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser(description="Evaluate residual-RL PPO agent")
++
++    # Model and rendering
++    parser.add_argument("--render", default=_render_mode,
++                        choices=["native", "headless"],
++                        help="'native' shows 3D window, 'headless' runs faster")
++    parser.add_argument("--model", type=str,
++                        default="rl/checkpoints/ppo_residual_latest",
++                        help="Path to trained PPO model (without .zip extension)")
++
++    # Episode configuration
++    parser.add_argument("--duration", type=float, default=20.0,
++                        help="Episode duration [s]")
++    parser.add_argument("--dt", type=float, default=0.01,
++                        help="Physics timestep [s]")
++    parser.add_argument("--move-duration", type=float, default=3.0,
++                        help="Duration of preamble trajectory [s]")
++    parser.add_argument("--lap-duration", type=float, default=None,
++                        help="Duration of one trajectory lap [s]. Default: matches --duration (same as training episode_steps*dt)")
++
++    # Baseline comparison
++    parser.add_argument("--compare-baseline", action="store_true", default=True,
++                        help="Run CT-only baseline for comparison (default: True)")
++    parser.add_argument("--no-compare-baseline", dest="compare_baseline",
++                        action="store_false",
++                        help="Skip CT-only baseline run")
++
++    # CT controller gains (should match training)
++    parser.add_argument("--ct-kp", type=float, default=100.0,
++                        help="CT proportional gain [Nm·s/rad]")
++    parser.add_argument("--ct-kd", type=float, default=40.0,
++                        help="CT derivative gain [Nm·s²/rad]")
++    parser.add_argument("--ct-tau-max", type=float, default=None,
++                        help="Torque saturation [Nm]. Default: motor peak torque")
++
++    # Motor and SEA (should match training)
++    parser.add_argument("--motor", choices=MOTOR_CHOICES,
++                        default="AK60_6_KV80_Config",
++                        help="Motor model")
++    parser.add_argument("--sea-mode", choices=["torque", "position"],
++                        default="torque",
++                        help="Motor control mode")
++    parser.add_argument("--spring-stiffness", type=float, default=30.0,
++                        help="SEA spring stiffness [Nm/rad]")
++    parser.add_argument("--cable-damping", type=float, default=2.0,
++                        help="SEA cable damping [Nm·s/rad]")
++    parser.add_argument("--motor-bandwidth", type=float, default=100.0,
++                        help="Motor servo bandwidth [rad/s]")
++    parser.add_argument("--motor-substeps", type=int, default=None,
++                        help="Motor integration sub-steps")
++    parser.add_argument("--residual-max", type=float, default=5.0,
++                        help="Max RL residual torque magnitude [Nm]")
++
++    # Trajectory (should match training)
++    parser.add_argument("--traj-type", default="rect",
++                        choices=["circle", "rect", "line"],
++                        help="End-effector trajectory shape")
++
++    # Output
++    parser.add_argument("--plots-dir", type=str, default=None,
++                        help="Directory for eval plots. Auto-detected from "
++                             "model path if inside a run_* folder")
++
++    # Weights & Biases
++    parser.add_argument("--wandb", action="store_true", default=False,
++                        help="Enable Weights & Biases logging")
++    parser.add_argument("--wandb-project", type=str,
++                        default="isaac_sim_robotics",
++                        help="W&B project name")
++    parser.add_argument("--wandb-entity", type=str,
++                        default="dbha483-transgp",
++                        help="W&B entity (team or username)")
++
++    main(parser.parse_args())
+diff --git a/rl/train_ppo_residual.py b/rl/train_ppo_residual.py
+index 752f5b5..7aae3b9 100644
+--- a/rl/train_ppo_residual.py
++++ b/rl/train_ppo_residual.py
+@@ -30,12 +30,17 @@ Usage::
+ import os
+ import sys
+ import math
++import json
+ import argparse
+ import time
+ from pathlib import Path
+ 
+ import numpy as np
+ 
++import matplotlib
++matplotlib.use("Agg")  # non-interactive backend — safe inside Isaac Sim
++import matplotlib.pyplot as plt
++
+ # ── Project root ─────────────────────────────────────────────────────────────
+ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+ if _PROJECT_ROOT not in sys.path:
+@@ -91,6 +96,14 @@ from stable_baselines3.common.callbacks import (
+ from stable_baselines3.common.monitor import Monitor
+ from stable_baselines3.common.logger import configure
+ 
++# ── Weights & Biases (optional) ──────────────────────────────────────────────
++try:
++    import wandb
++    from wandb.integration.sb3 import WandbCallback
++    _WANDB_AVAILABLE = True
++except ImportError:
++    _WANDB_AVAILABLE = False
++
+ # ── SIGINT handling ──────────────────────────────────────────────────────────
+ import signal
+ _stop_requested = False
+@@ -103,289 +116,905 @@ def _sigint_handler(sig, frame):
+ 
+ signal.signal(signal.SIGINT, _sigint_handler)
+ 
+-# ── Argument parser ──────────────────────────────────────────────────────────
+-parser = argparse.ArgumentParser(description="Train residual-RL PPO for manipulator")
+-parser.add_argument("--render", default=_render_mode,
+-                    choices=["native", "headless"])
+-parser.add_argument("--total-timesteps", type=int, default=500_000)
+-parser.add_argument("--episode-steps", type=int, default=2000,
+-                    help="Max steps per episode (default: 2000 = 20s at 100Hz)")
+-parser.add_argument("--dt", type=float, default=1.0 / 100.0)
+-parser.add_argument("--residual-max", type=float, default=5.0,
+-                    help="Max residual torque magnitude [Nm]")
+-parser.add_argument("--move-duration", type=float, default=3.0)
+-
+-# CT gains
+-parser.add_argument("--ct-kp", type=float, default=100.0)
+-parser.add_argument("--ct-kd", type=float, default=40.0)
+-parser.add_argument("--ct-tau-max", type=float, default=None,
+-                    help="Torque saturation [Nm]. Default: motor peak_torque_joint.")
+-
+-# Motor model
+-parser.add_argument("--motor", choices=MOTOR_CHOICES, default="AK60_6_KV80_Config",
+-                    help="CubeMars motor model for the elbow joint")
+-
+-# SEA parameters
+-parser.add_argument("--sea-mode", choices=["torque", "position"], default="torque",
+-                    help="Motor dynamics mode: torque (2nd-order) or position (1st-order)")
+-parser.add_argument("--spring-stiffness", type=float, default=30.0)
+-parser.add_argument("--cable-damping", type=float, default=2.0)
+-parser.add_argument("--motor-bandwidth", type=float, default=100.0,
+-                    help="Motor servo bandwidth [rad/s] (position mode only)")
+-parser.add_argument("--motor-substeps", type=int, default=None,
+-                    help="Motor sub-steps per physics step (None=auto)")
+-
+-# PPO hyperparameters
+-parser.add_argument("--learning-rate", type=float, default=3e-4)
+-parser.add_argument("--n-steps", type=int, default=2048)
+-parser.add_argument("--batch-size", type=int, default=64)
+-parser.add_argument("--n-epochs", type=int, default=10)
+-parser.add_argument("--gamma", type=float, default=0.99)
+-parser.add_argument("--clip-range", type=float, default=0.2)
+-parser.add_argument("--ent-coef", type=float, default=0.0)
+-
+-# Reward weights
+-parser.add_argument("--w-tracking", type=float, default=100.0)
+-parser.add_argument("--w-effort", type=float, default=0.01)
+-parser.add_argument("--w-smoothness", type=float, default=0.001)
+-parser.add_argument("--w-torque-tracking", type=float, default=1.0)
+-
+-# Trajectory
+-parser.add_argument("--traj-type", default="rect",
+-                    choices=["circle", "rect", "line"])
+-
+-# Checkpointing
+-parser.add_argument("--save-freq", type=int, default=10_000,
+-                    help="Save checkpoint every N steps")
+-parser.add_argument("--resume", type=str, default=None,
+-                    help="Path to model zip to resume training from")
+-parser.add_argument("--log-dir", type=str, default="rl/logs")
+-parser.add_argument("--checkpoint-dir", type=str, default="rl/checkpoints")
+-
+-args = parser.parse_args()
+-
+-# ─── Motor-derived defaults ──────────────────────────────────────────────────
+-_motor = get_motor(args.motor)
+-_motor_mode = MotorMode(args.sea_mode)
+-if args.ct_tau_max is None:
+-    args.ct_tau_max = _motor.peak_torque_joint
++
++def setup_world(args):
++    """Create and return the Isaac Sim physics world.
++
++    Must be called after args are parsed so that args.dt is available.
++
++    Args:
++        args: parsed argparse Namespace
++
++    Returns:
++        world: initialized World instance with ground plane
++    """
++    # Create physics simulation world with specified timesteps
++    world = World(
++        stage_units_in_meters=1.0,   # Spatial scale (Omniverse engine parameter)
++        physics_dt=args.dt,           # Physics integration step duration [s]
++        rendering_dt=args.dt,         # Rendering frame update duration [s]
++    )
++    world.scene.add_default_ground_plane()  # Add ground for collision
++    return world
++
++
++def setup_robot(config, world, args):
++    """Load, wire up, and initialize the manipulator inside an existing world.
++
++    Args:
++        config: ManipulatorConfig dataclass (URDF path, initial joint angles, etc.)
++        world:  Isaac Sim World instance (already has ground plane)
++        args:   parsed argparse Namespace (used for print only)
++
++    Returns:
++        robot: CupManipulatorTendonIsaac loaded and wired into world
++               (not yet reset — call initialize_simulation() next)
++    """
++    # Instantiate the manipulator robot object (wrapper around URDF)
++    robot = CupManipulatorTendonIsaac(config, enable_visualization=False)
++    robot.prepare_usd()  # Convert URDF meshes to USD for Isaac Sim GPU rendering
++
++    # Load robot URDF into the world scene
++    robot.load_urdf(world)
++    robot.weld_base_to_world(
++        position=np.array([0.0, 0.0, 0.0]),
++        orientation=np.deg2rad([0.0, 0.0, 0.0]),  # Fixed to ground at origin
++    )
++
++    # Add end-effector frame (virtual reference frame at tool tip)
++    robot.add_end_effector_frame()
++
++    # Configure joint damping/friction and constraint stiffness
++    robot.set_joint_properties()
++
++    # Add ActuationPortIndex for each joint (required for motor commands in Isaac Sim)
++    robot.add_joint_actuators()
++
++    return robot
++
++
++def initialize_simulation(world, robot):
++    """Reset the physics world and extract robot geometric parameters.
++
++    Must be called after setup_robot() and before any trajectory or controller
++    setup, because it performs the first world.reset() that activates the
++    ArticulationView GPU tensors.
++
++    Args:
++        world: Isaac Sim World instance (already has robot loaded)
++        robot: CupManipulatorTendonIsaac (already loaded into world)
++
++    Returns:
++        L1:  proximal link length [m]
++        L2:  distal link length [m]
++        r_p: pulley radius [m]
++    """
++    # Reset world to activate GPU physics tensors and ArticulationView
++    world.reset()
++    robot.initialize_state()
++    robot.initialize_dynamics_view(world)  # Prepare GPU view for fast joint/link operations
++    robot.set_initial_positions()
++
++    # Read geometric parameters needed for kinematics and cable-torque conversion
++    L1, L2 = robot._get_link_lengths()        # Link lengths [m]
++    r_p = robot.r_p                           # Pulley radius [m]
++    print(f"  L1={L1*1e3:.1f} mm  L2={L2*1e3:.1f} mm  r_p={r_p*1e3:.2f} mm")
++
++    return L1, L2, r_p
++
++
++def setup_trajectory(args, robot, L1, L2):
++    """Build the end-effector reference trajectory for training.
++
++    Constructs the main repeating trajectory (circle / rect / line) and prepends
++    a smooth preamble that moves the EE from its current rest position to the
++    trajectory start, avoiding discontinuous velocity jumps at episode start.
++
++    Args:
++        args:   parsed argparse Namespace (traj_type, episode_steps, dt, move_duration)
++        robot:  initialized CupManipulatorTendonIsaac (needed for current joint angles)
++        L1:     proximal link length [m]
++        L2:     distal link length [m]
++
++    Returns:
++        traj_source: PreambleTrajectorySource that yields (pos, vel) reference at any t
++    """
++    lap_duration = args.episode_steps * args.dt  # Total time for one lap [s]
++
++    # Build the main repeating trajectory shape
++    if args.traj_type == "circle":
++        main_traj = CircleTrajectory(
++            cx=0.4, cy=0.00, radius=0.1, lap_duration=lap_duration, N=60,
++        )
++    elif args.traj_type == "rect":
++        main_traj = RectTrajectory(
++            x_range=(0.49, 0.51), y_range=(-0.08, 0.08),
++            lap_duration=lap_duration, N=60,
++            v_max=0.9, v_corner=0.05, corner_blend=0.35,
++        )
++    else:  # line
++        from controller.trajectory import LineTrajectory
++        main_traj = LineTrajectory(
++            cx=0.4, cy=0.0, radius=0.1, lap_duration=lap_duration, N=60,
++        )
++
++    # Build a smooth preamble to move the EE from its current position to the
++    # trajectory start, matching the initial velocity of the main trajectory.
++    # This prevents discontinuous velocity jumps and large transient errors
++    # at the beginning of each episode.
++    q_cur  = robot.get_positions_user_order()       # Current joint angles [q1, q2]
++    ee_cur = forward_kinematics_2r(L1, L2, *q_cur)  # Current EE position from FK
++    first_ee  = main_traj.eval_position(0.0)         # EE position at t=0 of main traj
++    first_vel = main_traj.eval_velocity(0.0)         # Desired EE velocity at t=0
++
++    preamble = build_move_to_start(
++        p_start=ee_cur, p_end=first_ee, v_end=first_vel,
++        duration=args.move_duration,  # Time to reach starting point [s]
++    )
++
++    # PreambleTrajectorySource plays the preamble once (t=0 → move_duration),
++    # then loops main_traj indefinitely.
++    return PreambleTrajectorySource(preamble, main_traj)
++
++
++def setup_controller_and_sea(args, robot, motor, motor_mode):
++    """Instantiate the CT controller and SEA cable actuator.
++
++    The Computed Torque (CT) controller provides model-based feedforward/feedback
++    torques.  The SEA actuator then applies those torques through a compliant cable
++    spring, introducing realistic force-transmission lag that the PPO policy must
++    learn to compensate for.
++
++    Args:
++        args:       parsed argparse Namespace (CT gains, SEA parameters, dt, etc.)
++        robot:      initialized CupManipulatorTendonIsaac (provides initial joint state)
++        motor:      motor config object from catalog (inertia, peak torque, gear ratio)
++        motor_mode: MotorMode enum — "torque" (2nd-order) or "position" (1st-order servo)
++
++    Returns:
++        ct:  ComputedTorqueController
++        sea: SEACableActuatorNP (initialized at current joint-2 position)
++    """
++    # ── CT Controller ─────────────────────────────────────────────────────────
++    # Computed Torque uses feedback linearization:
++    #   τ_des = M(q)·a_ref + C(q,qdot)·qdot + G(q)
++    # where  a_ref = Kp·e_pos + Kd·e_vel  (PD tracking error)
++    # The result is the desired joint torque before SEA dynamics.
++    ct = ComputedTorqueController(
++        Kp=args.ct_kp,           # Proportional gain [Nm·s/rad]
++        Kd=args.ct_kd,           # Derivative gain   [Nm·s²/rad]
++        tau_max=args.ct_tau_max, # Torque saturation limit [Nm]
++        pulley_radius=robot.r_p, # Cable-to-torque conversion factor
++    )
++
++    # ── SEA Actuator ──────────────────────────────────────────────────────────
++    # Series Elastic Actuator transmits force through a compliant cable spring:
++    #   - Motor rotates → cable pulls → spring compresses → torque = k_s * δ
++    #   - Motor dynamics add lag between desired and applied torque
++    #   - Two modes: 2nd-order torque tracking or 1st-order position servo
++    # This lag is what the PPO residual policy learns to predict and compensate.
++    sea = SEACableActuatorNP(
++        r_p=robot.r_p,                              # Pulley radius [m]
++        k_s=args.spring_stiffness,            # Spring stiffness  [Nm/rad]
++        b_c=args.cable_damping,               # Cable damping     [Nm·s/rad]
++        tau_max=args.ct_tau_max,              # Motor output limit [Nm]
++        dt=args.dt,                           # Integration step  [s]
++        motor_mode=motor_mode,                # "torque" or "position"
++        motor_cfg=motor,                      # Motor catalog entry (inertia, peak, gear)
++        omega_m=args.motor_bandwidth,         # Servo bandwidth [rad/s] (position mode)
++        motor_substeps=args.motor_substeps,   # Sub-steps per physics step (auto if None)
++    )
++    # Warm-start motor state at the current joint-2 angle to avoid a transient
++    # at the very start of the first episode.
++    q_cur = robot.get_positions_user_order()
++    sea.initialize(q_cur[1])
++
++    return ct, sea
++
++
+ 
+ 
+ # ═════════════════════════════════════════════════════════════════════════════
+-# Build Isaac Sim scene
++# Scene helpers
+ # ═════════════════════════════════════════════════════════════════════════════
+-print("\n[train] Setting up Isaac Sim scene…")
+-
+-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+-URDF_PATH = str(
+-    PROJECT_ROOT
+-    / "model_using_onshape_to_robot"
+-    / "manipulator_cable"
+-    / "manipulator_cable_obj.urdf"
+-)
+ 
+-config = create_cable_manipulator_config(
+-    urdf_path=URDF_PATH,
+-    joint_angles={
+-        "link1_base":  math.radians(10.0),
+-        "link2_link1": math.radians(-10.0),
+-    },
+-    damping=(0.05, 0.05),
+-    stiffness=(0.0, 0.0),
+-)
++def resolve_motor_defaults(args):
++    """Resolve motor catalog entry and fill in CT torque-saturation default.
++
++    If --ct-tau-max was not provided on the CLI, sets it to the motor's peak
++    joint-side torque (after gear reduction).
++
++    Args:
++        args: parsed Namespace (motor, sea_mode, ct_tau_max)
++
++    Returns:
++        motor:      motor config object from catalog
++        motor_mode: MotorMode enum
++    """
++    motor      = get_motor(args.motor)
++    motor_mode = MotorMode(args.sea_mode)
++    if args.ct_tau_max is None:
++        args.ct_tau_max = motor.peak_torque_joint
++    return motor, motor_mode
++
++
++def build_robot_config():
++    """Construct the manipulator URDF config from the workspace model folder.
++
++    Returns:
++        config: ManipulatorConfig dataclass (frozen, JSON-serialisable)
++    """
++    urdf_path = str(
++        Path(__file__).resolve().parent.parent
++        / "model_using_onshape_to_robot"
++        / "manipulator_cable"
++        / "manipulator_cable_obj.urdf"
++    )
++    return create_cable_manipulator_config(
++        urdf_path=urdf_path,
++        joint_angles={
++            "link1_base":  math.radians(10.0),   # Initial joint-1 angle
++            "link2_link1": math.radians(-10.0),  # Initial joint-2 angle
++        },
++        damping=(0.05, 0.05),    # Small passive damping (models friction)
++        stiffness=(0.0, 0.0),    # No passive springs (cable provides active restoring)
++    )
+ 
+-robot = CupManipulatorTendonIsaac(config, enable_visualization=False)
+-robot.prepare_usd()
+ 
+-world = World(
+-    stage_units_in_meters=1.0,
+-    physics_dt=args.dt,
+-    rendering_dt=args.dt,
+-)
+-world.scene.add_default_ground_plane()
++# ═════════════════════════════════════════════════════════════════════════════
++# Run directory & args persistence
++# ═════════════════════════════════════════════════════════════════════════════
+ 
+-robot.load_urdf(world)
+-robot.weld_base_to_world(
+-    position=np.array([0.0, 0.0, 0.0]),
+-    orientation=np.deg2rad([0.0, 0.0, 0.0]),
+-)
+-robot.add_end_effector_frame()
+-robot.set_joint_properties()
+-robot.add_joint_actuators()
+-
+-world.reset()
+-robot.initialize_state()
+-robot.initialize_dynamics_view(world)
+-robot.set_initial_positions()
+-
+-L1, L2 = robot._get_link_lengths()
+-r_p = robot.r_p
+-print(f"  L1={L1*1e3:.1f} mm  L2={L2*1e3:.1f} mm  r_p={r_p*1e3:.2f} mm")
+-
+-# ── Trajectory ───────────────────────────────────────────────────────────────
+-if args.traj_type == "circle":
+-    main_traj = CircleTrajectory(
+-        cx=0.4, cy=0.00, radius=0.1, lap_duration=args.episode_steps * args.dt, N=60,
++def create_run_dir(args):
++    """Create a timestamped run directory with sub-folders.
++
++    Layout::
++
++        rl/checkpoints/run_<YYYYMMDD_HHMMSS>/
++            args.json          # frozen CLI arguments
++            best_model.zip     # best checkpoint (updated by EvalCallback)
++            checkpoints/       # periodic checkpoints
++            plots/             # evaluation plots
++
++    Also writes args.json immediately so the run’s config is recorded even
++    if training crashes.
++
++    Args:
++        args: parsed Namespace
++
++    Returns:
++        run_dir: Path to the run directory
++        stamp:   timestamp string (YYYYmmdd_HHMMSS)
++    """
++    stamp   = time.strftime("%Y%m%d_%H%M%S")
++    run_dir = Path(_PROJECT_ROOT) / args.checkpoint_dir / f"run_{stamp}"
++
++    (run_dir / "checkpoints").mkdir(parents=True, exist_ok=True)
++    (run_dir / "plots").mkdir(parents=True, exist_ok=True)
++
++    # Persist all arguments as JSON for reproducibility
++    args_path = run_dir / "args.json"
++    with open(args_path, "w") as f:
++        json.dump(vars(args), f, indent=2, default=str)
++    print(f"[train] Run directory : {run_dir}")
++    print(f"[train] Args saved to : {args_path}")
++
++    return run_dir, stamp
++
++
++# ═════════════════════════════════════════════════════════════════════════════
++# Weights & Biases
++# ═════════════════════════════════════════════════════════════════════════════
++
++def setup_wandb(args, run_name=None):
++    """Initialise a W&B run if --wandb is set.
++
++    API key resolution order:
++      1. WANDB_API_KEY environment variable (already set by shell / CI)
++      2. .env.wandb file in the project root  (local secret file, git-ignored)
++      3. Previously stored key from `wandb login`
++
++    Logs all CLI arguments as the run config so every hyperparameter is
++    recorded and searchable in the W&B dashboard.
++
++    Args:
++        args:     parsed Namespace (wandb, wandb_project, wandb_entity, …)
++        run_name: optional display name for this run in the W&B dashboard
++
++    Returns:
++        wandb.Run or None (if wandb disabled or unavailable)
++    """
++    if not args.wandb:
++        print("[train] W&B disabled — pass --wandb to enable logging")
++        return None
++    if not _WANDB_AVAILABLE:
++        print("[train] --wandb requested but `wandb` is not installed. "
++              "Run: pip install wandb")
++        return None
++
++    # Load API key from .env.wandb if not already in the environment
++    if not os.environ.get("WANDB_API_KEY"):
++        env_file = Path(__file__).resolve().parent / ".env.wandb"
++        if env_file.exists():
++            for line in env_file.read_text().splitlines():
++                line = line.strip()
++                if line.startswith("WANDB_API_KEY=") and not line.startswith("#"):
++                    os.environ["WANDB_API_KEY"] = line.split("=", 1)[1].strip()
++                    print("[train] W&B API key loaded from .env.wandb")
++                    break
++        else:
++            print("[train] WARNING: .env.wandb not found and WANDB_API_KEY not set")
++
++    run = wandb.init(
++        project=args.wandb_project,
++        entity=args.wandb_entity,
++        name=run_name,
++        config=vars(args),
++        sync_tensorboard=True,   # auto-upload TB logs
++        save_code=True,          # snapshot of this script
+     )
+-elif args.traj_type == "rect":
+-    main_traj = RectTrajectory(
+-        x_range=(0.49, 0.51), y_range=(-0.08, 0.08),
+-        lap_duration=args.episode_steps * args.dt, N=60,
+-        v_max=0.9, v_corner=0.05, corner_blend=0.35,
++    print("\n" + "=" * 60)
++    print(f"  W&B run name : {run.name}")
++    print(f"  W&B URL      : {run.url}")
++    print("=" * 60 + "\n")
++    return run
++
++
++# ═════════════════════════════════════════════════════════════════════════════
++# RL helpers
++# ═════════════════════════════════════════════════════════════════════════════
++
++def setup_env(args, robot, world, ct, sea, traj_source, L1, L2):
++    """Wrap the Isaac Sim simulation in a Gymnasium environment + Monitor.
++
++    Args:
++        args:        parsed Namespace (dt, episode_steps, residual_max, reward weights, render)
++        robot:       initialized CupManipulatorTendonIsaac
++        world:       Isaac Sim World
++        ct:          ComputedTorqueController
++        sea:         SEACableActuatorNP
++        traj_source: PreambleTrajectorySource
++        L1, L2:      link lengths [m]
++
++    Returns:
++        env: Monitor-wrapped ManipulatorResidualEnv
++    """
++    print("[train] Building Gymnasium environment…")
++    env = ManipulatorResidualEnv(
++        robot=robot,
++        world=world,
++        ct_controller=ct,
++        sea_actuator=sea,
++        traj_source=traj_source,
++        L1=L1, L2=L2,
++        dt=args.dt,
++        max_episode_steps=args.episode_steps,
++        residual_max=args.residual_max,
++        reward_weights={
++            "tracking":        args.w_tracking,
++            "effort":          args.w_effort,
++            "smoothness":      args.w_smoothness,
++            "torque_tracking": args.w_torque_tracking,
++        },
++        render_mode=args.render,
++        solve_ik_fn=solve_2r_ik,
++        fk_fn=forward_kinematics_2r,
++        ik_to_jt_fn=ik_to_joint_space_references,
+     )
+-else:
+-    from controller.trajectory import LineTrajectory
+-    main_traj = LineTrajectory(
+-        cx=0.4, cy=0.0, radius=0.1,
+-        lap_duration=args.episode_steps * args.dt, N=60,
++    return Monitor(env)
++
++
++def setup_ppo(args, env, run_dir):
++    """Configure PPO: either resume from checkpoint or start fresh; attach logger.
++
++    Args:
++        args:    parsed Namespace (all PPO hyperparams, resume path)
++        env:     Monitor-wrapped Gymnasium environment
++        run_dir: Path to the run directory (TB logs written here)
++
++    Returns:
++        model: stable_baselines3 PPO instance ready for model.learn()
++    """
++    print("[train] Configuring PPO…")
++    log_dir = run_dir / "tb_logs"
++    log_dir.mkdir(parents=True, exist_ok=True)
++
++    ppo_kwargs = dict(
++        policy="MlpPolicy",
++        env=env,
++        learning_rate=args.learning_rate,
++        n_steps=args.n_steps,
++        batch_size=args.batch_size,
++        n_epochs=args.n_epochs,
++        gamma=args.gamma,
++        clip_range=args.clip_range,
++        ent_coef=args.ent_coef,
++        verbose=1,
++        policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256])),
++        device="cpu",  # Isaac Sim owns the GPU; run policy on CPU to avoid contention
+     )
+ 
+-q_cur = robot.get_positions_user_order()
+-ee_cur = forward_kinematics_2r(L1, L2, *q_cur)
+-first_ee = main_traj.eval_position(0.0)
+-first_vel = main_traj.eval_velocity(0.0)
++    if args.resume:
++        print(f"[train] Resuming from {args.resume}")
++        model = PPO.load(args.resume, env=env, **{
++            k: v for k, v in ppo_kwargs.items() if k not in ("policy", "env")
++        })
++    else:
++        model = PPO(**ppo_kwargs)
++
++    # Logger: always stdout + CSV; add tensorboard if available (required for
++    # wandb sync_tensorboard to pick up SB3 scalars automatically).
++    _log_formats = ["stdout", "csv"]
++    try:
++        from torch.utils.tensorboard import SummaryWriter  # noqa: F401
++        _log_formats.append("tensorboard")
++    except ImportError:
++        if args.wandb:
++            print("[train] tensorboard not installed — wandb sync_tensorboard will not work")
++        print("[train] tensorboard not installed — skipping TB logging")
++    model.set_logger(configure(str(log_dir), _log_formats))
++    return model
++
++
++def setup_callbacks(args, run_dir, wandb_run=None):
++    """Build training callbacks: checkpoint saver, best-model tracker, optional W&B.
++
++    Checkpoints are saved under ``run_dir/checkpoints/``.  The best model
++    (by mean episode reward) is kept at ``run_dir/best_model``.
++
++    Args:
++        args:      parsed Namespace (save_freq)
++        run_dir:   Path to the run directory
++        wandb_run: active wandb.Run or None
++
++    Returns:
++        CallbackList wrapping all active callbacks
++    """
++    ckpt_sub = run_dir / "checkpoints"
++    ckpt_sub.mkdir(parents=True, exist_ok=True)
++
++    callbacks = [
++        CheckpointCallback(
++            save_freq=args.save_freq,
++            save_path=str(ckpt_sub),
++            name_prefix="ppo_residual",
++        ),
++    ]
++
++    if wandb_run is not None and _WANDB_AVAILABLE:
++        callbacks.append(WandbCallback(
++            model_save_path=str(ckpt_sub),
++            model_save_freq=args.save_freq,
++            verbose=2,
++        ))
++
++    return CallbackList(callbacks) if len(callbacks) > 1 else callbacks[0]
+ 
+-preamble = build_move_to_start(
+-    p_start=ee_cur, p_end=first_ee, v_end=first_vel,
+-    duration=args.move_duration,
+-)
+-traj_source = PreambleTrajectorySource(preamble, main_traj)
+ 
+-# ── CT Controller ────────────────────────────────────────────────────────────
+-ct = ComputedTorqueController(
+-    Kp=args.ct_kp, Kd=args.ct_kd,
+-    tau_max=args.ct_tau_max, pulley_radius=r_p,
+-)
++# ═════════════════════════════════════════════════════════════════════════════
++# Training helpers
++# ═════════════════════════════════════════════════════════════════════════════
++
++def run_training(args, model, callback):
++    """Run the PPO training loop and print a startup banner.
++
++    Args:
++        args:     parsed Namespace (total_timesteps + all hyperparams for banner)
++        model:    configured PPO model
++        callback: CheckpointCallback (or CallbackList)
++    """
++    print(f"\n[train] Starting PPO training — {args.total_timesteps} steps")
++    print(f"  residual_max = {args.residual_max} Nm")
++    print(f"  Motor : {args.motor}  mode={args.sea_mode}  substeps={args.motor_substeps or 'auto'}")
++    print(f"  CT    : Kp={args.ct_kp}  Kd={args.ct_kd}  τ_max={args.ct_tau_max:.2f} Nm")
++    print(f"  SEA   : k_s={args.spring_stiffness}  b_c={args.cable_damping}")
++    print(f"  Reward: track={args.w_tracking}  effort={args.w_effort}  "
++          f"smooth={args.w_smoothness}  τ_track={args.w_torque_tracking}\n")
++    try:
++        model.learn(
++            total_timesteps=args.total_timesteps,
++            callback=callback,
++            progress_bar=True,
++        )
++    except KeyboardInterrupt:
++        print("\n[train] Training interrupted by user.")
++
++
++def save_model(model, run_dir):
++    """Save the final model into the run directory + a 'best_model' copy.
++
++    Args:
++        model:   trained PPO model
++        run_dir: Path to the run directory
++    """
++    final_path  = run_dir / "final_model"
++    best_path   = run_dir / "best_model"
++    model.save(str(final_path))
++    print(f"\n[train] Final model saved : {final_path}.zip")
++    model.save(str(best_path))
++    print(f"[train] Best model saved  : {best_path}.zip")
+ 
+-# ── SEA Actuator ─────────────────────────────────────────────────────────────
+-sea = SEACableActuatorNP(
+-    r_p=r_p,
+-    k_s=args.spring_stiffness,
+-    b_c=args.cable_damping,
+-    tau_max=args.ct_tau_max,
+-    dt=args.dt,
+-    motor_mode=_motor_mode,
+-    motor_cfg=_motor,
+-    omega_m=args.motor_bandwidth,
+-    motor_substeps=args.motor_substeps,
+-)
+-sea.initialize(q_cur[1])
+ 
+ # ═════════════════════════════════════════════════════════════════════════════
+-# Build Gymnasium environment
++# Post-training evaluation
+ # ═════════════════════════════════════════════════════════════════════════════
+-print("[train] Building Gymnasium environment…")
+-
+-env = ManipulatorResidualEnv(
+-    robot=robot,
+-    world=world,
+-    ct_controller=ct,
+-    sea_actuator=sea,
+-    traj_source=traj_source,
+-    L1=L1, L2=L2,
+-    dt=args.dt,
+-    max_episode_steps=args.episode_steps,
+-    residual_max=args.residual_max,
+-    reward_weights={
+-        "tracking": args.w_tracking,
+-        "effort": args.w_effort,
+-        "smoothness": args.w_smoothness,
+-        "torque_tracking": args.w_torque_tracking,
+-    },
+-    render_mode=args.render,
+-    solve_ik_fn=solve_2r_ik,
+-    fk_fn=forward_kinematics_2r,
+-    ik_to_jt_fn=ik_to_joint_space_references,
+-)
+-env = Monitor(env)
++
++def _collect_eval_episode(model, use_model: bool, n_steps: int, dt: float) -> dict:
++    """Run one deterministic episode through the already-trained model's env.
++
++    Uses ``model.env`` (SB3's internal DummyVecEnv) so no second Isaac Sim
++    instance or environment reset is needed — the same GPU physics session
++    that trained the policy is reused.
++
++    Args:
++        model:     trained SB3 PPO model
++        use_model: True = run trained policy, False = zero residuals (CT-only)
++        n_steps:   max steps to simulate
++        dt:        physics timestep [s] (for time axis)
++
++    Returns:
++        dict of numpy arrays: t, ee_err_mm, ee_actual, ee_ref,
++                              tau_residual, tau_ct, delta, label
++    """
++    vec_env = model.env
++    obs = vec_env.reset()
++    action_dim = vec_env.action_space.shape[0]
++
++    log = {k: [] for k in ("t", "ee_err_mm", "ee_actual", "ee_ref",
++                            "tau_residual", "tau_ct", "delta")}
++
++    for step in range(n_steps):
++        if use_model:
++            action, _ = model.predict(obs, deterministic=True)
++        else:
++            action = np.zeros((1, action_dim), dtype=np.float32)
++
++        # DummyVecEnv.step returns (obs, reward, dones, infos)
++        obs, _, dones, infos = vec_env.step(action)
++        info = infos[0]
++
++        log["t"].append(info.get("t", step * dt))
++        log["ee_err_mm"].append(info.get("ee_error_mm", 0.0))
++        log["ee_actual"].append(info.get("ee_actual", np.zeros(2)).copy())
++        log["ee_ref"].append(info.get("ee_ref", np.zeros(2)).copy())
++        log["tau_residual"].append(info.get("tau_residual", np.zeros(2)).copy())
++        log["tau_ct"].append(info.get("tau_ct", np.zeros(2)).copy())
++
++        raw = vec_env.envs[0].env.unwrapped
++        diag = getattr(raw, "_last_sea_diag", None)
++        log["delta"].append(diag.delta if diag else 0.0)
++
++        if dones[0]:
++            break
++
++    return {k: np.array(v) for k, v in log.items()}
++
++
++def run_post_training_eval(args, model, run_dir, wandb_run):
++    """Run CT-only and CT+RL eval episodes after training; upload plots to W&B.
++
++    Reuses the existing DummyVecEnv from ``model.env`` — no second
++    SimulationApp or new environment is created.  Two episodes are run:
++
++    1. **CT-only** — zero residual actions (baseline)
++    2. **CT+RL**   — trained policy (deterministic)
++
++    A 2×2 overview figure is saved to ``run_dir/plots/`` and optionally
++    uploaded to W&B as ``eval/overview``.
++
++    Args:
++        args:      parsed Namespace (eval_steps, dt, move_duration, wandb)
++        model:     trained PPO model (env already attached)
++        run_dir:   Path to the run directory
++        wandb_run: active wandb.Run or None
++    """
++    print("\n[train] Running post-training eval…")
++
++    # ── CT-only baseline ──────────────────────────────────────────────────────
++    print("  [eval] CT-only baseline…")
++    baseline = _collect_eval_episode(model, use_model=False,
++                                     n_steps=args.eval_steps, dt=args.dt)
++    baseline["label"] = "CT only"
++
++    # Re-initialise SEA spring so CT+RL starts from the same mechanical state
++    raw_env = model.env.envs[0].env.unwrapped
++    raw_env.sea.initialize(raw_env.robot.get_positions_user_order()[1])
++
++    # ── CT+RL ─────────────────────────────────────────────────────────────────
++    print("  [eval] CT+RL policy…")
++    rl_result = _collect_eval_episode(model, use_model=True,
++                                      n_steps=args.eval_steps, dt=args.dt)
++    rl_result["label"] = "CT + RL"
++
++    results = [baseline, rl_result]
++    _COLORS = {"CT only": "tab:red", "CT + RL": "tab:blue"}
++
++    # ── Summary statistics ────────────────────────────────────────────────────
++    preamble_steps = int(args.move_duration / args.dt)
++    summary = {}
++    print(f"  [eval] Summary (post-preamble, t > {args.move_duration}s):")
++    for r in results:
++        idx  = np.arange(len(r["ee_err_mm"]))
++        mask = idx > preamble_steps
++        if mask.any():
++            mean_e = float(r["ee_err_mm"][mask].mean())
++            max_e  = float(r["ee_err_mm"][mask].max())
++            summary[r["label"]] = {"mean": mean_e, "max": max_e}
++            print(f"    {r['label']:12s}  mean={mean_e:.2f} mm  max={max_e:.2f} mm")
++
++    # ── Figure (2 × 2) ────────────────────────────────────────────────────────
++    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
++    title_parts = [f"{lbl}: {s['mean']:.1f} mm" for lbl, s in summary.items()]
++    fig.suptitle(
++        "Post-Training Eval   |   " + "   |   ".join(title_parts),
++        fontsize=11, fontweight="bold",
++    )
++
++    # [0,0] EE XY path
++    ax = axes[0, 0]
++    for r in results:
++        c = _COLORS.get(r["label"], "tab:blue")
++        ax.plot(r["ee_ref"][:, 0] * 1e3, r["ee_ref"][:, 1] * 1e3,
++                "--", color="gray", lw=0.8, alpha=0.5)
++        ax.plot(r["ee_actual"][:, 0] * 1e3, r["ee_actual"][:, 1] * 1e3,
++                "-", color=c, lw=1.4, label=r["label"])
++        ax.plot(r["ee_actual"][0, 0] * 1e3, r["ee_actual"][0, 1] * 1e3,
++                "o", color=c, ms=5)
++    ax.set_xlabel("X [mm]"); ax.set_ylabel("Y [mm]")
++    ax.set_title("EE Path  (solid=actual, dashed=ref)")
++    ax.set_aspect("equal")
++    ax.legend(fontsize=8); ax.grid(True, alpha=0.4)
++
++    # [0,1] Tracking error vs time
++    ax = axes[0, 1]
++    for r in results:
++        c = _COLORS.get(r["label"], "tab:blue")
++        ax.plot(r["t"], r["ee_err_mm"], "-", color=c, lw=1.2, label=r["label"])
++    ax.axvline(args.move_duration, color="k", lw=0.8, ls="--", label="preamble end")
++    for lbl, s in summary.items():
++        c = _COLORS.get(lbl, "tab:blue")
++        ax.axhline(s["mean"], color=c, lw=0.9, ls=":",
++                   label=f"{lbl} mean={s['mean']:.1f} mm")
++    ax.set_xlabel("Time [s]"); ax.set_ylabel("EE error [mm]")
++    ax.set_title("Tracking Error")
++    ax.legend(fontsize=8); ax.grid(True, alpha=0.4)
++
++    # [1,0] CT desired torque joint-2
++    ax = axes[1, 0]
++    for r in results:
++        c = _COLORS.get(r["label"], "tab:blue")
++        ax.plot(r["t"], r["tau_ct"][:, 1], "-", color=c, lw=1.0,
++                alpha=0.8, label=r["label"])
++    ax.axhline(0, color="k", lw=0.5)
++    ax.set_xlabel("Time [s]"); ax.set_ylabel("τ₂ [Nm]")
++    ax.set_title("CT Desired Torque (joint 2)")
++    ax.legend(fontsize=8); ax.grid(True, alpha=0.4)
++
++    # [1,1] RL residual torques
++    ax = axes[1, 1]
++    rl = next((r for r in results if r["label"] == "CT + RL"), results[-1])
++    ax.plot(rl["t"], rl["tau_residual"][:, 0], lw=1.0,
++            color="tab:blue", label="Δτ₁")
++    ax.plot(rl["t"], rl["tau_residual"][:, 1], lw=1.0,
++            color="tab:cyan", label="Δτ₂")
++    ax.axhline(0, color="k", lw=0.5)
++    ax.set_xlabel("Time [s]"); ax.set_ylabel("Residual τ [Nm]")
++    ax.set_title("RL Residual Torques")
++    ax.legend(fontsize=8); ax.grid(True, alpha=0.4)
++
++    fig.tight_layout()
++
++    # ── Save locally ──────────────────────────────────────────────────────────
++    plots_dir = run_dir / "plots"
++    plots_dir.mkdir(exist_ok=True)
++    stamp = time.strftime("%Y%m%d_%H%M%S")
++    plot_path = plots_dir / f"eval_final_{stamp}.png"
++    fig.savefig(str(plot_path), dpi=150, bbox_inches="tight")
++    print(f"  [eval] Plot saved: {plot_path}")
++
++    # ── Upload to W&B ─────────────────────────────────────────────────────────
++    if wandb_run is not None and _WANDB_AVAILABLE:
++        log_dict = {"eval/overview": wandb.Image(fig)}
++        for lbl, s in summary.items():
++            prefix = "eval/" + lbl.replace(" ", "_").lower()
++            log_dict[f"{prefix}/mean_err_mm"] = s["mean"]
++            log_dict[f"{prefix}/max_err_mm"]  = s["max"]
++        if "CT only" in summary and "CT + RL" in summary:
++            base = summary["CT only"]["mean"]
++            if base > 0:
++                log_dict["eval/improvement_pct"] = (
++                    100.0 * (base - summary["CT + RL"]["mean"]) / base
++                )
++        wandb_run.log(log_dict)
++        print("  [eval] Plots and metrics uploaded to W&B.")
++
++    plt.close(fig)
++
++
++def cleanup(env, wandb_run=None):
++    """Close the environment, restore the SIGINT handler, and shut down Isaac Sim.
++
++    Args:
++        env:       Monitor-wrapped environment to close
++        wandb_run: active wandb.Run or None (will call wandb.finish())
++    """
++    if wandb_run is not None:
++        wandb_run.finish()
++        print("[train] W&B run finished.")
++    signal.signal(signal.SIGINT, _orig_sigint)
++    env.close()
++    simulation_app.close()
++    print("[train] Done.")
++
+ 
+ # ═════════════════════════════════════════════════════════════════════════════
+-# PPO setup
++# Main
+ # ═════════════════════════════════════════════════════════════════════════════
+-print("[train] Configuring PPO…")
+-
+-log_dir = Path(_PROJECT_ROOT) / args.log_dir
+-ckpt_dir = Path(_PROJECT_ROOT) / args.checkpoint_dir
+-log_dir.mkdir(parents=True, exist_ok=True)
+-ckpt_dir.mkdir(parents=True, exist_ok=True)
+-
+-ppo_kwargs = dict(
+-    policy="MlpPolicy",
+-    env=env,
+-    learning_rate=args.learning_rate,
+-    n_steps=args.n_steps,
+-    batch_size=args.batch_size,
+-    n_epochs=args.n_epochs,
+-    gamma=args.gamma,
+-    clip_range=args.clip_range,
+-    ent_coef=args.ent_coef,
+-    verbose=1,
+-    policy_kwargs=dict(
+-        net_arch=dict(pi=[256, 256], vf=[256, 256]),
+-    ),
+-    device="cpu",  # Isaac Sim owns the GPU; policy runs on CPU
+-)
+ 
+-if args.resume:
+-    print(f"[train] Resuming from {args.resume}")
+-    model = PPO.load(args.resume, env=env, **{
+-        k: v for k, v in ppo_kwargs.items()
+-        if k not in ("policy", "env")
+-    })
+-else:
+-    model = PPO(**ppo_kwargs)
+-
+-# Logger
+-_log_formats = ["stdout", "csv"]
+-try:
+-    from torch.utils.tensorboard import SummaryWriter  # noqa: F401
+-    _log_formats.append("tensorboard")
+-except ImportError:
+-    print("[train] tensorboard not installed — skipping TB logging")
+-new_logger = configure(str(log_dir), _log_formats)
+-model.set_logger(new_logger)
+-
+-# Callbacks
+-checkpoint_cb = CheckpointCallback(
+-    save_freq=args.save_freq,
+-    save_path=str(ckpt_dir),
+-    name_prefix="ppo_residual",
+-)
++def main(args):
++    """Orchestrate the full training pipeline.
++
++    Pipeline
++    ────────
++    1.  resolve_motor_defaults   — fill CT τ_max from motor catalog
++    2.  build_robot_config       — URDF path + joint / passive-dynamics config
++    3.  setup_world              — Isaac Sim World + ground plane
++    4.  setup_robot              — load URDF, weld base, add EE frame + actuators
++    5.  initialize_simulation    — world.reset(), GPU tensors, geometry params
++    6.  setup_trajectory         — preamble + repeating EE reference path
++    7.  setup_controller_and_sea — CT controller + SEA cable actuator
++    8.  setup_env                — Gymnasium wrapper + Monitor
++    9.  setup_ppo                — PPO config, logger, optional resume
++    10. setup_callbacks          — periodic checkpoint saver
++    11. run_training             — model.learn() loop  →  returns timestamp
++    12. save_model               — timestamped final + 'latest' checkpoint
++    13. cleanup                  — close env + Isaac Sim
++
++    Args:
++        args: parsed argparse Namespace from parse_args()
++    """
++    print("\n[train] Setting up Isaac Sim scene…")
++
++    # ── Run directory ─────────────────────────────────────────────────────────
++    run_dir, stamp      = create_run_dir(args)
++
++    # ── W&B ───────────────────────────────────────────────────────────────────
++    wandb_run           = setup_wandb(args, run_name=f"run_{stamp}")
++
++    # ── Motor ─────────────────────────────────────────────────────────────────
++    motor, motor_mode   = resolve_motor_defaults(args)
++
++    # ── Scene ─────────────────────────────────────────────────────────────────
++    config              = build_robot_config()
++    world               = setup_world(args)
++    robot               = setup_robot(config, world, args)
++    L1, L2, r_p         = initialize_simulation(world, robot)
++
++    # ── Control ───────────────────────────────────────────────────────────────
++    traj_source         = setup_trajectory(args, robot, L1, L2)
++    ct, sea             = setup_controller_and_sea(args, robot, motor, motor_mode)
++
++    # ── RL ────────────────────────────────────────────────────────────────────
++    env                 = setup_env(args, robot, world, ct, sea, traj_source, L1, L2)
++    model               = setup_ppo(args, env, run_dir)
++    callback            = setup_callbacks(args, run_dir, wandb_run)
++
++    # ── Train + persist ───────────────────────────────────────────────────────
++    run_training(args, model, callback)
++    save_model(model, run_dir)
++
++    # ── Post-training eval ────────────────────────────────────────────────────
++    if args.eval_after_training:
++        run_post_training_eval(args, model, run_dir, wandb_run)
++
++    cleanup(env, wandb_run)
++
+ 
+ # ═════════════════════════════════════════════════════════════════════════════
+-# Train
++# Entry point
+ # ═════════════════════════════════════════════════════════════════════════════
+-_stamp = time.strftime("%Y%m%d_%H%M%S")
+-print(f"\n[train] Starting PPO training — {args.total_timesteps} steps")
+-print(f"  residual_max = {args.residual_max} Nm")
+-print(f"  Motor: {args.motor}  mode={args.sea_mode}")
+-print(f"  SEA: k_s={args.spring_stiffness}  b_c={args.cable_damping}  substeps={sea.motor_substeps}")
+-print(f"  CT:  Kp={args.ct_kp}  Kd={args.ct_kd}  τ_max={args.ct_tau_max}")
+-print(f"  Reward: track={args.w_tracking}  effort={args.w_effort}  smooth={args.w_smoothness}  τ_track={args.w_torque_tracking}")
+-print(f"  Log dir: {log_dir}")
+-print(f"  Checkpoint dir: {ckpt_dir}\n")
+ 
+-try:
+-    model.learn(
+-        total_timesteps=args.total_timesteps,
+-        callback=checkpoint_cb,
+-        progress_bar=True,
+-    )
+-except KeyboardInterrupt:
+-    print("\n[train] Training interrupted by user.")
+-
+-# Save final model
+-final_path = ckpt_dir / f"ppo_residual_final_{_stamp}"
+-model.save(str(final_path))
+-print(f"\n[train] Final model saved: {final_path}.zip")
+-
+-# Also save as "latest" for easy resume
+-latest_path = ckpt_dir / "ppo_residual_latest"
+-model.save(str(latest_path))
+-print(f"[train] Latest model saved: {latest_path}.zip")
+-
+-# ── Cleanup ──────────────────────────────────────────────────────────────────
+-signal.signal(signal.SIGINT, _orig_sigint)
+-env.close()
+-simulation_app.close()
+-print("[train] Done.")
++if __name__ == "__main__":
++    
++    # ═════════════════════════════════════════════════════════════════════════════
++    # Argument parser
++    # ═════════════════════════════════════════════════════════════════════════════
++    """Build and return the CLI argument parser for PPO training."""
++    parser = argparse.ArgumentParser(description="Train residual-RL PPO for manipulator")
++
++    # Rendering and simulation
++    parser.add_argument("--render", default=_render_mode,
++                        choices=["native", "headless"],
++                        help="Rendering mode: 'native' shows 3D window, 'headless' runs CPU-only (faster)")
++    parser.add_argument("--total-timesteps", type=int, default=500_000,
++                        help="Total training steps. Approx episodes = steps / 2000")
++    parser.add_argument("--episode-steps", type=int, default=2000,
++                        help="Max steps per episode (default: 2000 ≈ 20s at dt=0.01s)")
++    parser.add_argument("--dt", type=float, default=1.0 / 100.0,
++                        help="Physics simulation timestep [s] (default: 0.01s = 100Hz)")
++    parser.add_argument("--move-duration", type=float, default=3.0,
++                        help="Duration of preamble trajectory to move EE to start [s]")
++
++    # CT (Computed Torque) controller gains
++    parser.add_argument("--ct-kp", type=float, default=100.0,
++                        help="CT proportional gain [Nm·s/rad] for trajectory tracking")
++    parser.add_argument("--ct-kd", type=float, default=40.0,
++                        help="CT derivative gain [Nm·s²/rad] for damping")
++    parser.add_argument("--ct-tau-max", type=float, default=None,
++                        help="Torque saturation [Nm]. Default: motor peak_torque_joint")
++
++    # Motor model selection and dynamics
++    parser.add_argument("--motor", choices=MOTOR_CHOICES, default="AK60_6_KV80_Config",
++                        help="CubeMars motor model for the elbow joint")
++    parser.add_argument("--sea-mode", choices=["torque", "position"], default="torque",
++                        help="Motor control mode: 'torque' (2nd-order model) or 'position' (1st-order servo)")
++
++    # SEA (Series Elastic Actuator) parameters
++    parser.add_argument("--spring-stiffness", type=float, default=30.0,
++                        help="Cable spring stiffness [Nm/rad]")
++    parser.add_argument("--cable-damping", type=float, default=2.0,
++                        help="Cable damping coefficient [Nm·s/rad]")
++    parser.add_argument("--motor-bandwidth", type=float, default=100.0,
++                        help="Motor servo bandwidth [rad/s] — only used in position servo mode")
++    parser.add_argument("--residual-max", type=float, default=5.0,
++                        help="Max magnitude of PPO residual torque command [Nm]")
++    parser.add_argument("--motor-substeps", type=int, default=None,
++                        help="Motor integration sub-steps per physics step (None=auto)")
++
++    # PPO hyperparameters
++    parser.add_argument("--learning-rate", type=float, default=3e-4,
++                        help="Adam optimizer learning rate")
++    parser.add_argument("--n-steps", type=int, default=2048,
++                        help="Number of steps per rollout before policy update")
++    parser.add_argument("--batch-size", type=int, default=64,
++                        help="Minibatch size for policy gradient updates")
++    parser.add_argument("--n-epochs", type=int, default=10,
++                        help="Number of passes through rollout buffer per update")
++    parser.add_argument("--gamma", type=float, default=0.99,
++                        help="Discount factor for return estimation")
++    parser.add_argument("--clip-range", type=float, default=0.2,
++                        help="PPO clipping range for surrogate objective (20%)")
++    parser.add_argument("--ent-coef", type=float, default=0.0,
++                        help="Entropy regularization coefficient (default=0 = no entropy bonus)")
++
++    # Reward function weights
++    parser.add_argument("--w-tracking", type=float, default=100.0,
++                        help="Weight on end-effector tracking error penalty")
++    parser.add_argument("--w-effort", type=float, default=0.01,
++                        help="Weight on torque effort penalty")
++    parser.add_argument("--w-smoothness", type=float, default=0.001,
++                        help="Weight on torque jerk (smoothness) penalty")
++    parser.add_argument("--w-torque-tracking", type=float, default=1.0,
++                        help="Weight on SEA torque (desired vs applied) tracking penalty")
++
++    # Trajectory type
++    parser.add_argument("--traj-type", default="rect",
++                        choices=["circle", "rect", "line"],
++                        help="End-effector trajectory shape: circle, rectangle, or line")
++
++    # Checkpointing and logging
++    parser.add_argument("--save-freq", type=int, default=10_000,
++                        help="Save model checkpoint every N steps")
++    parser.add_argument("--resume", type=str, default=None,
++                        help="Path to model .zip to resume training from (without extension)")
++    parser.add_argument("--eval-after-training", action="store_true", default=True,
++                        help="Run CT-only vs CT+RL eval after training and upload plots to W&B")
++    parser.add_argument("--no-eval-after-training", dest="eval_after_training",
++                        action="store_false",
++                        help="Skip post-training eval")
++    parser.add_argument("--eval-steps", type=int, default=2000,
++                        help="Steps per eval episode (default: same as episode_steps)")
++    parser.add_argument("--log-dir", type=str, default="rl/logs",
++                        help="Directory for tensorboard/CSV logs")
++    parser.add_argument("--checkpoint-dir", type=str, default="rl/checkpoints",
++                        help="Directory to save model checkpoints")
++
++    # Weights & Biases
++    parser.add_argument("--wandb", action="store_true", default=False,
++                        help="Enable Weights & Biases logging")
++    parser.add_argument("--wandb-project", type=str, default="isaac_sim_robotics",
++                        help="W&B project name")
++    parser.add_argument("--wandb-entity", type=str, default="dbha483-transgp",
++                        help="W&B entity (team or username)")
++
++    main(parser.parse_args())
