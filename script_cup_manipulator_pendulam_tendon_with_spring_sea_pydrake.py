@@ -89,10 +89,8 @@ from pydrake.all import (
     MultibodyPlant,
     Simulator,
     LogVectorOutput,
-    LeafSystem,
     MeshcatVisualizer,
     StartMeshcat,
-    PiecewisePolynomial,
     SceneGraph,
     SpatialInertia,
     UnitInertia,
@@ -110,6 +108,11 @@ from actuators.sea import SEACableActuator
 from actuators.motor_dynamics import MotorMode
 from project_utils.viz_cables import draw_cables
 from actuators.motor import get_motor, MOTOR_CHOICES
+from controller.trajectory_drake import (
+    build_rect_trajectory,
+    build_move_to_start,
+    PreambleSrc,
+)
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 _DT   = 0.01   # plant & controller timestep [s]
@@ -234,103 +237,6 @@ print(colored(
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Trajectory builders
-# ════════════════════════════════════════════════════════════════════════════
-
-def _build_rect_trajectory(manip, plant, args):
-    """C² rectangular EE trajectory with speed-profiled corners.
-
-    Returns (traj_ref, traj_vel, traj_acc, ee_x_tgt, ee_y_tgt).
-    """
-    L1, L2 = manip.ik.get_link_lengths(plant)
-    r_max  = L1 + L2
-    r_min  = abs(L1 - L2)
-
-    x_min, x_max = args.traj_x_range
-    y_min, y_max = args.traj_y_range
-    N   = args.traj_n
-    W   = x_max - x_min
-    H   = y_max - y_min
-    P   = 2.0 * (W + H)
-    _cs = np.array([0.0, W, W + H, 2.0 * W + H])
-
-    def _s_to_xy(s):
-        s = s % P
-        if   s <= W:            return x_min + s,            y_min
-        elif s <= W + H:        return x_max,                 y_min + (s - W)
-        elif s <= 2.0 * W + H:  return x_max - (s - W - H),  y_max
-        else:                   return x_min,                 y_max - (s - 2.0 * W - H)
-
-    def _corner_dist(s):
-        s = s % P
-        d = np.abs(s - _cs)
-        return float(np.minimum(d, P - d).min())
-
-    _v_max    = args.traj_v_max
-    _v_corner = args.traj_v_corner
-    _d_blend  = args.traj_corner_blend * min(W, H)
-
-    def _speed(s):
-        t = np.clip(_corner_dist(s) / max(_d_blend, 1e-9), 0.0, 1.0)
-        return _v_corner + (_v_max - _v_corner) * t * t * (3.0 - 2.0 * t)
-
-    _s_vals = np.linspace(0.0, P, N + 1, endpoint=True)
-    _speeds = np.array([_speed(s) for s in _s_vals])
-    _ds     = P / N
-    _t_raw  = np.zeros(N + 1)
-    for i in range(N):
-        _t_raw[i + 1] = _t_raw[i] + _ds / (0.5 * (_speeds[i] + _speeds[i + 1]))
-    t_wp = _t_raw * (args.duration / _t_raw[-1])
-    _xy  = np.array([_s_to_xy(s) for s in _s_vals])
-    ee_x = _xy[:N, 0]
-    ee_y = _xy[:N, 1]
-
-    # Clamp to reachable workspace
-    _r = np.hypot(ee_x, ee_y)
-    _far = _r > r_max
-    if _far.any():
-        ee_x[_far] *= r_max * 0.97 / _r[_far]
-        ee_y[_far] *= r_max * 0.97 / _r[_far]
-    _close = _r < r_min + 0.01
-    if _close.any():
-        _r_c = np.maximum(_r[_close], 1e-6)
-        ee_x[_close] *= (r_min + 0.01) / _r_c
-        ee_y[_close] *= (r_min + 0.01) / _r_c
-
-    wp = np.column_stack([np.append(ee_x, ee_x[0]),
-                          np.append(ee_y, ee_y[0])]).T
-    traj     = PiecewisePolynomial.CubicWithContinuousSecondDerivatives(t_wp, wp)
-    traj_vel = traj.derivative(1)
-    traj_acc = traj.derivative(2)
-    return traj, traj_vel, traj_acc, ee_x, ee_y
-
-
-def _build_move_to_start(manip, plant, traj, traj_vel, move_duration):
-    """Cubic-Hermite approach from near the first waypoint (zero initial velocity)."""
-    L1, L2 = manip.ik.get_link_lengths(plant)
-    p_end  = traj.value(0.0).ravel()
-    seed   = np.array([np.deg2rad(5.0), np.deg2rad(15.0)])
-    q_end, ok = manip.ik._solve_2r_core(L1, L2, p_end, seed)
-    if not ok:
-        q_end = seed.copy()
-
-    # Pre-home: small q-space offset  for a meaningful approach
-    q_pre   = q_end + np.array([np.deg2rad(-5.0), np.deg2rad(5.0)])
-    tmp_ctx = plant.CreateDefaultContext()
-    manip.set_positions_user_order(plant, tmp_ctx, q_pre)
-    p_start = manip.get_end_effector_position(plant, tmp_ctx)[:2]
-    v_end   = traj_vel.value(0.0).ravel()
-
-    t_br  = np.array([0.0, move_duration])
-    smp   = np.column_stack([p_start, p_end])
-    smp_d = np.column_stack([np.zeros(2), v_end])
-    move_traj     = PiecewisePolynomial.CubicHermite(t_br, smp, smp_d)
-    move_traj_vel = move_traj.derivative(1)
-    move_traj_acc = move_traj.derivative(2)
-    return move_traj, move_traj_vel, move_traj_acc, q_end
-
-
-# ════════════════════════════════════════════════════════════════════════════
 # Single simulation run
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -407,11 +313,11 @@ def run_simulation(
 
     # ── 3. Trajectory ────────────────────────────────────────────────────────
     traj, traj_vel, traj_acc, ee_x_tgt, ee_y_tgt = \
-        _build_rect_trajectory(manipulator, plant, args)
+        build_rect_trajectory(manipulator, plant, args)
 
     if args.move_duration > 0.0:
         move_traj, move_vel, move_acc, q_init = \
-            _build_move_to_start(manipulator, plant, traj, traj_vel, args.move_duration)
+            build_move_to_start(manipulator, plant, traj, traj_vel, args.move_duration)
     else:
         move_traj = move_vel = move_acc = None
         L1, L2 = manipulator.ik.get_link_lengths(plant)
@@ -442,26 +348,9 @@ def run_simulation(
     sea.set_name(f"SEA_ks{ks:.0f}_{motor_mode.value}")
 
     # Preamble-aware looping trajectory source
-    class _PreambleSrc(LeafSystem):
-        def __init__(s, mv, md, main_traj, period):
-            super().__init__()
-            s._mv     = mv
-            s._md     = float(md)
-            s._main   = main_traj
-            s._period = float(period)
-            s.DeclareVectorOutputPort("out", main_traj.rows(), s._calc)
-
-        def _calc(s, ctx, out):
-            t = ctx.get_time()
-            if s._mv is not None and t < s._md:
-                out.SetFromVector(s._mv.value(t).ravel())
-            else:
-                tw = max(0.0, t - s._md) % s._period
-                out.SetFromVector(s._main.value(tw).ravel())
-
-    ee_src  = builder.AddSystem(_PreambleSrc(move_traj, args.move_duration, traj,     args.duration))
-    vel_src = builder.AddSystem(_PreambleSrc(move_vel,  args.move_duration, traj_vel, args.duration))
-    acc_src = builder.AddSystem(_PreambleSrc(move_acc,  args.move_duration, traj_acc, args.duration))
+    ee_src  = builder.AddSystem(PreambleSrc(move_traj, args.move_duration, traj,     args.duration))
+    vel_src = builder.AddSystem(PreambleSrc(move_vel,  args.move_duration, traj_vel, args.duration))
+    acc_src = builder.AddSystem(PreambleSrc(move_acc,  args.move_duration, traj_acc, args.duration))
     ee_src.set_name("EE_ref")
     vel_src.set_name("Vel_ref")
     acc_src.set_name("Acc_ref")
