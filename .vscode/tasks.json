@@ -266,6 +266,48 @@
             "problemMatcher": []
         },
         {
+        "label": "🔄 Onshape → URDF: manipulator_cable_exo_springs",
+        "type": "shell",
+        "command": "bash",
+        "args": [
+            "${workspaceFolder}/model_using_onshape_to_robot/step1_convert_from_onshape.sh",
+            "manipulator_cable_exo_springs"
+        ],
+        "options": {
+            "cwd": "${workspaceFolder}/model_using_onshape_to_robot"
+        },
+        "group": "build",
+        "presentation": {
+            "echo": true,
+            "reveal": "always",
+            "focus": true,
+            "panel": "dedicated",
+            "clear": true
+        },
+        "problemMatcher": []
+        },
+        {
+        "label": "🔄 Onshape → URDF: manipulator_cable_exo_springs_elbow_follow",
+        "type": "shell",
+        "command": "bash",
+        "args": [
+            "${workspaceFolder}/model_using_onshape_to_robot/step1_convert_from_onshape.sh",
+            "manipulator_cable_exo_springs_elbow_follow"
+        ],
+        "options": {
+            "cwd": "${workspaceFolder}/model_using_onshape_to_robot"
+        },
+        "group": "build",
+        "presentation": {
+            "echo": true,
+            "reveal": "always",
+            "focus": true,
+            "panel": "dedicated",
+            "clear": true
+        },
+        "problemMatcher": []
+        },
+        {
             "label": "🔄 Onshape → URDF: manipulator-hybrid-planar",
             "type": "shell",
             "command": "bash",
@@ -286,6 +328,7 @@
             },
             "problemMatcher": []
         },
+        
         {
             "label": "🧵 Newton: Franka Cloth (GL viewer)",
             "type": "shell",
@@ -667,6 +710,439 @@
                 "clear": true
             },
             "problemMatcher": []
+        },
+        {
+            "label": "🧠 C3M Train: Cup Manipulator SEA",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/contraction-theory/C3M/main.py",
+                "--task", "CUPMANIP_SEA",
+                "--lambda", "${input:c3mLambda}",
+                "--log", "checkpoints/cupmanip_sea/lambda_${input:c3mLambda}",
+                "--epochs", "${input:c3mEpochs}",
+                "--no_cuda"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/contraction-theory/C3M",
+                "env": {
+                    "KMP_DUPLICATE_LIB_OK": "TRUE"
+                }
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🤖 C3M Run: Cup Manipulator SEA",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_c3m_pydrake.py",
+                "--checkpoint", "contraction-theory/C3M/checkpoints/cupmanip_sea/lambda_${input:c3mLambda}/controller_best.pth.tar",
+                "--spring-stiffness", "300",
+                "--duration", "10.0"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "KMP_DUPLICATE_LIB_OK": "TRUE"
+                }
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🤖↔️🧠 C3M vs CT: Compare Controllers",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_c3m_pydrake.py",
+                "--checkpoint", "contraction-theory/C3M/checkpoints/cupmanip_sea/lambda_${input:c3mLambda}/controller_best.pth.tar",
+                "--compare-ct",
+                "--spring-stiffness", "300",
+                "--duration", "10.0"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "KMP_DUPLICATE_LIB_OK": "TRUE"
+                }
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        
+        {
+            "label": "🧪 Exo Sine: OFF (baseline, 1 cycle @ 1 Hz) + Meshcat",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_exo_pydrake.py",
+                "--spring-stiffness", "200", "--cable-damping", "8.0", "--sea-mode", "torque",
+                "--motor", "AK60_6_KV80_Config", "--exo-motor", "AK60_6_KV80_Config",
+                "--ct-kp", "400", "--ct-kd", "80", "--joint-damping", "0.3", "0.3",
+                "--traj-x-range", "0.4995", "0.5005",
+                "--traj-y-range", "-0.001", "0.001",
+                "--traj-v-max", "0.02", "--traj-n", "4",
+                "--duration", "14", "--move-duration", "3.0",
+                "--disturbance", "--disturbance-mode", "sine",
+                "--disturbance-tau", "2.0", "--disturbance-freq", "1",
+                "--disturbance-cycles", "1", "--disturbance-time", "8.0",
+                "--exo-ks", "8000", "--exo-delta-theta", "0.1",
+                "--exo-activate-time", "4.0", "--no-exo-activate"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "KMP_DUPLICATE_LIB_OK": "TRUE"
+                }
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🧪 Exo Sine: ON (co-contraction, 1 cycle @ 1 Hz) + Meshcat",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_exo_pydrake.py",
+                "--spring-stiffness", "200", "--cable-damping", "8.0", "--sea-mode", "torque",
+                "--motor", "AK60_6_KV80_Config", "--exo-motor", "AK60_6_KV80_Config",
+                "--ct-kp", "400", "--ct-kd", "80", "--joint-damping", "0.3", "0.3",
+                "--traj-x-range", "0.4995", "0.5005",
+                "--traj-y-range", "-0.001", "0.001",
+                "--traj-v-max", "0.02", "--traj-n", "4",
+                "--duration", "14", "--move-duration", "3.0",
+                "--disturbance", "--disturbance-mode", "sine",
+                "--disturbance-tau", "2.0", "--disturbance-freq", "1",
+                "--disturbance-cycles", "1", "--disturbance-time", "8.0",
+                "--exo-ks", "8000", "--exo-delta-theta", "0.1",
+                "--exo-activate-time", "4.0", "--exo-activate"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "KMP_DUPLICATE_LIB_OK": "TRUE"
+                }
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+
+        {
+            "label": "⭕ Exo Circle: OFF (baseline, dist@8s) + Meshcat",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_exo_pydrake.py",
+                "--spring-stiffness", "200", "--cable-damping", "8.0", "--sea-mode", "torque",
+                "--motor", "AK60_6_KV80_Config", "--exo-motor", "AK60_6_KV80_Config",
+                "--ct-kp", "400", "--ct-kd", "80", "--joint-damping", "0.3", "0.3",
+                "--traj-type", "circle",
+                "--traj-x-range", "0.45", "0.55",
+                "--traj-y-range", "-0.05", "0.05",
+                "--traj-radius", "0.04",
+                "--traj-v-max", "0.08", "--traj-n", "40",
+                "--duration", "14", "--move-duration", "3.0",
+                "--disturbance", "--disturbance-mode", "sine",
+                "--disturbance-tau", "2.0", "--disturbance-freq", "2.0",
+                "--disturbance-cycles", "3", "--disturbance-time", "8.0",
+                "--exo-ks", "8000", "--exo-delta-theta", "0.1",
+                "--exo-activate-time", "4.0", "--no-exo-activate"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": { "KMP_DUPLICATE_LIB_OK": "TRUE" }
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true, "reveal": "always", "focus": true,
+                "panel": "dedicated", "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "⭕ Exo Circle: ON (co-contraction, dist@8s) + Meshcat",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_exo_pydrake.py",
+                "--spring-stiffness", "200", "--cable-damping", "8.0", "--sea-mode", "torque",
+                "--motor", "AK60_6_KV80_Config", "--exo-motor", "AK60_6_KV80_Config",
+                "--ct-kp", "400", "--ct-kd", "80", "--joint-damping", "0.3", "0.3",
+                "--traj-type", "circle",
+                "--traj-x-range", "0.45", "0.55",
+                "--traj-y-range", "-0.05", "0.05",
+                "--traj-radius", "0.04",
+                "--traj-v-max", "0.08", "--traj-n", "40",
+                "--duration", "14", "--move-duration", "3.0",
+                "--disturbance", "--disturbance-mode", "sine",
+                "--disturbance-tau", "2.0", "--disturbance-freq", "2.0",
+                "--disturbance-cycles", "3", "--disturbance-time", "8.0",
+                "--exo-ks", "8000", "--exo-delta-theta", "0.5",
+                "--exo-activate-time", "4.0", "--exo-activate", 
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": { "KMP_DUPLICATE_LIB_OK": "TRUE" }
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true, "reveal": "always", "focus": true,
+                "panel": "dedicated", "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "⭕ Exo Circle: REACTIVE (error-triggered, dist@8s) + Meshcat",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_exo_pydrake.py",
+                "--spring-stiffness", "200", "--cable-damping", "8.0", "--sea-mode", "torque",
+                "--motor", "AK60_6_KV80_Config", "--exo-motor", "AK60_6_KV80_Config",
+                "--ct-kp", "400", "--ct-kd", "80", "--joint-damping", "0.3", "0.3",
+                "--traj-type", "circle",
+                "--traj-x-range", "0.45", "0.55",
+                "--traj-y-range", "-0.05", "0.05",
+                "--traj-radius", "0.04",
+                "--traj-v-max", "0.08", "--traj-n", "40",
+                "--duration", "14", "--move-duration", "3.0",
+                "--disturbance", "--disturbance-mode", "sine",
+                "--disturbance-tau", "2.0", "--disturbance-freq", "2.0",
+                "--disturbance-cycles", "3", "--disturbance-time", "8.0",
+                "--exo-ks", "8000", "--exo-delta-theta", "0.1",
+                "--exo-reactive", "--exo-ramp-tau", "0.2",
+                "--exo-e-on", "5.0", "--exo-e-off", "2.0", "--exo-t-hold", "0.5"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": { "KMP_DUPLICATE_LIB_OK": "TRUE" }
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true, "reveal": "always", "focus": true,
+                "panel": "dedicated", "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "∞ Exo Figure8: OFF (baseline, dist@8s) + Meshcat",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_exo_pydrake.py",
+                "--spring-stiffness", "200", "--cable-damping", "8.0", "--sea-mode", "torque",
+                "--motor", "AK60_6_KV80_Config", "--exo-motor", "AK60_6_KV80_Config",
+                "--ct-kp", "400", "--ct-kd", "80", "--joint-damping", "0.3", "0.3",
+                "--traj-type", "figure8",
+                "--traj-x-range", "0.45", "0.55",
+                "--traj-y-range", "-0.04", "0.04",
+                "--traj-v-max", "0.08", "--traj-n", "60",
+                "--duration", "14", "--move-duration", "3.0",
+                "--disturbance", "--disturbance-mode", "sine",
+                "--disturbance-tau", "2.0", "--disturbance-freq", "2.0",
+                "--disturbance-cycles", "3", "--disturbance-time", "8.0",
+                "--exo-ks", "8000", "--exo-delta-theta", "0.1",
+                "--exo-activate-time", "4.0", "--no-exo-activate"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": { "KMP_DUPLICATE_LIB_OK": "TRUE" }
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true, "reveal": "always", "focus": true,
+                "panel": "dedicated", "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "∞ Exo Figure8: ON (co-contraction, dist@8s) + Meshcat",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_exo_pydrake.py",
+                "--spring-stiffness", "200", "--cable-damping", "8.0", "--sea-mode", "torque",
+                "--motor", "AK60_6_KV80_Config", "--exo-motor", "AK60_6_KV80_Config",
+                "--ct-kp", "400", "--ct-kd", "80", "--joint-damping", "0.3", "0.3",
+                "--traj-type", "figure8",
+                "--traj-x-range", "0.45", "0.55",
+                "--traj-y-range", "-0.04", "0.04",
+                "--traj-v-max", "0.08", "--traj-n", "60",
+                "--duration", "14", "--move-duration", "3.0",
+                "--disturbance", "--disturbance-mode", "sine",
+                "--disturbance-tau", "2.0", "--disturbance-freq", "2.0",
+                "--disturbance-cycles", "3", "--disturbance-time", "8.0",
+                "--exo-ks", "8000", "--exo-delta-theta", "0.1",
+                "--exo-activate-time", "4.0", "--exo-activate"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": { "KMP_DUPLICATE_LIB_OK": "TRUE" }
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true, "reveal": "always", "focus": true,
+                "panel": "dedicated", "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "▭ Exo Rect: OFF (baseline, dist@8s) + Meshcat",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_exo_pydrake.py",
+                "--spring-stiffness", "200", "--cable-damping", "8.0", "--sea-mode", "torque",
+                "--motor", "AK60_6_KV80_Config", "--exo-motor", "AK60_6_KV80_Config",
+                "--ct-kp", "400", "--ct-kd", "80", "--joint-damping", "0.3", "0.3",
+                "--traj-type", "rect",
+                "--traj-x-range", "0.46", "0.54",
+                "--traj-y-range", "-0.05", "0.05",
+                "--traj-v-max", "0.08", "--traj-v-corner", "0.03",
+                "--traj-corner-blend", "0.35", "--traj-n", "60",
+                "--duration", "14", "--move-duration", "3.0",
+                "--disturbance", "--disturbance-mode", "sine",
+                "--disturbance-tau", "2.0", "--disturbance-freq", "2.0",
+                "--disturbance-cycles", "3", "--disturbance-time", "8.0",
+                "--exo-ks", "8000", "--exo-delta-theta", "0.1",
+                "--exo-activate-time", "4.0", "--no-exo-activate"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": { "KMP_DUPLICATE_LIB_OK": "TRUE" }
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true, "reveal": "always", "focus": true,
+                "panel": "dedicated", "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "▭ Exo Rect: ON (co-contraction, dist@8s) + Meshcat",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_exo_pydrake.py",
+                "--spring-stiffness", "200", "--cable-damping", "8.0", "--sea-mode", "torque",
+                "--motor", "AK60_6_KV80_Config", "--exo-motor", "AK60_6_KV80_Config",
+                "--ct-kp", "400", "--ct-kd", "80", "--joint-damping", "0.3", "0.3",
+                "--traj-type", "rect",
+                "--traj-x-range", "0.46", "0.54",
+                "--traj-y-range", "-0.05", "0.05",
+                "--traj-v-max", "0.08", "--traj-v-corner", "0.03",
+                "--traj-corner-blend", "0.35", "--traj-n", "60",
+                "--duration", "14", "--move-duration", "3.0",
+                "--disturbance", "--disturbance-mode", "sine",
+                "--disturbance-tau", "2.0", "--disturbance-freq", "2.0",
+                "--disturbance-cycles", "3", "--disturbance-time", "8.0",
+                "--exo-ks", "8000", "--exo-delta-theta", "0.1",
+                "--exo-activate-time", "4.0", "--exo-activate"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": { "KMP_DUPLICATE_LIB_OK": "TRUE" }
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true, "reveal": "always", "focus": true,
+                "panel": "dedicated", "clear": true
+            },
+            "problemMatcher": []
+        },
+
+        {
+            "label": "🔧 SEA Disturbance: k_s=10 (soft spring)",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_spring_sea_pydrake.py",
+                "--spring-stiffness", "10", "--cable-damping", "2.0",
+                "--sea-mode", "torque", "--motor", "AK60_6_KV80_Config",
+                "--ct-kp", "100", "--ct-kd", "40",
+                "--disturbance", "--disturbance-time", "13.0", "--disturbance-mode", "vel", "--disturbance-dqdot", "60",
+                "--no-meshcat", "--duration", "15", "--num-laps", "1"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "KMP_DUPLICATE_LIB_OK": "TRUE"
+                }
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🔧 SEA Disturbance: k_s=30 (default spring)",
+            "type": "shell",
+            "command": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_spring_sea_pydrake.py",
+                "--spring-stiffness", "30", "--cable-damping", "2.0",
+                "--sea-mode", "torque", "--motor", "AK60_6_KV80_Config",
+                "--ct-kp", "100", "--ct-kd", "40",
+                "--disturbance", "--disturbance-time", "13.0", "--disturbance-mode", "vel", "--disturbance-dqdot", "60",
+                "--no-meshcat", "--duration", "15", "--num-laps", "1"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "KMP_DUPLICATE_LIB_OK": "TRUE"
+                }
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
         }
     ],
     "inputs": [
@@ -690,6 +1166,31 @@
             "type": "promptString",
             "description": "Path to PPO checkpoint (without .zip extension)",
             "default": "rl/checkpoints/ppo_residual_latest"
+        },
+        {
+            "id": "c3mLambda",
+            "type": "pickString",
+            "description": "C3M contraction rate λ (higher = tighter convergence, harder to train)",
+            "options": [
+                {"label": "λ = 0.5  (easy)",    "value": "0.5"},
+                {"label": "λ = 1.0  (medium)",  "value": "1.0"},
+                {"label": "λ = 1.5  (default)", "value": "1.5"},
+                {"label": "λ = 2.0  (tight)",   "value": "2.0"},
+                {"label": "λ = 3.0  (very tight)", "value": "3.0"}
+            ],
+            "default": "1.5"
+        },
+        {
+            "id": "c3mEpochs",
+            "type": "pickString",
+            "description": "Number of C3M training epochs",
+            "options": [
+                {"label": "5 epochs  (quick test)",  "value": "5"},
+                {"label": "15 epochs (default)",     "value": "15"},
+                {"label": "30 epochs (thorough)",    "value": "30"},
+                {"label": "50 epochs (best quality)", "value": "50"}
+            ],
+            "default": "15"
         }
     ]
 }

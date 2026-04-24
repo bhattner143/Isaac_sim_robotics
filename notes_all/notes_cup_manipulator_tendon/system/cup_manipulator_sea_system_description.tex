@@ -1,0 +1,681 @@
+% =============================================================================
+%  Cup Manipulator + SEA Cable: Full System Description & C3M Applicability
+%  Complete state-space derivation for contraction-based control design
+% =============================================================================
+
+\documentclass[11pt, a4paper]{article}
+
+\usepackage{amsmath, amssymb, bm}
+\usepackage{geometry}
+\usepackage[pdfusetitle, bookmarksnumbered]{hyperref}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{cleveref}
+\usepackage[backgroundcolor=blue!5, linecolor=blue!40, linewidth=1pt,
+            innertopmargin=6pt, innerbottommargin=6pt,
+            innerleftmargin=7pt, innerrightmargin=7pt]{mdframed}
+
+\geometry{margin=2.2cm}
+
+% ── Standard project macros ──────────────────────────────────────────────────
+\newcommand{\bq}{\bm{q}}
+\newcommand{\bp}{\bm{p}}
+\newcommand{\bu}{\bm{u}}
+\newcommand{\bx}{\bm{x}}
+\newcommand{\btau}{\bm{\tau}}
+\newcommand{\bF}{\bm{F}}
+\newcommand{\bJ}{\bm{J}}
+\newcommand{\bM}{\bm{M}}
+\newcommand{\bC}{\bm{C}}
+\newcommand{\bG}{\bm{G}}
+\newcommand{\bB}{\bm{B}}
+\newcommand{\bW}{\bm{W}}
+\newcommand{\R}{\mathbb{R}}
+
+\title{\textbf{Cup Manipulator + SEA Cable System}\\[4pt]
+       \textbf{Full State-Space Derivation \& C3M Applicability}\\[6pt]
+       \large \texttt{script\_cup\_manipulator\_pendulam\_tendon\_with\_spring\_sea\_pydrake.py}}
+\date{April 2026}
+\author{Isaac-sim robotics notes}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{System Overview}
+% ═════════════════════════════════════════════════════════════════════════════
+
+The cup manipulator is a planar 2-DOF serial arm with cable-driven actuation
+on joint~2 via a Series Elastic Actuator (SEA).  The physical topology is:
+
+\begin{mdframed}
+\textbf{Joint 1 (shoulder, \texttt{link1\_base}):}
+Motor shaft $\to$ gearbox $\to$ rigid link --- \emph{no compliance}.
+Torque $\tau_1$ is applied directly.
+
+\medskip
+\textbf{Joint 2 (elbow, \texttt{link2\_link1}):}
+Motor drum $\to$ cable $\to$ big pulley $\to$ \textbf{spring} $\to$ link~2.
+The spring (belt elasticity or explicit compliance element) is ``in series''
+between the motor and the joint.
+\end{mdframed}
+
+This document derives the complete 6D state-space model in control-affine form
+$\dot{\bx} = \bm{f}(\bx) + \bB(\bx)\,\bu$
+and discusses how C3M (Control Contraction Metrics) can be applied.
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Physical Parameters}
+\label{sec:params}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\begin{table}[h]
+\centering
+\caption{Manipulator link parameters (from Onshape URDF export).}
+\label{tab:links}
+\begin{tabular}{@{}lcrl@{}}
+\toprule
+Symbol & Description & Value & Unit \\
+\midrule
+$L_1$   & Link 1 length (shoulder $\to$ elbow) & 334.80 & mm \\
+$L_2$   & Link 2 length (elbow $\to$ EE)       & 190.00 & mm \\
+$m_1$   & Link 1 mass                          & 5.313  & kg \\
+$m_2$   & Link 2 mass                          & 0.520  & kg \\
+$r_p$   & Big pulley pitch radius (HTD 5M 60T) & 47.75  & mm \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Motor parameters (CubeMars AK60-6 KV80).}
+\label{tab:motor}
+\begin{tabular}{@{}lcrl@{}}
+\toprule
+Symbol & Description & Value & Unit \\
+\midrule
+$N$         & Gear ratio                  & 6.0       & -- \\
+$J_m$       & Rotor inertia (motor-side)  & $3.32 \times 10^{-5}$ & kg\,m$^2$ \\
+$b_m$       & Motor viscous damping       & $0.12/N^2 = 3.33 \times 10^{-3}$ & Nm\,s/rad \\
+$\tau_\text{peak}$ & Peak joint torque    & 9.0       & Nm \\
+$\tau_\text{cont}$ & Continuous joint torque & 4.5    & Nm \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{SEA cable parameters (typical defaults).}
+\label{tab:sea}
+\begin{tabular}{@{}lcrl@{}}
+\toprule
+Symbol & Description & Default & Unit \\
+\midrule
+$k_s$   & Cable spring stiffness & 30--5000 & N/m \\
+$b_c$   & Cable dashpot damping  & 2.0      & N\,s/m \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Subsystem 1: Rigid 2R Manipulator Dynamics}
+\label{sec:manip}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\subsection{Generalized Coordinates}
+
+Let $\bq = [q_1, q_2]^\top$ denote the joint angles, where $q_1$ is the
+shoulder (link1\_base) and $q_2$ is the elbow (link2\_link1).
+
+The standard manipulator equation of motion is:
+\begin{equation}
+\label{eq:manip-eom}
+\bM(\bq)\,\ddot{\bq} + \bC(\bq, \dot{\bq})\,\dot{\bq} + \bG(\bq) = \btau_\text{applied}
+\end{equation}
+where $\bM \in \R^{2 \times 2}$ is the mass matrix,
+$\bC \in \R^{2 \times 2}$ is the Coriolis matrix,
+$\bG \in \R^2$ is the gravity vector, and
+$\btau_\text{applied} \in \R^2$ is the vector of applied joint torques.
+
+\subsection{Mass Matrix}
+
+For a planar 2R arm with link masses $m_1, m_2$, lengths $L_1, L_2$,
+and centres of mass at distances $l_{c1}, l_{c2}$ along each link:
+\begin{equation}
+\label{eq:mass-matrix}
+\bM(\bq) =
+\begin{bmatrix}
+I_1 + I_2 + m_2 L_1^2 + 2 m_2 L_1 l_{c2} \cos q_2
+  & I_2 + m_2 L_1 l_{c2} \cos q_2 \\
+I_2 + m_2 L_1 l_{c2} \cos q_2
+  & I_2
+\end{bmatrix}
+\end{equation}
+where $I_i = m_i l_{ci}^2$ are the link inertias about their pivot.
+
+
+\subsection{Applied Torques}
+
+\begin{mdframed}
+\textbf{Crucially}, $\btau_\text{applied}$ is \emph{not} the controller output.
+\begin{itemize}
+\item \textbf{Joint 1} (rigid): $\tau_{1,\text{applied}} = \tau_1$ \quad (direct drive, pass-through)
+\item \textbf{Joint 2} (SEA):   $\tau_{2,\text{applied}} = r_p \cdot F_\text{cable}$
+      \quad (spring force, \emph{not} $\tau_{2,\text{des}}$)
+\end{itemize}
+The controller commands $[\tau_1,\, \tau_{2,\text{des}}]$, but
+$\tau_{2,\text{des}}$ only reaches $q_2$ through the motor and spring dynamics.
+\end{mdframed}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Subsystem 2: SEA Motor--Spring--Cable Dynamics}
+\label{sec:sea}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\subsection{Spring Extension}
+
+The cable wraps on the motor drum (motor-side) and the big pulley
+(joint-side).  In torque mode, the motor-side angle is $\theta_m$
+(at the rotor, before the gearbox).  At the gearbox output, the angle
+is $\theta_m / N$.  The linear cable displacement from the motor is:
+\[
+l_\text{motor} = r_p \cdot \frac{\theta_m}{N}
+\]
+and from the joint:
+\[
+l_\text{joint} = r_p \cdot q_2
+\]
+The \textbf{linear spring extension} is:
+\begin{equation}
+\label{eq:delta}
+\boxed{\delta = r_p \left(\frac{\theta_m}{N} - q_2\right)}
+\end{equation}
+
+\subsection{Cable Force (Spring--Damper)}
+
+The spring--damper produces a force:
+\begin{equation}
+\label{eq:F-raw}
+F_\text{raw} = k_s\,\delta + b_c\,\dot{\delta}
+\end{equation}
+where $\dot{\delta} = r_p \left(\dot{\theta}_m / N - \dot{q}_2\right)$.
+
+\paragraph{Unilateral cable constraint.}
+Cables can only \emph{pull} (tension $\ge 0$), never push.
+The antagonistic cable pair gives:
+\begin{equation}
+\label{eq:cable-tensions}
+\delta > 0: \quad T_\text{green} = \max(F_\text{raw}, 0),\; T_\text{red} = 0
+\qquad
+\delta < 0: \quad T_\text{green} = 0,\; T_\text{red} = \max(-F_\text{raw}, 0)
+\end{equation}
+The net cable force is:
+\begin{equation}
+\label{eq:F-cable}
+F_\text{cable} = T_\text{green} - T_\text{red}
+\end{equation}
+and the torque applied to joint~2 is $\tau_{2,\text{applied}} = r_p \cdot F_\text{cable}$.
+
+\subsection{Motor Rotor Dynamics (Torque Mode)}
+
+The motor in MIT torque mode obeys 2nd-order rotor dynamics:
+\begin{equation}
+\label{eq:motor}
+\boxed{J_m\,\ddot{\theta}_m = \tau_m - b_m\,\dot{\theta}_m - \frac{r_p\,F_\text{cable}}{N}}
+\end{equation}
+where the motor-side torque command is:
+\[
+\tau_m = \frac{\tau_{2,\text{des}}}{N}
+\]
+
+The effective torsional spring stiffness seen by the rotor is
+$r_p^2 k_s / N^2$, giving a motor-side resonance frequency:
+\begin{equation}
+\omega_n = \sqrt{\frac{r_p^2\,k_s}{N^2\,J_m}}
+\end{equation}
+For AK60-6 with $k_s = 300\;\text{N/m}$: $\omega_n \approx 24\;\text{rad/s}$ (4\,Hz).
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Combined 6D State-Space Model}
+\label{sec:statespace}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\subsection{State and Control Vectors}
+
+\begin{mdframed}
+\textbf{State vector} ($n = 6$):
+\begin{equation}
+\label{eq:state}
+\bx = \begin{bmatrix} q_1 \\ q_2 \\ \dot{q}_1 \\ \dot{q}_2 \\ \theta_m \\ \dot{\theta}_m \end{bmatrix}
+\in \R^6
+\end{equation}
+
+\textbf{Control input} ($m = 2$):
+\begin{equation}
+\label{eq:control}
+\bu = \begin{bmatrix} \tau_1 \\ \tau_{2,\text{des}} \end{bmatrix}
+\in \R^2
+\end{equation}
+\end{mdframed}
+
+\subsection{Control-Affine Form}
+
+The system can be written as:
+\begin{equation}
+\label{eq:xdot}
+\boxed{\dot{\bx} = \bm{f}(\bx) + \bB(\bx)\,\bu}
+\end{equation}
+
+\subsubsection{Drift term \texorpdfstring{$\bm{f}(\bx)$}{f(x)}}
+
+From the manipulator EOM (\ref{eq:manip-eom}) with
+$\btau_\text{applied} = [\tau_1, \; r_p F_\text{cable}]^\top$,
+and eliminating the control terms:
+
+\begin{equation}
+\label{eq:f}
+\bm{f}(\bx) =
+\begin{bmatrix}
+\dot{q}_1   \\[2pt]
+\dot{q}_2   \\[2pt]
+\left[\bM^{-1}(\bq)\left(-\bC(\bq,\dot{\bq})\dot{\bq} - \bG(\bq)
+  + \begin{pmatrix} 0 \\ r_p\,F_\text{cable} \end{pmatrix}\right)\right]_1   \\[4pt]
+\left[\bM^{-1}(\bq)\left(-\bC(\bq,\dot{\bq})\dot{\bq} - \bG(\bq)
+  + \begin{pmatrix} 0 \\ r_p\,F_\text{cable} \end{pmatrix}\right)\right]_2   \\[4pt]
+\dot{\theta}_m   \\[2pt]
+\dfrac{1}{J_m}\left(-b_m\,\dot{\theta}_m - \dfrac{r_p\,F_\text{cable}}{N}\right)
+\end{bmatrix}
+\end{equation}
+
+Note that $F_\text{cable} = F_\text{cable}(\bx)$ depends on the state
+through \eqref{eq:delta}--\eqref{eq:F-cable}.
+The spring force \emph{couples} the motor state $(\theta_m, \dot{\theta}_m)$
+to the joint state $(q_2, \dot{q}_2)$ --- this coupling lives entirely in
+$\bm{f}$, \emph{not} in $\bB$.
+
+\subsubsection{Input matrix \texorpdfstring{$\bB(\bx)$}{B(x)}}
+
+Writing $\bM^{-1}(\bq) = \begin{bmatrix} M^{-1}_{11} & M^{-1}_{12} \\
+M^{-1}_{21} & M^{-1}_{22} \end{bmatrix}$:
+
+\begin{equation}
+\label{eq:B}
+\bB(\bx) =
+\begin{bmatrix}
+0           & 0                \\
+0           & 0                \\
+M^{-1}_{11}(\bq) & 0          \\
+M^{-1}_{21}(\bq) & 0          \\
+0           & 0                \\
+0           & \dfrac{1}{J_m\,N}
+\end{bmatrix}
+\in \R^{6 \times 2}
+\end{equation}
+
+\begin{mdframed}
+\textbf{Key observation}: $\tau_{2,\text{des}}$ appears \emph{only} in
+row 6 ($\ddot{\theta}_m$), \emph{not} in row 4 ($\ddot{q}_2$).
+The commanded torque reaches joint~2 \emph{only through the spring dynamics}
+in $\bm{f}(\bx)$.  This is the fundamental source of torque lag when $k_s$ is
+small.
+\end{mdframed}
+
+\subsection{Structure of \texorpdfstring{$\bB$}{B}: Row-by-Row}
+
+\begin{table}[h]
+\centering
+\caption{Input matrix $\bB(\bx)$ structure.}
+\label{tab:B-structure}
+\begin{tabular}{@{}clcc@{}}
+\toprule
+Row & State derivative & $\tau_1$ column & $\tau_{2,\text{des}}$ column \\
+\midrule
+0 & $\dot{q}_1$            & 0    & 0 \\
+1 & $\dot{q}_2$            & 0    & 0 \\
+2 & $\ddot{q}_1$           & $M^{-1}_{11}(\bq)$ & 0 \\
+3 & $\ddot{q}_2$           & $M^{-1}_{21}(\bq)$ & \textbf{0} \\
+4 & $\dot{\theta}_m$       & 0    & 0 \\
+5 & $\ddot{\theta}_m$      & 0    & $1/(J_m N)$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The input matrix has $\text{rank}(\bB) = 2$ everywhere (since $M^{-1}_{11} > 0$
+and $J_m > 0$), but $\tau_{2,\text{des}}$ acts only on the motor rotor.
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Underactuation Analysis}
+\label{sec:underact}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\begin{table}[h]
+\centering
+\caption{Actuation comparison: rigid vs.\ SEA manipulator.}
+\label{tab:actuation}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Property & Rigid 2R & SEA Cable (Torque mode) \\
+\midrule
+States ($n$)   & 4 & \textbf{6} \\
+Controls ($m$) & 2 & 2 \\
+Unactuated directions ($n - m$) & 2 & \textbf{4} \\
+Fully actuated? & Yes & \textbf{No} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent
+The rigid manipulator is fully actuated: both $\tau_1$ and $\tau_2$ act
+directly on $\ddot{q}_1$ and $\ddot{q}_2$ through the invertible mass
+matrix, and feedback linearisation (computed torque) is exact.
+
+With the SEA, $\tau_{2,\text{des}}$ only enters $\ddot{\theta}_m$.
+Joint~2 is driven \emph{indirectly} through the spring coupling in $\bm{f}$.
+The system is \textbf{underactuated}: we cannot independently command $\ddot{q}_2$.
+
+\subsection{Null Space of \texorpdfstring{$\bB^\top$}{B-transpose}}
+
+The null space $\bB^\perp$ satisfies $\bB^\top \bB^\perp = \bm{0}$.
+Since $\bB$ has rank~2 in $\R^6$, the null space has dimension
+$n - m = 4$.  A basis is:
+
+\begin{equation}
+\label{eq:Bbot}
+\bB^\perp(\bx) =
+\begin{bmatrix}
+1 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 \\
+0 & 0 & 0 & 0 \\
+0 & -M^{-1}_{21}/M^{-1}_{11} & 1 & 0 \\
+0 & 0 & 0 & 1 \\
+0 & 0 & 0 & 0
+\end{bmatrix}
+\in \R^{6 \times 4}
+\end{equation}
+
+The columns correspond to:
+\begin{enumerate}
+\item $\bm{e}_1$: the $q_1$ kinematic identity $(\dot{q}_1 = \dot{q}_1)$
+\item Modified $\bm{e}_2$: the $q_2$ direction, with row~4 adjusted so
+      the $\tau_1$ coupling through $M^{-1}_{21}$ is cancelled
+\item $\bm{e}_4$: the $\ddot{q}_2$ direction decoupled from $\tau_1$
+\item $\bm{e}_5$: the $\theta_m$ kinematic identity
+\end{enumerate}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Current Control: Computed Torque + SEA}
+\label{sec:ct}
+% ═════════════════════════════════════════════════════════════════════════════
+
+The existing controller in \texttt{controller/controller.py} uses a
+\textbf{two-block architecture}:
+
+\[
+\text{Trajectory} \xrightarrow{\bp_\text{ref}(t)}
+\text{CT Controller} \xrightarrow{[\tau_1,\,\tau_{2,\text{des}}]}
+\text{SEA Actuator} \xrightarrow{[\tau_1,\,r_p F_\text{cable}]}
+\text{MultibodyPlant}
+\]
+
+The CT controller computes:
+\begin{align}
+\bq_\text{des} &= \text{IK}(\bp_\text{ref}) \label{eq:ik}  \\
+\bm{a}_\text{des} &= \ddot{\bq}_\text{ref}
+  + K_p\,(\bq_\text{des} - \bq)
+  + K_d\,(\dot{\bq}_\text{ref} - \dot{\bq}) \label{eq:pd}  \\
+\btau_\text{des} &= \bM(\bq)\,\bm{a}_\text{des}
+  + \bC(\bq, \dot{\bq})\,\dot{\bq}
+  + \bG(\bq) \label{eq:invdyn}
+\end{align}
+
+\begin{mdframed}
+\textbf{Why CT fails with soft springs:}
+The CT law \eqref{eq:invdyn} assumes $\btau_\text{applied} = \btau_\text{des}$
+(instant torque authority).  With the SEA, $\tau_{2,\text{applied}} = r_p\,F_\text{cable}
+\neq \tau_{2,\text{des}}$, and the mismatch grows as $k_s$ decreases.
+The CT controller is \emph{model-blind} to the spring dynamics --- it treats
+the SEA as if it were rigid.
+\end{mdframed}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{C3M: Control Contraction Metrics}
+\label{sec:c3m}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\subsection{Background}
+
+C3M (Sun et al., 2020) jointly learns two neural networks:
+\begin{enumerate}
+\item $\bW(\bx)$: a state-dependent \textbf{dual contraction metric}
+      (positive definite matrix)
+\item $\bu(\bx, \bx_e, \bu_\text{ref})$: a \textbf{tracking controller}
+      that guarantees exponential convergence at rate $\lambda$
+\end{enumerate}
+where $\bx_e = \bx - \bx_\text{ref}$ is the tracking error and
+$\bu_\text{ref}$ is the feedforward control.
+
+\subsection{Contraction Condition}
+
+With $\bm{M} = \bW^{-1}$ (the contraction metric), the training loss enforces:
+\begin{equation}
+\label{eq:contraction}
+\dot{\bm{M}} + (\bm{A} + \bB\bm{K})^\top \bm{M}
+  + \bm{M}\,(\bm{A} + \bB\bm{K})
+  + 2\lambda\,\bm{M} \preceq 0
+\end{equation}
+where $\bm{A} = \partial\bm{f}/\partial\bx + \sum_i u_i\,\partial\bB_i/\partial\bx$
+and $\bm{K} = \partial\bu/\partial\bx$.  This ensures the distance between
+any two trajectories (measured by $\bm{M}$) contracts exponentially at rate~$\lambda$.
+
+\subsection{Dual Conditions (C1 and C2)}
+
+C3M decomposes the contraction condition into two parts projected through
+$\bB^\perp$:
+
+\paragraph{C1 --- Unactuated contraction.}
+\begin{equation}
+\label{eq:C1}
+(\bB^\perp)^\top
+\left[
+-\dot{\bW}\bm{f}
++ \frac{\partial\bm{f}}{\partial\bx}\bW
++ \bW\left(\frac{\partial\bm{f}}{\partial\bx}\right)^\top
++ 2\lambda\,\bW
+\right]
+\bB^\perp \preceq 0
+\end{equation}
+This must hold in the \textbf{4-dimensional null space} of $\bB^\top$.
+For the SEA system, this subspace includes the $q_2$ and $\theta_m$ directions
+--- so C3M must find a metric that certifies the \emph{spring dynamics naturally
+contract} even though we cannot directly command $\ddot{q}_2$.
+
+\paragraph{C2 --- Actuated orthogonality.}
+\begin{equation}
+\label{eq:C2}
+(\bB^\perp)^\top
+\left[
+\dot{\bW}\bB_j
+- \frac{\partial\bB_j}{\partial\bx}\bW
+- \bW\left(\frac{\partial\bB_j}{\partial\bx}\right)^\top
+\right]
+\bB^\perp = 0
+\quad \forall\; j = 1, \ldots, m
+\end{equation}
+This ensures the control directions are metrically orthogonal to the
+unactuated subspace.
+
+\subsection{Why C3M is Well-Suited for This System}
+
+\begin{table}[h]
+\centering
+\caption{Comparison of control approaches for the cup manipulator + SEA.}
+\label{tab:comparison}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Property & CT & CT + RL residual & LQR & \textbf{C3M} \\
+\midrule
+Accounts for spring dynamics & No & Learned & Linear only & \textbf{Yes} \\
+Guaranteed convergence rate  & No & No & Local only & \textbf{Yes ($\lambda$)} \\
+Handles underactuation       & No & Partially & Partially & \textbf{Yes} \\
+Robust to model uncertainty  & No & Partially & No & \textbf{Certified} \\
+Need training                & No & Yes & No & Yes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent
+Key advantages of C3M for this specific system:
+
+\begin{enumerate}
+\item \textbf{Spring dynamics awareness.}
+      The C1 condition \eqref{eq:C1} explicitly verifies that the spring
+      coupling from $\theta_m$ to $q_2$ is contracting.  If $k_s$ is too
+      small, C1 becomes infeasible for a given $\lambda$ --- this gives a
+      \emph{principled lower bound on spring stiffness}.
+
+\item \textbf{Anticipatory control.}
+      Unlike CT (which ignores the spring lag), C3M learns a controller
+      that \emph{anticipates} the motor-spring dynamics.  The controller
+      $\bu(\bx, \bx_e, \bu_\text{ref})$ sees the full state including
+      $(\theta_m, \dot{\theta}_m)$ and can pre-compensate for the spring lag.
+
+\item \textbf{Convergence rate certificate.}
+      The parameter $\lambda > 0$ is a guaranteed convergence rate.
+      For tracking tasks, this translates to a bound on the steady-state
+      tracking error: fast trajectories with low $\lambda$ will have larger
+      error, providing a principled speed--accuracy tradeoff.
+
+\item \textbf{Unilateral cable handling.}
+      The $\max(F, 0)$ nonlinearity can be smoothed via softplus
+      $\tilde{F} = \frac{1}{\beta}\ln(1 + e^{\beta F})$ during training
+      to maintain differentiability for PyTorch autograd, while the
+      deployment uses exact $\max$.
+\end{enumerate}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{C3M Integration Architecture}
+\label{sec:integration}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\subsection{Training Phase}
+
+Three files must be created in the C3M framework
+(\texttt{contraction-theory/C3M/}):
+
+\begin{enumerate}
+\item \texttt{systems/system\_CUPMANIP\_SEA.py} --- 6D $\bm{f}(\bx)$,
+      $\bB(\bx)$, $\bB^\perp(\bx)$ in PyTorch
+\item \texttt{configs/config\_CUPMANIP\_SEA.py} --- state/control bounds,
+      sampling ranges
+\item \texttt{models/model\_CUPMANIP\_SEA.py} --- neural network
+      architecture for $\bW$ and $\bu$
+\end{enumerate}
+
+The $\bm{f}(\bx)$ implementation requires symbolic 2R manipulator EOM
+in PyTorch (not Drake), since autograd must compute $\partial\bm{f}/\partial\bx$.
+
+Training command:
+\begin{verbatim}
+cd contraction-theory/C3M
+python main.py --task CUPMANIP_SEA --lambda 1.5 \
+    --log checkpoints/cupmanip_sea/lambda_1.5 --epochs 15
+\end{verbatim}
+
+\subsection{Deployment in Drake}
+
+The trained C3M controller replaces the CT controller as a Drake
+\texttt{LeafSystem}:
+
+\[
+\text{Trajectory}
+\xrightarrow{\bx_\text{ref}(t)}
+\texttt{C3MController}
+\xrightarrow{[\tau_1,\,\tau_{2,\text{des}}]}
+\underbrace{\texttt{SEACableActuator}}_{\text{physical spring model}}
+\xrightarrow{[\tau_1,\,r_p F]}
+\texttt{Plant}
+\]
+
+The SEA actuator block \emph{remains unchanged} --- it models physical reality.
+The C3M controller produces torque commands that account for the spring dynamics,
+rather than blindly inverting the manipulator dynamics and hoping the spring
+keeps up.
+
+The reference state includes the motor:
+\begin{equation}
+\bx_\text{ref}(t) = \begin{bmatrix}
+q_{1,\text{ref}}(t) \\
+q_{2,\text{ref}}(t) \\
+\dot{q}_{1,\text{ref}}(t) \\
+\dot{q}_{2,\text{ref}}(t) \\
+N \cdot q_{2,\text{ref}}(t) \\
+N \cdot \dot{q}_{2,\text{ref}}(t)
+\end{bmatrix}
+\end{equation}
+where $\theta_{m,\text{ref}} = N \cdot q_{2,\text{ref}}$ corresponds to
+the spring-at-rest equilibrium ($\delta = 0$).
+
+\subsection{Neural Network Architecture}
+
+The controller network in C3M takes an \texttt{effective\_dim} slice of the
+state as input.  For the cart-pendulum (4D state, 1D control), dimensions
+1--3 ($\dot{p}, \theta, \dot{\theta}$) are used (cart position $p$ is ignored
+since the dynamics are translation-invariant).
+
+For the cup manipulator SEA (6D state, 2D control), \textbf{all 6 states
+matter} because the dynamics depend on all angles and the motor state:
+\[
+\texttt{effective\_dim\_start} = 0, \quad
+\texttt{effective\_dim\_end} = 6
+\]
+
+The network dimensions scale accordingly:
+\begin{itemize}
+\item $\bW$: \texttt{Linear}$(6, 128) \to \tanh \to$ \texttt{Linear}$(128, 36)$
+      \quad ($6 \times 6 = 36$ entries)
+\item $\bu_{w1}$: \texttt{Linear}$(12, 128) \to \tanh \to$ \texttt{Linear}$(128, 6c)$
+      \quad (input: $[\bx_\text{eff},\, \bx_e{}_\text{eff}]$, $c = 3n = 18$)
+\item $\bu_{w2}$: \texttt{Linear}$(12, 128) \to \tanh \to$ \texttt{Linear}$(128, 2c)$
+      \quad (output: $2 \times c$ matrix)
+\end{itemize}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Recommended Development Path}
+\label{sec:roadmap}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\begin{enumerate}
+\item \textbf{Phase 1: Rigid 4D system.}
+      Start with the rigid manipulator ($n = 4, m = 2$, fully actuated).
+      This should train easily and validate the PyTorch dynamics
+      against Drake.  $\bB^\perp$ is only $4 \times 2$
+      (two kinematic identities).
+
+\item \textbf{Phase 2: 6D SEA system.}
+      Add the motor states.  The 4D null space and spring nonlinearity
+      make training harder.  Use softplus approximation for $\max(F, 0)$.
+      Start with stiff springs ($k_s = 500$) and gradually reduce.
+
+\item \textbf{Phase 3: Feasibility boundary.}
+      Sweep $\lambda$ vs.\ $k_s$ to find the region where C1 is
+      satisfiable.  This gives a principled minimum-stiffness curve
+      for a given convergence rate --- useful for hardware design.
+
+\item \textbf{Phase 4: Drake deployment.}
+      Package the trained C3M controller as a Drake \texttt{LeafSystem},
+      compare against CT + SEA and CT + RL residual on the same
+      rectangular tracking trajectory.
+\end{enumerate}
+
+\end{document}

@@ -873,6 +873,1255 @@ At each simulation step ($\Delta t = 2$\,ms), the two blocks execute in sequence
 Steps 1--5 are the standard CT pipeline (identical to the rigid-tendon controller).  Steps 6--10 are the SEA cable layer.  Because these are separate Drake \texttt{LeafSystem}s, any controller that outputs $[\tau_1, \tau_2]$ can be substituted for the CT block.
 
 
+\subsection{Detailed Signal-Flow Block Diagram}
+\label{sec:block_diagram}
+
+Figure~\ref{fig:block_diagram} shows the complete signal-flow graph for the two-block architecture.
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    >=Stealth,
+    % --- node styles ---
+    sumnode/.style={circle, draw=#1, thick, inner sep=0pt,
+                    minimum size=6mm, font=\scriptsize},
+    block/.style={rectangle, draw=#1, thick, fill=#1!8,
+                  minimum height=8mm, align=center, font=\small,
+                  inner xsep=5pt, inner ysep=3pt},
+    gain/.style={isosceles triangle, draw=#1, thick, fill=#1!8,
+                 isosceles triangle apex angle=60,
+                 minimum width=7mm, minimum height=5mm,
+                 shape border rotate=0, font=\small, inner sep=1pt},
+    integ/.style={rectangle, draw=drakeblue, thick, fill=drakeblue!8,
+                  minimum height=7mm, minimum width=9mm,
+                  align=center, font=\small},
+    arr/.style={-Stealth, thick, #1},
+    sig/.style={font=\scriptsize, text=#1},
+    note/.style={font=\scriptsize\itshape, text=gray},
+    % --- group boxes ---
+    groupbox/.style={draw=#1, thick, dashed, rounded corners=4pt,
+                     fill=#1!4, inner sep=8pt},
+]
+
+% ========================================================================
+%  BLOCK 1: Computed Torque Controller (upper half)
+% ========================================================================
+
+% ── IK ──
+\node[block=darkred] (ik) {\textbf{2R IK}};
+\node[left=1.2cm of ik, sig=darkred] (pref) {$\bm{p}_{\mathrm{ref}}$};
+\draw[arr=darkred] (pref) -- (ik);
+
+% ── Sum node (q error) ──
+\node[sumnode=darkred, right=0.9cm of ik] (qsum) {};
+\draw (qsum.center) node[font=\tiny] {$+$};
+\draw[arr=darkred] (ik) -- (qsum)
+    node[midway, above, sig=darkred] {$\bq_{\mathrm{des}}$};
+
+% ── Kp gain ──
+\node[gain=darkred, right=0.7cm of qsum] (kp) {$K_p$};
+\draw[arr=darkred] (qsum) -- (kp);
+
+% ── Bottom path: Kd gain (velocity error) ──
+\node[sumnode=darkred, below=0.7cm of qsum] (qdotsum) {};
+\draw (qdotsum.center) node[font=\tiny] {$+$};
+\node[gain=darkred, right=0.7cm of qdotsum] (kd) {$K_d$};
+\draw[arr=darkred] (qdotsum) -- (kd);
+
+% ── a_des sum node ──
+\node[sumnode=darkred, right=1.5cm of kp] (asum) {};
+\draw (asum.center) node[font=\tiny] {$+$};
+\draw[arr=darkred] (kp) -- (asum);
+\draw[arr=darkred] (kd.east) -| (asum);
+
+% ── q_ref_ddot feedforward ──
+\node[above=0.5cm of asum, sig=darkred] (qddref) {$\ddot{\bq}_{\mathrm{ref}}$};
+\draw[arr=darkred] (qddref) -- (asum);
+
+% ── ID block ──
+\node[block=darkred, right=1.0cm of asum] (id) {\textbf{ID}\\[-1pt]{\tiny $\bM\bm{a}_{\mathrm{des}} + \bh(\bq,\dot{\bq})$}};
+\draw[arr=darkred] (asum) -- (id)
+    node[midway, above, sig=darkred] {$\bm{a}_{\mathrm{des}}$};
+
+% ── τ_des output ──
+\node[right=1.0cm of id] (tdes_split) {};
+\draw[arr=darkred] (id) -- (tdes_split.center)
+    node[midway, above, sig=darkred] {$\btau_{\mathrm{des}}$};
+
+% ── τ_1,des = τ_1 (direct) ──
+\node[block=drakegreen, above right=0.3cm and 0.8cm of tdes_split] (tau1) {$\tau_{1,\mathrm{des}} = \tau_1$};
+\draw[arr=drakegreen] (tdes_split.center) |- (tau1);
+\node[right=0.6cm of tau1, sig=drakegreen] (tau1out) {\textbf{To Joint 1}};
+\draw[arr=drakegreen] (tau1) -- (tau1out);
+
+% ── τ_2,des output ──
+\node[block=seaorange, below right=0.3cm and 0.8cm of tdes_split] (tau2box) {$\tau_{2,\mathrm{des}}$};
+\draw[arr=seaorange] (tdes_split.center) |- (tau2box);
+
+% ── feedback arrows ──
+% q feedback to qsum
+\coordinate (qfb_entry) at ($(qsum.south) + (0, -1.7)$);
+\node[below left=2.2cm and 0.3cm of qsum, sig=gray] (qfb_label) {$\bq$};
+\draw[arr=gray] (qfb_entry) -- (qsum.south)
+    node[pos=0.3, right, sig=gray] {$-$};
+% qdot feedback to qdotsum
+\node[below left=0.2cm and 0.6cm of qdotsum, sig=gray] (qdotfb_label) {$\dot{\bq}$};
+\draw[arr=gray] (qdotfb_label) -- (qdotsum.west)
+    node[pos=0.5, above, sig=gray] {$-$};
+% qdot_ref from IK
+\node[above left=0.1cm and 0.6cm of qdotsum, sig=darkred] (qdotref) {$\dot{\bq}_{\mathrm{ref}}$};
+\draw[arr=darkred] (qdotref) -- (qdotsum.north west);
+
+% ── Block 1 group box ──
+\begin{scope}[on background layer]
+    \node[groupbox=darkred,
+          fit=(pref)(ik)(qsum)(qdotsum)(kp)(kd)(asum)(qddref)(id)(tau1)(tau1out)(tau2box),
+          label={[font=\bfseries\small, text=darkred]above left:Block 1 --- Computed Torque (CT)}] (b1box) {};
+\end{scope}
+
+% ========================================================================
+%  BLOCK 2: Motor + SEA (lower half)
+% ========================================================================
+
+% Position Block 2 below Block 1
+\coordinate (b2origin) at ($(ik.south) + (0, -4.2)$);
+
+% ── τ_2,des / N ──
+\node[block=seaorange, anchor=north] at (b2origin) (divN) {$\div N$};
+\draw[arr=seaorange] (tau2box.south) -- ++(0,-0.5) -| (divN.north);
+\node[left=0.2cm of divN, sig=seaorange] (tauN_lab) {$\frac{\tau_{2,\mathrm{des}}}{N}$};
+
+% ── Motor dynamics sum node ──
+\node[sumnode=drakeblue, right=1.0cm of divN] (msum) {};
+\draw (msum.center) node[font=\tiny] {$+$};
+\draw[arr=seaorange] (divN) -- (msum);
+
+% ── 1/Jm gain ──
+\node[gain=drakeblue, right=0.7cm of msum] (invJm) {$\Jm^{-1}$};
+\draw[arr=drakeblue] (msum) -- (invJm);
+
+% ── θ̈_m label ──
+\node[above=0.15cm of invJm, sig=drakeblue] (thetaddm_lab) {$\ddot{\thetam}$};
+
+% ── Integrator 1: θ̈_m → θ̇_m ──
+\node[integ, right=0.8cm of invJm] (int1) {$\frac{1}{s}$};
+\draw[arr=drakeblue] (invJm) -- (int1);
+
+% ── Integrator 2: θ̇_m → θ_m ──
+\node[integ, right=0.8cm of int1] (int2) {$\frac{1}{s}$};
+\draw[arr=drakeblue] (int1) -- (int2)
+    node[midway, above, sig=drakeblue] {$\dot{\thetam}$};
+
+% ── θ_m output ──
+\node[right=0.6cm of int2, sig=drakeblue] (thetam_out) {$\thetam$};
+\draw[arr=drakeblue] (int2) -- (thetam_out);
+
+% ── b_m feedback loop ──
+\coordinate (bm_fb_right) at ($(int1.east) + (0.25, 0)$);
+\coordinate (bm_fb_down) at ($(bm_fb_right) + (0, -1.0)$);
+\node[gain=drakeblue, anchor=east] at ($(msum.center) + (0, -1.0)$) (bm) {$b_{\mathrm{m}}$};
+\draw[drakeblue, thick] (bm_fb_right) -- (bm_fb_down);
+\draw[drakeblue, thick] (bm_fb_down) -| (bm.east);
+\draw[arr=drakeblue] (bm.west) -- ++(- 0.3, 0) |- (msum.south)
+    node[pos=0.0, left, sig=drakeblue] {$-b_{\mathrm{m}} \dot{\thetam}$};
+
+% ── r_pF/N feedback into motor sum ──
+\coordinate (rpFN_entry) at ($(msum.north) + (0, 0.5)$);
+\node[above=0.5cm of msum, sig=springgold] (rpFN_lab) {$-\!\dfrac{\rp F}{N}$};
+\draw[arr=springgold] (rpFN_lab) -- (msum.north);
+
+% ── Spring computation (below θ_m path) ──
+% δ computation
+\node[block=springgold, below=2.2cm of int2] (delta_block)
+    {\textbf{Spring ext.}\\[-1pt]{\tiny $\delta = \rp\!\bigl(\frac{\thetam}{N} - q_2\bigr)$}};
+
+% Route θ_m down to δ block
+\coordinate (thetam_down) at ($(int2.east) + (0.3, 0)$);
+\draw[drakeblue, thick] (thetam_down) -- ++(0, -1.2);
+\draw[arr=drakeblue] ($(thetam_down) + (0, -1.2)$) -- (delta_block.north east);
+
+% q₂ input to δ block
+\node[below left=0.0cm and 0.9cm of delta_block, sig=gray] (q2in) {$q_2$};
+\draw[arr=gray] (q2in) -- (delta_block.west);
+
+% ── Spring force ──
+\node[block=springgold, left=1.5cm of delta_block] (spring_f)
+    {\textbf{Spring}\\[-1pt]{\tiny $F = \ks\delta + \bc\dot{\delta}$}};
+\draw[arr=springgold] (delta_block) -- (spring_f)
+    node[midway, above, sig=springgold] {$\delta,\,\dot{\delta}$};
+
+% ── Unilateral split ──
+\node[block=drakegreen, below=1.5cm of spring_f, xshift=-1.0cm] (tgreen)
+    {$T_{\mathrm{green}} = \max(F,\,0)$};
+\node[block=darkred, below=0.4cm of tgreen] (tred)
+    {$T_{\mathrm{red}} = \max(-F,\,0)$};
+
+\coordinate (F_split) at ($(spring_f.south) + (0, -0.4)$);
+\draw[springgold, thick] (spring_f.south) -- (F_split)
+    node[right, sig=springgold] {$F$};
+\draw[arr=drakegreen] (F_split) -| (tgreen.north);
+\draw[arr=darkred] (F_split) -| (tred.north);
+
+% ── τ₂ = r_p(T_green - T_red) ──
+\node[sumnode=seaorange, below left=1.2cm and -0.2cm of tred] (tausum) {};
+\draw (tausum.center) node[font=\tiny] {$\Sigma$};
+\draw[arr=drakegreen] (tgreen.south) -- ++(0,-0.4) -| ($(tausum.north) + (-0.15, 0)$)
+    node[pos=0.0, right, sig=drakegreen] {$+$};
+\draw[arr=darkred] (tred.south) -- ++(0,-0.1) -| ($(tausum.north) + (0.15, 0)$)
+    node[pos=0.0, right, sig=darkred] {$-$};
+
+\node[gain=seaorange, left=0.7cm of tausum] (rp_gain) {$\rp$};
+\draw[arr=seaorange] (tausum) -- (rp_gain);
+
+% ── τ₂ output ──
+\node[block=seaorange, left=0.7cm of rp_gain] (tau2out)
+    {$\tau_2$};
+\draw[arr=seaorange] (rp_gain) -- (tau2out);
+\node[left=0.5cm of tau2out, sig=seaorange, font=\small\bfseries] (jt2out) {\textbf{To Joint 2}};
+\draw[arr=seaorange] (tau2out) -- (jt2out);
+
+% ── r_pF/N feedback path from spring to motor sum ──
+\draw[springgold, thick, dashed] (spring_f.north) -- ++(0, 0.7)
+    node[above, sig=springgold] {\tiny $\rp F / N$ fed back to motor};
+
+% ── Block 2 group box ──
+\begin{scope}[on background layer]
+    \node[groupbox=drakeblue,
+          fit=(divN)(msum)(invJm)(int1)(int2)(thetam_out)(bm)(delta_block)(spring_f)(tgreen)(tred)(tausum)(rp_gain)(tau2out)(jt2out)(q2in)(rpFN_lab)(tauN_lab),
+          label={[font=\bfseries\small, text=drakeblue]above left:Block 2 --- Motor + SEA (Joint 2 only)}] (b2box) {};
+\end{scope}
+
+% ========================================================================
+%  ANNOTATION: key equations
+% ========================================================================
+\node[note, right=0.3cm of tau1out, text width=4.5cm] (eq_ct)
+    {$\bm{a}_{\mathrm{des}} = \ddot{\bq}_{\mathrm{ref}} + K_p(\bq_{\mathrm{des}} - \bq) + K_d(\dot{\bq}_{\mathrm{ref}} - \dot{\bq})$\\[2pt]
+     $\btau_{\mathrm{des}} = \bM\,\bm{a}_{\mathrm{des}} + \bh(\bq,\dot{\bq})$};
+
+\node[note, right=0.3cm of thetam_out, text width=4.5cm] (eq_motor)
+    {$\ddot{\thetam} = \bigl(\frac{\tau_{2,\mathrm{des}}}{N} - b_{\mathrm{m}}\dot{\thetam} - \frac{\rp F}{N}\bigr) \Jm^{-1}$};
+
+\end{tikzpicture}
+}% end resizebox
+\caption{Detailed signal-flow block diagram.
+    \textbf{Block~1} (upper, red): Computed-Torque controller---2R inverse kinematics, PD error with feedforward, inverse dynamics.
+    $\tau_1$ goes directly to joint~1 (rigid).
+    $\tau_{2,\mathrm{des}}$ enters \textbf{Block~2} (lower, blue): motor rotor dynamics with viscous damping $b_{\mathrm{m}}$, cable spring--damper, unilateral tension split, and pulley radius mapping to joint torque $\tau_2$.}
+\label{fig:block_diagram}
+\end{figure}
+
+
+% ============================================================================
+\section{Exosuit Co-Contraction Stiffness}
+\label{sec:exosuit}
+% ============================================================================
+
+The exosuit adds a \textbf{parallel stiffness layer} on joint~2 using two
+antagonistic cable--spring--motor chains (right and left) routed around a
+shared centred elbow pulley (Method~B, see cable documentation).
+It does \emph{not} replace the drive SEA; the net torque on joint~2 becomes
+$\tau_2^{\mathrm{total}} = \tau_2^{\mathrm{drive}} + \tau_{\mathrm{exo}}$.
+
+\begin{resultbox}
+\textbf{Key idea ---} symmetric co-contraction.
+Both exo motors push their springs equally beyond the current joint state,
+creating a restoring torque proportional to any joint deflection:
+\[
+    k_{\mathrm{eff}} = 2\,k_{\mathrm{exo}}\,r_{\mathrm{exo}}^{2}
+\]
+With $k_{\mathrm{exo}} = 200$\,N/m and $r_{\mathrm{exo}} = 47.75$\,mm this
+gives $k_{\mathrm{eff}} \approx 0.91$\,Nm/rad of tuneable passive stiffness.
+\end{resultbox}
+
+
+\subsection{Physical Cable Routing (Method B --- Centred Elbow Pulley)}
+
+\begin{archbox}{Exosuit Cable Routing (Joint 2)}
+\begin{center}
+\begin{tikzpicture}[
+    >=Stealth,
+    block/.style={rectangle, draw=#1, thick, fill=#1!8,
+                  minimum height=0.9cm, minimum width=2.2cm, align=center, font=\small},
+    spring/.style={decorate, decoration={coil, aspect=0.3, segment length=3mm, amplitude=3mm}},
+    cable/.style={line width=1.5pt, #1},
+    arr/.style={-Stealth, thick, #1},
+]
+    % Right (upper groove) cable path
+    \node[block=seaorange] (motorR) {Motor R\\{\tiny AK60-6}};
+    \node[block=gray, right=1.4cm of motorR] (link1R) {L1 Pulley\\{\tiny $r = 35$\,mm}};
+    \node[block=darkred, right=1.4cm of link1R] (elbow) {Elbow Pulley\\{\tiny $r_{\mathrm{exo}} = 47.75$\,mm}};
+    \node[block=springgold, right=1.2cm of elbow] (springR) {\textbf{Spring R}\\{\tiny $k_{\mathrm{exo}}, b_{\mathrm{exo}}$}};
+    \node[block=drakegreen, right=1.2cm of springR] (endR) {End +Y\\{\tiny link\,2}};
+
+    \draw[cable=seaorange] (motorR.east) -- (link1R.west) node[midway, above, font=\tiny] {cable};
+    \draw[cable=seaorange] (link1R.east) -- (elbow.west) node[midway, above, font=\tiny] {upper groove};
+    \draw[arr=darkred] (elbow.east) -- (springR.west);
+    \draw[spring, thick, springgold] (springR.east) -- (endR.west);
+
+    % Left (lower groove) cable path — below
+    \node[block=violet, below=1.0cm of motorR] (motorL) {Motor L\\{\tiny AK60-6}};
+    \node[block=gray, right=1.4cm of motorL] (link1L) {L1 Pulley\\{\tiny $r = 35$\,mm}};
+    \node[block=springgold, right=1.4cm of elbow, yshift=-1.2cm] (springL) {\textbf{Spring L}\\{\tiny $k_{\mathrm{exo}}, b_{\mathrm{exo}}$}};
+    \node[block=drakegreen, right=1.2cm of springL] (endL) {End $-$Y\\{\tiny link\,2}};
+
+    \draw[cable=violet] (motorL.east) -- (link1L.west) node[midway, above, font=\tiny] {cable};
+    \draw[cable=violet] (link1L.east) -- (elbow.south west) node[midway, below, font=\tiny] {lower groove};
+    \draw[arr=darkred] (elbow.south east) -- (springL.west);
+    \draw[spring, thick, springgold] (springL.east) -- (endL.west);
+
+    % Labels
+    \node[below=0.25cm of elbow, font=\scriptsize, text=darkred] {shared dual-groove};
+\end{tikzpicture}
+\end{center}
+\end{archbox}
+
+The two cables are routed on \textbf{separate Z-planes} (3\,mm apart) through the same elbow pulley.
+The \textbf{right/orange cable} (upper groove) wraps from the $-Y$ motor start, through a link-1 idler, crosses via an \emph{internal tangent} to the $+Y$ side, and terminates at the link-2 anchor.
+The \textbf{left/purple cable} (lower groove) mirrors this on the opposite side.
+
+Because the elbow pulley is centred on the joint axis, the moment arm is \textbf{constant}:
+$l_c' = r_{\mathrm{exo}}$ for all $q_2$.
+
+
+\subsection{Exosuit State Variables}
+
+The exosuit adds \textbf{four motor-side state variables} (two per antagonistic channel):
+
+\begin{table}[H]
+\centering
+\caption{Exosuit discrete state vector (6D).}
+\begin{tabular}{clcl}
+\toprule
+\textbf{Symbol} & \textbf{Description} & \textbf{Units} & \textbf{Index} \\
+\midrule
+$\theta_{\mathrm{m,R}}$ & Right motor rotor angle & rad & 0 \\
+$\dot{\theta}_{\mathrm{m,R}}$ & Right motor angular velocity & rad/s & 1 \\
+$\theta_{\mathrm{m,L}}$ & Left motor rotor angle & rad & 2 \\
+$\dot{\theta}_{\mathrm{m,L}}$ & Left motor angular velocity & rad/s & 3 \\
+$q_2^{\dagger}$ & Elbow angle captured at activation (anchor) & rad & 4 \\
+\texttt{was\_active} & Activation flag from previous timestep & bool & 5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{warnbox}
+\textbf{Motor-side angles.}
+$\theta_{\mathrm{m,R}}$ and $\theta_{\mathrm{m,L}}$ are motor-side (before the gearbox).
+The joint-side equivalent is $\theta_{\mathrm{m}} / N$.
+\end{warnbox}
+
+
+\subsection{Spring Extensions and Cable Forces}
+\label{sec:exo_spring}
+
+\subsubsection{Right Cable (Upper Groove)}
+The right cable wraps so that positive motor motion drives $+q_2$:
+\begin{equation}
+\boxed{\delta_R = r_{\mathrm{exo}} \!\left(\frac{\theta_{\mathrm{m,R}}}{N} - q_2\right)}
+\label{eq:delta_R}
+\end{equation}
+\begin{equation}
+    \dot{\delta}_R = r_{\mathrm{exo}} \!\left(\frac{\dot{\theta}_{\mathrm{m,R}}}{N} - \dot{q}_2\right)
+\label{eq:delta_R_dot}
+\end{equation}
+
+\subsubsection{Left Cable (Lower Groove)}
+The left cable wraps in the opposite direction (virtual joint $= -q_2$):
+\begin{equation}
+\boxed{\delta_L = r_{\mathrm{exo}} \!\left(\frac{\theta_{\mathrm{m,L}}}{N} + q_2\right)}
+\label{eq:delta_L}
+\end{equation}
+\begin{equation}
+    \dot{\delta}_L = r_{\mathrm{exo}} \!\left(\frac{\dot{\theta}_{\mathrm{m,L}}}{N} + \dot{q}_2\right)
+\label{eq:delta_L_dot}
+\end{equation}
+
+\subsubsection{Unilateral Cable Forces}
+Cables can only pull ($T \geq 0$):
+\begin{equation}
+\boxed{
+    F_R = \max\!\bigl(k_{\mathrm{exo}}\,\delta_R + b_{\mathrm{exo}}\,\dot{\delta}_R,\;0\bigr), \qquad
+    F_L = \max\!\bigl(k_{\mathrm{exo}}\,\delta_L + b_{\mathrm{exo}}\,\dot{\delta}_L,\;0\bigr)
+}
+\label{eq:exo_forces}
+\end{equation}
+
+
+\subsection{Net Exosuit Torque}
+
+Using the virtual-work signs ($\partial\delta_R / \partial q_2 = -r_{\mathrm{exo}}$, $\partial\delta_L / \partial q_2 = +r_{\mathrm{exo}}$):
+\begin{equation}
+\boxed{\tau_{\mathrm{exo}} = r_{\mathrm{exo}} \cdot (F_R - F_L)}
+\label{eq:tau_exo}
+\end{equation}
+
+Joint~2 receives the \textbf{sum} of drive and exo torques:
+\begin{equation}
+    \tau_2^{\mathrm{total}} = \underbrace{\rp \cdot F_{\mathrm{cable}}}_{\text{drive SEA}} + \underbrace{r_{\mathrm{exo}} (F_R - F_L)}_{\text{exosuit}}
+\label{eq:tau2_total}
+\end{equation}
+
+
+\subsection{Motor Encoder Tracking (Torque Mode)}
+\label{sec:exo_motor}
+
+Each exo motor uses the same 2nd-order MIT torque-mode rotor dynamics as the
+drive SEA (Section~\ref{sec:torque_mode}), but the \textbf{motor command} is
+generated by an internal \textbf{PD encoder-tracking} law rather than by the
+CT controller.
+
+The exosuit has two operating modes, selectable at runtime:
+
+% ── MODE 1 ─────────────────────────────────────────────────────────────────
+\subsubsection{Mode~1: Transparency (Deactivated)}
+\label{sec:exo_transparent}
+
+When deactivated ($\Delta\theta = 0$), both motors continuously track the
+elbow encoder so that each spring extension stays at zero:
+\begin{align}
+    q_{\mathrm{des,R}} &=  q_2   &  \dot{q}_{\mathrm{des,R}} &=  \dot{q}_2 \notag\\
+    q_{\mathrm{des,L}} &= -q_2   &  \dot{q}_{\mathrm{des,L}} &= -\dot{q}_2
+\label{eq:exo_deactivated}
+\end{align}
+
+\textbf{What happens physically:}
+As the elbow moves (driven by the CT+SEA pipeline), the PD tracker keeps each
+motor angle at $\theta_{\mathrm{m,R}}/N \approx q_2$ and
+$\theta_{\mathrm{m,L}}/N \approx -q_2$.  The spring extensions therefore
+remain:
+\[
+    \delta_R = r_{\mathrm{exo}}\!\left(\frac{\theta_{\mathrm{m,R}}}{N} - q_2\right) \approx 0, \qquad
+    \delta_L = r_{\mathrm{exo}}\!\left(\frac{\theta_{\mathrm{m,L}}}{N} + q_2\right) \approx 0
+\]
+Because $\delta \approx 0$ in both cables, $F_R \approx 0$ and $F_L \approx 0$, giving
+$\tau_{\mathrm{exo}} \approx 0$.
+
+\begin{resultbox}
+\textbf{Transparency means zero additional stiffness.}
+The exosuit does not resist the elbow motion at all.  The motors ``follow''
+the joint, paying out and taking up cable exactly as fast as the elbow moves.
+The robot behaves as if the exosuit were not present.
+\end{resultbox}
+
+In practice, transparency is imperfect: the PD tracker has finite bandwidth,
+so at high joint velocities there is a small transient $\delta \neq 0$ (and
+hence a small parasitic torque).  With $K_P = 200$\,Nm/rad and
+$\omega_{\mathrm{pd}} \approx 450$\,rad/s this residual is negligible for
+typical trajectory speeds ($\dot{q}_2 < 5$\,rad/s).
+
+
+% ── MODE 2 ─────────────────────────────────────────────────────────────────
+\subsubsection{Mode~2: Activated (Co-Contraction)}
+\label{sec:exo_activated}
+
+When activated, a symmetric angular offset $\Delta\theta > 0$ is added to
+both motor targets.  The reference is the CT \textbf{desired} joint angle
+$q_{2,\mathrm{des}}$ (from the trajectory IK), not the actual $q_2$
+(see Section~\ref{sec:exo_qdes} for the rationale):
+\begin{align}
+    q_{\mathrm{des,R}} &=  q_{2,\mathrm{des}} + \Delta\theta  &  \dot{q}_{\mathrm{des,R}} &=  \dot{q}_{2,\mathrm{des}} \notag\\
+    q_{\mathrm{des,L}} &= -q_{2,\mathrm{des}} + \Delta\theta  &  \dot{q}_{\mathrm{des,L}} &= -\dot{q}_{2,\mathrm{des}}
+\label{eq:exo_activated}
+\end{align}
+
+\textbf{What happens physically:}
+Both motors advance \emph{beyond} the CT desired joint state by
+$\Delta\theta$.  Each motor pays out (or retracts) extra cable
+$r_{\mathrm{exo}}\,\Delta\theta$ metres, pretensioning its spring.
+
+When the motors have converged, the steady-state extensions are:
+\begin{align}
+    \delta_R^{\mathrm{ss}} &= r_{\mathrm{exo}}\,\Delta\theta > 0
+        & &\Longrightarrow & F_R &= k_{\mathrm{exo}}\,r_{\mathrm{exo}}\,\Delta\theta > 0 \notag\\
+    \delta_L^{\mathrm{ss}} &= r_{\mathrm{exo}}\,\Delta\theta > 0
+        & &\Longrightarrow & F_L &= k_{\mathrm{exo}}\,r_{\mathrm{exo}}\,\Delta\theta > 0
+\label{eq:pretension}
+\end{align}
+Both cables carry \textbf{equal pre-tension}.  Since $F_R = F_L$, the net
+torque is:
+\[
+    \tau_{\mathrm{exo}}^{\mathrm{ss}}
+      = r_{\mathrm{exo}}(F_R - F_L) = 0
+\]
+At the nominal position the exosuit adds \textbf{no net torque}; it only
+creates latent stiffness that activates when the joint is disturbed.
+
+
+% ── q_des REFERENCE PORT ────────────────────────────────────────────────────
+\subsubsection{Motor Reference Port: Tracking $q_{2,\mathrm{des}}$}
+\label{sec:exo_qdes}
+
+\texttt{SEAExoActuator} exposes a \textbf{\texttt{q\_des}} input port (2-element
+vector) that, when connected, supplies the CT controller's desired joint
+positions as the motor reference in activated mode.
+
+\begin{lstlisting}[language=Python, style=python,
+    caption={Drake diagram wiring: CT desired positions to exosuit reference.}]
+# In run_simulation() after building CT and exo systems:
+builder.Connect(
+    ct.GetOutputPort("joint_positions"),   # 2D: [q1_des, q2_des]
+    exo.GetInputPort("q_des"),
+)
+\end{lstlisting}
+
+The anchor logic inside \texttt{\_update\_motors()} selects the reference
+depending on mode:
+\begin{lstlisting}[language=Python, style=python,
+    caption={Reference selection in \texttt{SEAExoActuator.\_update\_motors()}.}]
+if activated:
+    if self._qdes_port.HasValue(context):
+        q_des_vec = self._qdes_port.Eval(context)
+        q2_ref = float(q_des_vec[1])   # track q2_des (CT reference)
+    else:
+        q2_ref = q2_anchor             # fallback: frozen anchor
+else:
+    q2_ref = q2                        # transparent: follow actual joint
+
+q_des_R =  q2_ref + delta_theta       # right motor target (joint side)
+q_des_L = -q2_ref + delta_theta       # left motor target (joint side)
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Motor reference selection by mode.}
+\begin{tabular}{llll}
+\toprule
+\textbf{Mode} & \textbf{$q_{2,\mathrm{ref}}$} & \textbf{Spring behaviour} & \textbf{$\tau_{\mathrm{exo}}$} \\
+\midrule
+Transparent (off) & $q_2$ (actual) & $\delta \approx 0$ at all times & $\approx 0$ \\
+Activated (on, \texttt{q\_des} connected) & $q_{2,\mathrm{des}}$ (CT) & $\delta = r_{\mathrm{exo}}(\pm\Delta\theta \mp (q_2-q_{2,\mathrm{des}}))$ & $-k_{\mathrm{eff}}(q_2 - q_{2,\mathrm{des}})$ \\
+Activated (on, fallback) & $q_2^{\dagger}$ (frozen anchor) & spring pulls back to activation pose & large, fights CT \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{resultbox}
+\textbf{Why $q_{2,\mathrm{des}}$ instead of $q_2$?}
+
+If the reference were the \emph{actual} $q_2$, the motor targets would follow
+the joint, and the spring extensions would stay near $\pm r_{\mathrm{exo}}\Delta\theta$
+even during trajectory motion.  No net torque would be produced except
+transiently (relying on motor lag).
+
+With $q_{2,\mathrm{des}}$:
+\begin{itemize}[leftmargin=2em, itemsep=1pt]
+    \item During \textbf{clean tracking} ($q_2 \approx q_{2,\mathrm{des}}$):
+          $\tau_{\mathrm{exo}} \approx 0$ --- exosuit is transparent.
+    \item During a \textbf{disturbance} ($q_2 \neq q_{2,\mathrm{des}}$):
+          $\tau_{\mathrm{exo}} = -k_{\mathrm{eff}}(q_2 - q_{2,\mathrm{des}})$
+          acts \emph{immediately}, without relying on motor bandwidth lag.
+    \item The exosuit provides \emph{elastic stiffness} around the CT reference
+          trajectory, not around a fixed pose.
+\end{itemize}
+\end{resultbox}
+
+
+% ── DISTURBANCE REJECTION ─────────────────────────────────────────────────
+\subsubsection{Disturbance Rejection: Restoring the Elbow}
+\label{sec:exo_disturbance}
+
+\paragraph{Key insight.}
+The motor targets track the CT \emph{desired} joint angle $q_{2,\mathrm{des}}$
+(from the trajectory planner and IK solver), \textbf{not} the actual joint
+angle $q_2$.  When a disturbance deflects $q_2$ away from $q_{2,\mathrm{des}}$,
+the motor targets do \textbf{not change}---they remain anchored to the CT
+reference.  The joint moves while the motors stay in place, immediately
+creating asymmetric spring extensions proportional to the deflection:
+\[
+    \tau_{\mathrm{exo}} = -k_{\mathrm{eff}}\,(q_2 - q_{2,\mathrm{des}})
+\]
+This acts as a direct \textbf{elastic stiffness} around the CT trajectory
+reference---no motor bandwidth lag required.
+
+\begin{warnbox}
+\textbf{Contrast with earlier implementations.}
+
+An earlier version of the code used a \emph{frozen anchor}
+$q_2^{\dagger}$ captured at the moment of activation:
+\[
+    q_{\mathrm{des,R}} = q_2^{\dagger} + \Delta\theta \quad\text{(original bug)}
+\]
+This caused the exosuit to behave as a stiff spring anchored to the
+\emph{activation pose}, creating large continuous $\tau_{\mathrm{exo}}$
+that fought the CT controller whenever the arm moved away from the activation
+configuration (e.g.\ on circular or rectangular trajectories).
+The current fix replaces the frozen anchor with $q_{2,\mathrm{des}}$ from
+the CT's \texttt{joint\_positions} output port
+(Section~\ref{sec:exo_qdes}).
+\end{warnbox}
+
+\bigskip
+% ── PRE-CONDITION ────────────────────────────────────────────────────────────
+\paragraph{Pre-condition: nominal steady state at $q_2^{*}$.}
+
+In the activated mode the motor targets are:
+\begin{equation}
+    q_{\mathrm{des,R}} = q_2^{*} + \Delta\theta, \qquad
+    q_{\mathrm{des,L}} = -q_2^{*} + \Delta\theta
+\label{eq:nom_targets}
+\end{equation}
+
+Once the motors have converged, their joint-side positions equal the targets:
+\begin{equation}
+    \frac{\theta_{\mathrm{m,R}}}{N} = q_2^{*} + \Delta\theta, \qquad
+    \frac{\theta_{\mathrm{m,L}}}{N} = -q_2^{*} + \Delta\theta
+\label{eq:nom_motors}
+\end{equation}
+
+Substituting into the spring extension formulae (Eqs.~\ref{eq:delta_R}
+and~\ref{eq:delta_L}) at $q_2 = q_2^{*}$:
+\begin{align}
+    \delta_R^{\mathrm{ss}}
+      &= r_{\mathrm{exo}}\!\left(\frac{\theta_{\mathrm{m,R}}}{N} - q_2^{*}\right)
+       = r_{\mathrm{exo}}\bigl[(q_2^{*}+\Delta\theta)-q_2^{*}\bigr]
+       = r_{\mathrm{exo}}\,\Delta\theta
+    \label{eq:nom_deltaR}\\[4pt]
+    \delta_L^{\mathrm{ss}}
+      &= r_{\mathrm{exo}}\!\left(\frac{\theta_{\mathrm{m,L}}}{N} + q_2^{*}\right)
+       = r_{\mathrm{exo}}\bigl[(-q_2^{*}+\Delta\theta)+q_2^{*}\bigr]
+       = r_{\mathrm{exo}}\,\Delta\theta
+    \label{eq:nom_deltaL}
+\end{align}
+
+Both springs carry the same stretch $r_{\mathrm{exo}}\,\Delta\theta$, so:
+\begin{equation}
+    F_R^{\mathrm{ss}} = k_{\mathrm{exo}}\,r_{\mathrm{exo}}\,\Delta\theta
+    = F_L^{\mathrm{ss}}
+\end{equation}
+
+The net exo torque at the nominal position is therefore \textbf{zero}:
+\begin{equation}
+    \tau_{\mathrm{exo}}^{\mathrm{ss}}
+      = r_{\mathrm{exo}}\!\left(F_R^{\mathrm{ss}} - F_L^{\mathrm{ss}}\right) = 0
+\label{eq:tau_nom_zero}
+\end{equation}
+
+\begin{resultbox}
+\textbf{Preloaded but balanced.}
+At the nominal joint position both cables carry equal tension
+$F_0 = k_{\mathrm{exo}}\,r_{\mathrm{exo}}\,\Delta\theta > 0$ and the net
+joint torque is zero.  The exosuit is preloaded --- both springs are stretched
+--- but the antagonistic torques cancel perfectly.
+\end{resultbox}
+
+\bigskip
+% ── DISTURBANCE ─────────────────────────────────────────────────────────────
+\paragraph{Disturbance event.}
+
+An external force pushes the elbow from $q_2^{*}$ to
+$q_2 = q_2^{*} + \Delta q$ with $\Delta q > 0$ (further flexion).
+
+\bigskip
+% ── STEP 1 ──────────────────────────────────────────────────────────────────
+\textbf{Step~1 --- Motor targets remain anchored to the CT reference $q_{2,\mathrm{des}}$.}
+
+Because the motor reference is $q_{2,\mathrm{des}}$ (set by the trajectory, not
+the actual joint), the disturbance \emph{does not change} the motor targets:
+\begin{equation}
+    q_{\mathrm{des,R}} = q_2^{*} + \Delta\theta, \qquad
+    q_{\mathrm{des,L}} = -q_2^{*} + \Delta\theta
+\label{eq:new_targets}
+\end{equation}
+where $q_2^* = q_{2,\mathrm{des}}$ is the CT desired angle (unchanged by the
+disturbance).
+
+The motors, already converged to the nominal positions, remain:
+\begin{equation}
+    \frac{\theta_{\mathrm{m,R}}}{N} \approx q_2^{*}+\Delta\theta, \qquad
+    \frac{\theta_{\mathrm{m,L}}}{N} \approx -q_2^{*}+\Delta\theta
+\label{eq:motors_still_nominal}
+\end{equation}
+
+The restoring torque arises \emph{immediately} (not through motor lag): as soon
+as $q_2$ deviates from $q_2^* = q_{2,\mathrm{des}}$, the spring extensions
+become asymmetric.
+
+\bigskip
+% ── STEP 2 ──────────────────────────────────────────────────────────────────
+\textbf{Step~2 --- Spring extensions become asymmetric.}
+
+With the joint at $q_2 = q_2^{*}+\Delta q$ and the motors still at their
+nominal positions (Eq.~\ref{eq:motors_still_nominal}):
+
+\medskip
+\emph{Right cable}:
+\begin{align}
+    \delta_R
+      &= r_{\mathrm{exo}}\!\left(\frac{\theta_{\mathrm{m,R}}}{N} - q_2\right)
+       = r_{\mathrm{exo}}\bigl[(q_2^{*}+\Delta\theta)-(q_2^{*}+\Delta q)\bigr] \notag\\
+      &= r_{\mathrm{exo}}(\Delta\theta - \Delta q)
+       \quad \underbrace{\vphantom{X}< r_{\mathrm{exo}}\,\Delta\theta}_{\text{right unloads}}
+    \label{eq:dist_deltaR}
+\end{align}
+
+\emph{Left cable}:
+\begin{align}
+    \delta_L
+      &= r_{\mathrm{exo}}\!\left(\frac{\theta_{\mathrm{m,L}}}{N} + q_2\right)
+       = r_{\mathrm{exo}}\bigl[(-q_2^{*}+\Delta\theta)+(q_2^{*}+\Delta q)\bigr] \notag\\
+      &= r_{\mathrm{exo}}(\Delta\theta + \Delta q)
+       \quad \underbrace{\vphantom{X}> r_{\mathrm{exo}}\,\Delta\theta}_{\text{left loads more}}
+    \label{eq:dist_deltaL}
+\end{align}
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+& \textbf{Before disturbance} & \textbf{After disturbance ($\Delta q > 0$)} \\
+\midrule
+$\delta_R$ & $r_{\mathrm{exo}}\,\Delta\theta$ & $r_{\mathrm{exo}}(\Delta\theta - \Delta q)\;\downarrow$ \\
+$\delta_L$ & $r_{\mathrm{exo}}\,\Delta\theta$ & $r_{\mathrm{exo}}(\Delta\theta + \Delta q)\;\uparrow$ \\
+$F_R - F_L$ & $0$ (balanced) & $-2\,k_{\mathrm{exo}}\,r_{\mathrm{exo}}\,\Delta q < 0$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\bigskip
+% ── STEP 3 ──────────────────────────────────────────────────────────────────
+\textbf{Step~3 --- Full derivation of the restoring torque.}
+
+Assuming both cables remain taut ($|\Delta q| < \Delta\theta$), the cable forces are:
+\begin{align}
+    F_R &= k_{\mathrm{exo}}\,\delta_R = k_{\mathrm{exo}}\,r_{\mathrm{exo}}\,(\Delta\theta - \Delta q)
+    \label{eq:FR_disturbed}\\[4pt]
+    F_L &= k_{\mathrm{exo}}\,\delta_L = k_{\mathrm{exo}}\,r_{\mathrm{exo}}\,(\Delta\theta + \Delta q)
+    \label{eq:FL_disturbed}
+\end{align}
+
+Net exo torque (expanding fully so all terms are visible):
+\begin{align}
+    \tau_{\mathrm{exo}}
+      &= r_{\mathrm{exo}}\,(F_R - F_L) \notag\\
+      &= r_{\mathrm{exo}}\Bigl[k_{\mathrm{exo}}\,r_{\mathrm{exo}}(\Delta\theta-\Delta q)
+                              - k_{\mathrm{exo}}\,r_{\mathrm{exo}}(\Delta\theta+\Delta q)\Bigr]\notag\\
+      &= k_{\mathrm{exo}}\,r_{\mathrm{exo}}^{2}\,
+         \bigl[\underbrace{(\Delta\theta - \Delta q) - (\Delta\theta + \Delta q)}_{\Delta\theta\text{ cancels}}\bigr]\notag\\
+      &= k_{\mathrm{exo}}\,r_{\mathrm{exo}}^{2}\,(-2\,\Delta q)
+\end{align}
+
+\begin{equation}
+\boxed{\tau_{\mathrm{exo}} = -2\,k_{\mathrm{exo}}\,r_{\mathrm{exo}}^2\;\Delta q
+                           = -k_{\mathrm{eff}}\;\Delta q}
+\label{eq:restoring}
+\end{equation}
+
+\begin{warnbox}
+\textbf{Why does $\Delta\theta$ vanish from the restoring torque?}
+
+$\Delta\theta$ creates equal preload on \emph{both} cables.  When you compute
+the \emph{difference} $F_R - F_L$, the common preload cancels exactly.  The
+incremental restoring force comes only from the change in imbalance, which is
+driven by $\Delta q$, not by $\Delta\theta$.
+
+Consequence: $\Delta\theta$ is necessary to keep both cables taut (prevents
+slack), but it does not set the restoring stiffness.  Only $k_{\mathrm{exo}}$
+and $r_{\mathrm{exo}}$ determine $k_{\mathrm{eff}}$.
+\end{warnbox}
+
+\bigskip
+% ── STEP 4 ──────────────────────────────────────────────────────────────────
+\textbf{Step~4 --- The elbow returns to nominal.}
+
+The restoring torque $\tau_{\mathrm{exo}} = -k_{\mathrm{eff}}\,\Delta q$
+acts on the joint \emph{in addition to} whatever the CT+SEA pipeline
+already provides.  It accelerates the elbow back toward $q_2^{*}$.
+
+Simultaneously, the motor PD trackers update $\theta_{\mathrm{m}}$ toward the
+new (displaced) targets (Eq.~\ref{eq:new_targets}).  As the elbow returns
+($\Delta q \to 0$) two things happen together:
+\begin{itemize}[leftmargin=2em]
+    \item the spring asymmetry disappears: $\delta_R \to \delta_L \to r_{\mathrm{exo}}\Delta\theta$,
+    \item the restoring torque fades: $\tau_{\mathrm{exo}} \to 0$.
+\end{itemize}
+
+The motors converge to their now-updated targets \emph{after} the joint
+returns, re-establishing the symmetric preload at the new nominal trajectory
+point.
+
+\begin{resultbox}
+\textbf{Disturbance rejection --- full step-by-step.}
+\begin{enumerate}[leftmargin=2em, itemsep=2pt]
+    \item \textbf{Nominal}: both cables carry equal preload
+          $F_0 = k_{\mathrm{exo}}\,r_{\mathrm{exo}}\,\Delta\theta$.
+          Net torque $= 0$.
+    \item \textbf{Disturbance} displaces $q_2$ by $\Delta q > 0$.
+    \item \textbf{Motors lag}: joint moves, motors are still at old positions.
+    \item \textbf{Asymmetric stretch}: right cable unloads
+          ($\delta_R \downarrow$), left cable loads ($\delta_L \uparrow$).
+    \item \textbf{Restoring torque}:
+          $\tau_{\mathrm{exo}} = -k_{\mathrm{eff}}\,\Delta q$ (opposes displacement).
+    \item \textbf{Return}: exo torque drives elbow back; as $\Delta q \to 0$,
+          $\tau_{\mathrm{exo}} \to 0$ and symmetric preload is restored.
+\end{enumerate}
+\textbf{Analogy:} two preloaded antagonistic muscles around the elbow joint.
+If the arm is pushed, one muscle tightens and the other relaxes; the net
+difference restores the arm.
+\end{resultbox}
+
+% ── SLACK LIMIT ─────────────────────────────────────────────────────────────
+\begin{warnbox}
+\textbf{Cable slack limit.}
+The linear law (Eq.~\ref{eq:restoring}) holds only while \textbf{both cables
+remain taut}, i.e.\ $\delta_R \geq 0 \Rightarrow \Delta q \leq \Delta\theta$.
+If the disturbance is large enough to slack one cable, the piecewise torque
+law applies:
+\[
+    \tau_{\mathrm{exo}} =
+    \begin{cases}
+        -k_{\mathrm{eff}}\,\Delta q
+          & |\Delta q| \leq \Delta\theta \quad\text{(bilateral stiffness)} \\[6pt]
+        +k_{\mathrm{exo}}\,r_{\mathrm{exo}}^{2}\,(\Delta\theta - \Delta q)
+          & \Delta q > +\Delta\theta \quad\text{(right slack, left only)} \\[6pt]
+        -k_{\mathrm{exo}}\,r_{\mathrm{exo}}^{2}\,(\Delta\theta + \Delta q)
+          & \Delta q < -\Delta\theta \quad\text{(left slack, right only)}
+    \end{cases}
+\]
+Beyond the slack threshold the effective stiffness halves and becomes
+\textbf{unilateral}.  Increasing $\Delta\theta$ widens the bilateral zone
+without changing its slope (since $k_{\mathrm{eff}}$ is independent of
+$\Delta\theta$).
+\end{warnbox}
+
+
+\subsubsection{PD Tracking Torque (Joint Side)}
+
+The motor torque command fed to each rotor is a saturated PD:
+\begin{equation}
+\boxed{
+    \tau_{\mathrm{m},i} = \mathrm{clip}\!\Bigl(
+        K_P\!\left(q_{\mathrm{des},i} - \frac{\theta_{\mathrm{m},i}}{N}\right)
+      + K_D\!\left(\dot{q}_{\mathrm{des},i} - \frac{\dot{\theta}_{\mathrm{m},i}}{N}\right),\;
+      -\tau_{\max},\; \tau_{\max}
+    \Bigr)
+}
+\label{eq:exo_pd}
+\end{equation}
+where $K_P = 200$\,Nm/rad, $K_D = 2$\,Nm\,$\cdot$\,s/rad, $\tau_{\max} = 9$\,Nm (AK60-6 peak).
+
+\subsubsection{Rotor Dynamics (Per Motor, Sub-Stepped)}
+
+Each rotor integrates the same 2nd-order ODE as the drive motor
+(Eq.~\ref{eq:torque_mode}):
+\begin{equation}
+    \Jm\,\ddot{\theta}_{\mathrm{m},i}
+      = \frac{\tau_{\mathrm{m},i}}{N}
+      - b_{\mathrm{m}}\,\dot{\theta}_{\mathrm{m},i}
+      - \frac{r_{\mathrm{exo}} \cdot F_i}{N}
+\label{eq:exo_rotor}
+\end{equation}
+
+\begin{warnbox}
+\textbf{Sub-stepping is essential.}
+The PD natural frequency $\omega_{\mathrm{pd}} = \sqrt{K_P / (\Jm N^2)} \approx 450$\,rad/s is much higher than the drive motor's spring resonance.
+Without sub-stepping ($N_{\mathrm{sub}} = 10$ per $\Delta t$), the integrator becomes unstable.
+\end{warnbox}
+
+
+\subsection{Effective Co-Contraction Stiffness}
+\label{sec:co_contraction}
+
+When both exo motors track $q_2 \pm \Delta\theta$ perfectly, a small joint
+perturbation $\Delta q$ from the current position produces:
+\begin{align}
+    \delta_R &= r_{\mathrm{exo}}(\Delta\theta - \Delta q)  \\
+    \delta_L &= r_{\mathrm{exo}}(\Delta\theta + \Delta q)
+\end{align}
+so the restoring torque is:
+\begin{align}
+    \tau_{\mathrm{exo}} &= r_{\mathrm{exo}}\bigl(k_{\mathrm{exo}}\,r_{\mathrm{exo}}(\Delta\theta - \Delta q) - k_{\mathrm{exo}}\,r_{\mathrm{exo}}(\Delta\theta + \Delta q)\bigr) \notag \\
+                        &= -2\,k_{\mathrm{exo}}\,r_{\mathrm{exo}}^2\,\Delta q
+\end{align}
+
+\begin{resultbox}
+\textbf{Effective co-contraction stiffness:}
+\begin{equation}
+\boxed{k_{\mathrm{eff}} = 2\,k_{\mathrm{exo}}\,r_{\mathrm{exo}}^2}
+\label{eq:keff}
+\end{equation}
+This is \textbf{independent of $\Delta\theta$} (the offset sets pre-tension, not stiffness) and \textbf{independent of $q_2$} (constant moment arm, Method~B).
+\end{resultbox}
+
+\begin{table}[H]
+\centering
+\caption{Effective stiffness for typical exo spring values ($r_{\mathrm{exo}} = 47.75$\,mm).}
+\begin{tabular}{rr}
+\toprule
+$k_{\mathrm{exo}}$ [N/m] & $k_{\mathrm{eff}}$ [Nm/rad] \\
+\midrule
+60   & 0.27 \\
+100  & 0.46 \\
+200  & 0.91 \\
+500  & 2.28 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{Exosuit Parameters}
+
+\begin{table}[H]
+\centering
+\caption{Default exosuit parameters (\texttt{SEAExoActuator} constructor).}
+\begin{tabular}{llrl}
+\toprule
+\textbf{Parameter} & \textbf{Symbol} & \textbf{Default} & \textbf{Unit} \\
+\midrule
+\multicolumn{4}{l}{\textit{Cable \& Spring}} \\
+Spring stiffness         & $k_{\mathrm{exo}}$         & 200       & N/m \\
+Cable damping            & $b_{\mathrm{exo}}$         & 2.0       & N$\cdot$s/m \\
+Elbow pulley radius      & $r_{\mathrm{exo}}$         & 47.75     & mm \\
+\midrule
+\multicolumn{4}{l}{\textit{Motor (CubeMars AK60-6, each)}} \\
+Gear ratio               & $N$          & 6         & --- \\
+Rotor inertia            & $\Jm$        & $3.32 \times 10^{-5}$  & kg$\cdot$m$^2$ \\
+Viscous damping          & $\bmotor$    & derived   & N$\cdot$m$\cdot$s/rad \\
+Peak torque              & $\tau_{\max}$& 9.0       & Nm \\
+\midrule
+\multicolumn{4}{l}{\textit{PD Tracking}} \\
+Position gain            & $K_P$        & 200       & Nm/rad \\
+Velocity gain            & $K_D$        & 2.0       & Nm$\cdot$s/rad \\
+Sub-steps per $\Delta t$ & $N_{\mathrm{sub}}$ & 10 & --- \\
+\midrule
+\multicolumn{4}{l}{\textit{Activation}} \\
+Co-contraction offset    & $\Delta\theta$ & 0.1    & rad \\
+Activation time          & $t_{\mathrm{act}}$ & 5.0 & s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{Exosuit Control Architecture}
+\label{sec:exo_arch}
+
+\begin{archbox}{Three-Layer Architecture: CT + Drive SEA + Exosuit}
+\begin{center}
+\begin{tikzpicture}[
+    node distance=0.5cm and 0.8cm,
+    block/.style={rectangle, draw=#1, thick, fill=#1!10!white,
+                  minimum height=1cm, minimum width=2.8cm, align=center, font=\small},
+    arr/.style={-Stealth, thick, #1},
+    port/.style={font=\tiny, text=gray},
+]
+    % Block 1: CT
+    \node[block=drakegreen] (ct) {\textbf{CT Controller}\\{\tiny IK + PD + Inv.\,Dyn.}};
+    \node[block=drakeblue, left=1.0cm of ct] (traj) {\textbf{Trajectory}\\{\tiny $\bm{p}, \dot{\bm{p}}, \ddot{\bm{p}}$}};
+
+    % Block 2: Drive SEA
+    \node[block=seaorange, right=1.0cm of ct] (sea) {\textbf{Drive SEA}\\{\tiny Motor + Spring}};
+
+    % Block 3: Exo
+    \node[block=violet, below=1.0cm of sea] (exo) {\textbf{SEAExoActuator}\\{\tiny 2 motors + 2 springs}};
+    \node[rectangle, draw=violet, thick, fill=violet!30!white,
+          minimum height=1cm, minimum width=2.8cm, align=center, font=\small,
+          left=1.0cm of exo] (cmd) {\textbf{ExoCmd}\\{\tiny $[\mathrm{on}, \Delta\theta]$}};
+
+    % Summation → Plant
+    \node[circle, draw=darkred, thick, inner sep=0pt, minimum size=7mm,
+          right=1.2cm of sea, yshift=-0.5cm, font=\small] (sum) {$\Sigma$};
+    \node[block=darkred, right=1.0cm of sum] (plant) {\textbf{Plant}\\{\tiny 2 joints}};
+
+    % Wiring
+    \draw[arr=drakeblue] (traj) -- (ct) node[midway, above, port] {EE refs};
+    \draw[arr=drakegreen] (ct) -- (sea) node[midway, above, port] {$\btau_{\mathrm{des}}$};
+    \draw[arr=seaorange] (sea.east) -| (sum) node[pos=0.3, above, port] {$[\tau_1, \tau_2^{\mathrm{drv}}]$};
+    \draw[arr=violet] (exo.east) -| (sum) node[pos=0.3, below, port] {$\tau_{\mathrm{exo}}$};
+    \draw[arr=darkred] (sum) -- (plant) node[midway, above, port] {$[\tau_1, \tau_2^{\mathrm{total}}]$};
+
+    % Exo command
+    \draw[arr=violet] (cmd) -- (exo) node[midway, above, port] {activate};
+
+    % Feedback
+    \draw[arr=darkred] (plant.south) -- ++(0,-0.7) -| (ct.south)
+        node[pos=0.18, below, port] {$[\bq, \dot{\bq}]$};
+    \draw[arr=darkred, dashed] (plant.south) -- ++(0,-0.7) -| (sea.south);
+    \draw[arr=darkred, dashed] (plant.south) -- ++(0,-0.7) -| (exo.south)
+        node[pos=0.05, below, port] {$q_2, \dot{q}_2$};
+
+    % Direct τ₁ shortcut
+    \draw[arr=drakegreen, dashed] (ct.north) -- ++(0,0.5) -| (plant.north)
+        node[pos=0.3, above, port] {$\tau_1$ (direct, rigid)};
+\end{tikzpicture}
+\end{center}
+\end{archbox}
+
+\begin{warnbox}
+\textbf{Additional wire (not shown):} the CT controller also sends
+$q_{2,\mathrm{des}}$ to the exosuit via its \texttt{q\_des} input port
+(Section~\ref{sec:exo_qdes}).  This allows the exosuit to track the desired
+trajectory rather than a frozen anchor.
+\end{warnbox}
+
+\subsection{Detailed Signal-Flow Block Diagram (Exosuit Only)}
+\label{sec:exo_block_diagram}
+
+Figure~\ref{fig:exo_block_diagram} shows the signal-flow graph for a
+\textbf{single exo motor--spring channel} (right cable shown; the left is
+identical with virtual joint $-q_2$).
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    >=Stealth,
+    sumnode/.style={circle, draw=#1, thick, inner sep=0pt,
+                    minimum size=6mm, font=\scriptsize},
+    block/.style={rectangle, draw=#1, thick, fill=#1!10!white,
+                  minimum height=8mm, align=center, font=\small,
+                  inner xsep=5pt, inner ysep=3pt},
+    gain/.style={isosceles triangle, draw=#1, thick, fill=#1!10!white,
+                 isosceles triangle apex angle=60,
+                 minimum width=7mm, minimum height=5mm,
+                 shape border rotate=0, font=\small, inner sep=1pt},
+    integ/.style={rectangle, draw=violet, thick, fill=violet!10!white,
+                  minimum height=7mm, minimum width=9mm,
+                  align=center, font=\small},
+    arr/.style={-Stealth, thick, #1},
+    sig/.style={font=\scriptsize, text=#1},
+    note/.style={font=\scriptsize\itshape, text=gray},
+    groupbox/.style={draw=#1, thick, dashed, rounded corners=4pt,
+                     fill=#1!4, inner sep=8pt},
+]
+
+% ── PD Tracking ──────────────────────────────────────────────────────────────
+\node[sig=violet] (q2_in) {$q_2$};
+\node[sumnode=violet, right=0.8cm of q2_in] (pd_sum_p) {};
+\draw (pd_sum_p.center) node[font=\tiny] {$+$};
+\node[above=0.5cm of pd_sum_p, sig=violet] (dtheta_in) {$+\Delta\theta$};
+\draw[arr=violet] (q2_in) -- (pd_sum_p);
+\draw[arr=violet] (dtheta_in) -- (pd_sum_p);
+
+% position error
+\node[sumnode=violet, right=0.9cm of pd_sum_p] (err_p) {};
+\draw (err_p.center) node[font=\tiny] {$-$};
+\draw[arr=violet] (pd_sum_p) -- (err_p)
+    node[midway, above, sig=violet] {$q_{\mathrm{des,R}}$};
+
+% Kp gain
+\node[gain=violet, right=0.6cm of err_p] (Kp_exo) {$K_P$};
+\draw[arr=violet] (err_p) -- (Kp_exo);
+
+% Kd branch (velocity error, below)
+\node[sumnode=violet, below=0.8cm of err_p] (err_v) {};
+\draw (err_v.center) node[font=\tiny] {$-$};
+\node[gain=violet, right=0.6cm of err_v] (Kd_exo) {$K_D$};
+\draw[arr=violet] (err_v) -- (Kd_exo);
+
+% velocity refs
+\node[left=0.6cm of err_v, sig=violet] (qdot_des) {$\dot{q}_2$};
+\draw[arr=violet] (qdot_des) -- (err_v);
+
+% sum PD
+\node[sumnode=violet, right=1.2cm of Kp_exo] (pd_out) {};
+\draw (pd_out.center) node[font=\tiny] {$+$};
+\draw[arr=violet] (Kp_exo) -- (pd_out);
+\draw[arr=violet] (Kd_exo.east) -| (pd_out);
+
+% clip
+\node[block=violet, right=0.7cm of pd_out] (clip) {\footnotesize clip\\[-1pt]{\tiny $\pm\tau_{\max}$}};
+\draw[arr=violet] (pd_out) -- (clip)
+    node[midway, above, sig=violet] {$\tau_{\mathrm{m,R}}$};
+
+% ── Rotor Dynamics ───────────────────────────────────────────────────────────
+% ÷N
+\node[block=violet, right=0.7cm of clip] (divN) {$\div N$};
+\draw[arr=violet] (clip) -- (divN);
+
+% Motor sum
+\node[sumnode=violet, right=0.7cm of divN] (msum) {};
+\draw (msum.center) node[font=\tiny] {$+$};
+\draw[arr=violet] (divN) -- (msum);
+
+% 1/Jm
+\node[gain=violet, right=0.6cm of msum] (invJm) {$\Jm^{-1}$};
+\draw[arr=violet] (msum) -- (invJm);
+
+% Integrators
+\node[integ, right=0.7cm of invJm] (int1) {$\frac{1}{s}$};
+\draw[arr=violet] (invJm) -- (int1);
+\node[integ, right=0.7cm of int1] (int2) {$\frac{1}{s}$};
+\draw[arr=violet] (int1) -- (int2)
+    node[midway, above, sig=violet] {$\dot{\theta}_{\mathrm{m,R}}$};
+\node[right=0.5cm of int2, sig=violet] (thetam_out) {$\theta_{\mathrm{m,R}}$};
+\draw[arr=violet] (int2) -- (thetam_out);
+
+% b_m feedback
+\coordinate (bm_fb) at ($(int1.east) + (0.2, 0)$);
+\node[gain=violet, below=1.0cm of msum] (bm) {$\bmotor$};
+\draw[violet, thick] (bm_fb) -- ++(0,-0.7) -| (bm.east);
+\draw[arr=violet] (bm.west) -- ++(-0.3, 0) |- (msum.south)
+    node[pos=0.0, left, sig=violet] {$-$};
+
+% r_exo·F/N feedback
+\node[above=0.5cm of msum, sig=springgold] (rpF_lab) {$-\!\dfrac{r_{\mathrm{exo}} F_R}{N}$};
+\draw[arr=springgold] (rpF_lab) -- (msum.north);
+
+% ── θ_m/N feedback to position error ─────────────────────────────────────
+\coordinate (theta_fb) at ($(int2.east) + (0.25, 0)$);
+\draw[violet, thick, dashed] (theta_fb) -- ++(0, 1.5) -| (err_p.north)
+    node[pos=0.5, above, sig=violet] {\tiny $\theta_{\mathrm{m,R}}/N$};
+% velocity feedback to Kd
+\coordinate (thetadot_fb) at ($(int1.east) + (0.15, 0)$);
+\draw[violet, thick, dashed] (thetadot_fb) -- ++(0, 1.1) -| (err_v.north)
+    node[pos=0.4, above, sig=violet] {\tiny $\dot{\theta}_{\mathrm{m,R}}/N$};
+
+% ── Spring & Force ───────────────────────────────────────────────────────────
+\node[block=springgold, below=2.5cm of int2] (delta_blk)
+    {\textbf{Spring ext.}\\[-1pt]{\tiny $\delta_R = r_{\mathrm{exo}}\!\bigl(\frac{\theta_{\mathrm{m,R}}}{N} - q_2\bigr)$}};
+
+% θ_m → δ
+\draw[violet, thick] ($(int2.east) + (0.25, 0)$) -- ++(0, -1.5);
+\draw[arr=violet] ($(int2.east) + (0.25, -1.5)$) -- (delta_blk.north east);
+
+% q₂ → δ
+\node[below left=0.0cm and 0.7cm of delta_blk, sig=gray] (q2_delta) {$q_2$};
+\draw[arr=gray] (q2_delta) -- (delta_blk.west);
+
+% F = ks·δ + bc·δ̇
+\node[block=springgold, left=1.5cm of delta_blk] (F_blk)
+    {\textbf{Force}\\[-1pt]{\tiny $F_R = \max(k_{\mathrm{exo}}\delta_R + b_{\mathrm{exo}}\dot{\delta}_R,\,0)$}};
+\draw[arr=springgold] (delta_blk) -- (F_blk)
+    node[midway, above, sig=springgold] {$\delta_R,\,\dot{\delta}_R$};
+
+% τ_exo = r_exo · (F_R - F_L)
+\node[gain=seaorange, below=1.0cm of F_blk] (rp_exo) {$r_{\mathrm{exo}}$};
+\draw[arr=springgold] (F_blk.south) -- (rp_exo.north)
+    node[midway, right, sig=springgold] {$F_R$};
+
+\node[block=seaorange, left=1.0cm of rp_exo] (tau_exo_out) {$\tau_{\mathrm{exo}}$};
+\draw[arr=seaorange] (rp_exo) -- (tau_exo_out);
+\node[left=0.4cm of tau_exo_out, sig=seaorange, font=\small\bfseries] (jt2_exo) {\textbf{To Joint 2}};
+\draw[arr=seaorange] (tau_exo_out) -- (jt2_exo);
+
+% Spring feedback to motor
+\draw[springgold, thick, dashed] (F_blk.north) -- ++(0, 0.6)
+    node[above, sig=springgold] {\tiny $r_{\mathrm{exo}} F_R / N$ fed back};
+
+% ── Annotation ───────────────────────────────────────────────────────────────
+\node[note, below=0.3cm of rp_exo, text width=7cm] {%
+    Right channel shown.  Left channel is identical with virtual joint $=-q_2$,\\
+    $q_{\mathrm{des,L}} = -q_2 + \Delta\theta$.  Net torque: $\tau_{\mathrm{exo}} = r_{\mathrm{exo}}(F_R - F_L)$.};
+
+\end{tikzpicture}
+}% end resizebox
+\caption{Signal-flow block diagram for one exosuit motor--spring channel (right cable).
+    A PD encoder-tracking law generates motor torque $\tau_{\mathrm{m,R}}$;
+    the 2nd-order rotor integrates with viscous damping and spring-load
+    feedback; the unilateral spring force $F_R$ maps through the elbow pulley
+    radius to a torque contribution.  The left channel mirrors this with
+    virtual joint $-q_2$.  The net exosuit torque is
+    $\tau_{\mathrm{exo}} = r_{\mathrm{exo}}\,(F_R - F_L)$.}
+\label{fig:exo_block_diagram}
+\end{figure}
+
+
+\subsection{Per-Timestep Algorithm (Torque Mode)}
+\label{sec:exo_algorithm}
+
+At each simulation step ($\Delta t = 2$\,ms), the exosuit executes in parallel
+with the drive SEA (both read the same plant state):
+
+\medskip
+\textbf{Block~3 --- \texttt{SEAExoActuator}} (\texttt{actuators/sea\_exo.py}):
+\begin{enumerate}[leftmargin=2em]
+    \item \textbf{Read activation command}: \texttt{[on/off, $\Delta\theta$]}
+    \item \textbf{Read joint state}: extract $(q_2, \dot{q}_2)$ from plant
+    \item \textbf{Compute motor targets} (use $q_{2,\mathrm{des}}$ from \texttt{q\_des} port when
+          activated; use $q_2$ when transparent):
+    \[
+        q_{\mathrm{des,R}} = q_{2,\mathrm{ref}} + \Delta\theta, \qquad
+        q_{\mathrm{des,L}} = -q_{2,\mathrm{ref}} + \Delta\theta
+    \]
+    where $q_{2,\mathrm{ref}} = q_{2,\mathrm{des}}$ if activated, $q_2$ if transparent.
+    \item \textbf{Sub-stepped loop} ($N_{\mathrm{sub}} = 10$ iterations):
+        \begin{enumerate}[label=(\alph*)]
+            \item PD tracking torque (Eq.~\ref{eq:exo_pd}): $\tau_{\mathrm{m},i}$ for each motor
+            \item Rotor dynamics (Eq.~\ref{eq:exo_rotor}): update $[\theta_{\mathrm{m},i}, \dot{\theta}_{\mathrm{m},i}]$
+        \end{enumerate}
+    \item \textbf{Spring forces} (Eq.~\ref{eq:exo_forces}): $F_R$, $F_L$ (unilateral)
+    \item \textbf{Net exo torque} (Eq.~\ref{eq:tau_exo}): $\tau_{\mathrm{exo}} = r_{\mathrm{exo}}(F_R - F_L)$
+    \item \textbf{Clamp and output}: $\tau_{\mathrm{exo}} \gets \mathrm{clip}(\tau_{\mathrm{exo}}, -\tau_{\max}, \tau_{\max})$
+\end{enumerate}
+
+The output $\tau_{\mathrm{exo}}$ is summed with the drive torques in an
+\texttt{ActuationSum} adder block before reaching the plant.
+
+
+\subsection{Diagnostics Output}
+
+The \texttt{diagnostics} output port exports a 10-element vector for logging
+and plotting:
+
+\begin{table}[H]
+\centering
+\caption{Exosuit diagnostics vector (10D).}
+\begin{tabular}{clc}
+\toprule
+\textbf{Index} & \textbf{Quantity} & \textbf{Unit} \\
+\midrule
+0 & $\delta_R$ --- right spring extension  & m \\
+1 & $\delta_L$ --- left spring extension   & m \\
+2 & $F_R$ --- right cable force            & N \\
+3 & $F_L$ --- left cable force             & N \\
+4 & $\theta_{\mathrm{m,R}}/N$ --- right motor joint-side pos  & rad \\
+5 & $\theta_{\mathrm{m,L}}/N$ --- left motor joint-side pos   & rad \\
+6 & $\dot{\theta}_{\mathrm{m,R}}/N$ --- right motor joint-side vel  & rad/s \\
+7 & $\dot{\theta}_{\mathrm{m,L}}/N$ --- left motor joint-side vel   & rad/s \\
+8 & $\tau_{\mathrm{exo}}$ --- net exo torque  & Nm \\
+9 & activated (1.0 or 0.0) & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{Summary of Exosuit Equations}
+
+\begin{archbox}{Exosuit Equation Summary (Torque Mode)}
+\textbf{Motor target} (activated, reference = CT desired $q_{2,\mathrm{des}}$):
+\begin{align*}
+    q_{\mathrm{des,R}} &= q_{2,\mathrm{des}} + \Delta\theta &
+    q_{\mathrm{des,L}} &= -q_{2,\mathrm{des}} + \Delta\theta
+\end{align*}
+
+\textbf{PD tracking}:
+\[
+    \tau_{\mathrm{m},i} = \mathrm{clip}\!\bigl(
+        K_P(q_{\mathrm{des},i} - \theta_{\mathrm{m},i}/N)
+      + K_D(\dot{q}_{\mathrm{des},i} - \dot{\theta}_{\mathrm{m},i}/N),\;
+      \pm\tau_{\max}\bigr)
+\]
+
+\textbf{Rotor dynamics}:
+\[
+    \Jm\,\ddot{\theta}_{\mathrm{m},i}
+      = \frac{\tau_{\mathrm{m},i}}{N}
+      - b_{\mathrm{m}}\,\dot{\theta}_{\mathrm{m},i}
+      - \frac{r_{\mathrm{exo}} F_i}{N}
+\]
+
+\textbf{Spring extensions}:
+\[
+    \delta_R = r_{\mathrm{exo}}\!\left(\frac{\theta_{\mathrm{m,R}}}{N} - q_2\right), \qquad
+    \delta_L = r_{\mathrm{exo}}\!\left(\frac{\theta_{\mathrm{m,L}}}{N} + q_2\right)
+\]
+
+\textbf{Cable forces} (unilateral):
+\[
+    F_i = \max(k_{\mathrm{exo}}\,\delta_i + b_{\mathrm{exo}}\,\dot{\delta}_i,\; 0)
+\]
+
+\textbf{Net exo torque}:
+\[
+    \tau_{\mathrm{exo}} = r_{\mathrm{exo}} (F_R - F_L)
+\]
+
+\textbf{Effective stiffness} (co-contraction):
+\[
+    k_{\mathrm{eff}} = 2\,k_{\mathrm{exo}}\,r_{\mathrm{exo}}^2
+\]
+\end{archbox}
+
+
 % ============================================================================
 \section{Drake Implementation}
 \label{sec:drake}
@@ -1368,6 +2617,89 @@ Before the looping trajectory begins, a \textbf{cubic-Hermite approach} moves th
 The EE starts from rest ($\dot{\bm{p}} = 0$) and arrives at the first waypoint with the velocity that the looping trajectory expects, ensuring a smooth handoff.  A custom \texttt{\_PreambleSrc} LeafSystem switches from the preamble to the looping trajectory at $t = T_{\mathrm{move}}$.
 
 
+\subsection{Additional Trajectory Types}
+\label{sec:traj_types}
+
+The \texttt{--traj-type} CLI argument selects from four EE trajectory shapes.
+All types use the same move-to-start preamble and workspace clamping helper
+(\texttt{\_clamp\_to\_reach}) to keep waypoints inside the reachable annulus.
+
+\begin{table}[H]
+\centering
+\caption{Trajectory type CLI options (\texttt{--traj-type}).}
+\begin{tabular}{llp{7.5cm}}
+\toprule
+\textbf{Value} & \textbf{Shape} & \textbf{Parametric equations} \\
+\midrule
+\texttt{rect} (default) & Rectangle     & See Section~\ref{sec:trajectory} \\
+\texttt{circle}         & Circle        & $x = c_x + R\cos s$, $y = c_y + R\sin s$ \\
+\texttt{figure8}        & Figure-of-eight & $x = c_x + A_x\sin s$, $y = c_y + A_y\sin s\cos s$ \\
+\texttt{line}           & Back-and-forth & $x = c_x$, $y = y_{\min} + \tfrac{\Delta y}{2}(1-\cos\Omega t)$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Circle Trajectory}
+\label{sec:traj_circle}
+
+A uniform-speed circle centred at $(c_x, c_y)$ with radius $R$:
+\begin{equation}
+    x(s) = c_x + R\cos s, \qquad y(s) = c_y + R\sin s, \qquad s \in [0, 2\pi)
+\label{eq:traj_circle}
+\end{equation}
+
+The radius is set by \texttt{--traj-radius $R$}; it defaults to half the
+minimum range extent if not specified.  Speed is uniform
+($\|\dot{\bm{p}}\| = v_{\max}$) throughout---no corner blending is needed.
+The centroid $(c_x, c_y)$ is the midpoint of the configured $x$- and
+$y$-ranges.
+
+\subsubsection{Figure-of-Eight Trajectory (Lemniscate-of-Gerono)}
+\label{sec:traj_fig8}
+
+A figure-of-eight (Lemniscate-of-Gerono) centred at $(c_x, c_y)$:
+\begin{equation}
+    x(s) = c_x + A_x\sin s, \qquad
+    y(s) = c_y + A_y\sin s\cos s, \qquad s \in [0, 2\pi)
+\label{eq:traj_fig8}
+\end{equation}
+where $A_x = \tfrac{x_{\max}-x_{\min}}{2}$ and
+$A_y = \tfrac{y_{\max}-y_{\min}}{2}$ are the half-range amplitudes.
+The curve crosses itself at $(c_x, c_y)$ at $s = 0$ and $s = \pi$,
+creating two symmetric loops.
+
+\begin{warnbox}
+\textbf{Speed varies around the figure-eight.}
+The parametric speed $\|\dot{\bm{p}}\|$ is not uniform: fastest at the
+crossover, slowest at the tips.  For soft SEA springs ($\ks < 200$\,N/m),
+high speed at the crossover may exceed the motor bandwidth.  Use a lower
+\texttt{--traj-v-max} (e.g.\ 0.08\,m/s) to avoid tracking degradation.
+\end{warnbox}
+
+\subsubsection{Line Trajectory (Back-and-Forth)}
+\label{sec:traj_line}
+
+A sinusoidal back-and-forth sweep along $y$ at a fixed $x$-centre:
+\begin{equation}
+    x(t) = c_x, \qquad
+    y(t) = y_{\min} + \frac{y_{\max} - y_{\min}}{2}\Bigl(1 - \cos(\Omega t)\Bigr)
+\label{eq:traj_line}
+\end{equation}
+where $\Omega = 2\pi / T_{\mathrm{lap}}$ and
+$c_x = \tfrac{x_{\min}+x_{\max}}{2}$.
+The EE oscillates smoothly between $y_{\min}$ and $y_{\max}$ at constant
+$x = c_x$, always arriving at the endpoints with zero velocity.
+
+\begin{resultbox}
+\textbf{Recommended \texttt{--traj-v-max} for soft SEA.}
+For $\ks \leq 200$\,N/m (AK60-6 torque mode), use \texttt{--traj-v-max 0.08}
+(reduced from the default 0.10) to keep cable extension within the motor
+bandwidth.  At $v_{\max} = 0.15$\,m/s the CT controller lags on circle and
+figure-eight trajectories, producing visible EE deviation at the segments
+with highest curvature.
+\end{resultbox}
+
+
 % ============================================================================
 \section{Simulation Loop (\texttt{run\_simulation})}
 \label{sec:sim_loop}
@@ -1425,6 +2757,49 @@ The \texttt{run\_simulation()} function builds a complete Drake diagram, initial
     \item \textbf{Initialize}: Patch zero-mass bodies (Onshape URDF artifacts), set initial $\bq$, call \texttt{sea.initialize\_spring\_at\_rest(ctx, q2)} ($\delta = 0$)
     \item \textbf{Run}: Advance in 0.1\,s chunks until Ctrl-C; update cable visualization each chunk
 \end{enumerate}
+
+\subsection{Meshcat Browser Animation}
+\label{sec:meshcat_recording}
+
+By default, the Meshcat visualizer displays only the \emph{current} robot
+pose in real time.  To enable \textbf{replay} (animated playback in the
+browser after the run), Drake's recording API must be called at the start and
+end of the simulation:
+
+\begin{lstlisting}[caption={Meshcat recording: wrap the simulation loop.}]
+# Before the simulation loop
+if _visualizer is not None:
+    _visualizer.StartRecording()
+
+try:
+    # ... simulation loop (Ctrl-C to abort) ...
+    while simulator.get_context().get_time() < duration:
+        simulator.AdvanceTo(...)
+except KeyboardInterrupt:
+    pass
+finally:
+    # Always publish, even on early exit
+    if _visualizer is not None:
+        _visualizer.StopRecording()
+        _visualizer.PublishRecording()
+\end{lstlisting}
+
+\begin{resultbox}
+\textbf{Browser playback.}
+After \texttt{PublishRecording()}, open \texttt{http://localhost:7000} in a
+browser and click the play button (\textbf{$\blacktriangleright$}) in the Meshcat animation panel to
+replay the full simulation from the beginning.
+Without \texttt{StartRecording()}, the browser shows only the final static pose.
+\end{resultbox}
+
+\begin{warnbox}
+\textbf{\texttt{StopRecording()} + \texttt{PublishRecording()} must be called even on early exit.}
+
+Place them inside a \texttt{finally} block so the animation is published when
+the user presses Ctrl-C mid-run.  Without this, the browser receives no
+animation data and appears frozen at the initial pose.
+\end{warnbox}
+
 
 \subsection{Zero-Mass Body Patching}
 

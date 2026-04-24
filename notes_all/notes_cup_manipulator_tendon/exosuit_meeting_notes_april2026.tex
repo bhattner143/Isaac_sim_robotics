@@ -1,0 +1,823 @@
+% =============================================================================
+%  Exosuit Meeting Notes — April 2026
+%  Technical analysis of design decisions discussed with Chris Kalogroulis
+% =============================================================================
+
+\documentclass[11pt, a4paper]{article}
+
+\usepackage{amsmath, amssymb, bm}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{cleveref}
+\usepackage[backgroundcolor=blue!5, linecolor=blue!40, linewidth=1pt,
+            innertopmargin=6pt, innerbottommargin=6pt,
+            innerleftmargin=7pt, innerrightmargin=7pt]{mdframed}
+
+\geometry{margin=2.2cm}
+
+% ── Standard project macros ──────────────────────────────────────────────────
+\newcommand{\bq}{\bm{q}}
+\newcommand{\bp}{\bm{p}}
+\newcommand{\bu}{\bm{u}}
+\newcommand{\btau}{\bm{\tau}}
+\newcommand{\bF}{\bm{F}}
+\newcommand{\bJ}{\bm{J}}
+\newcommand{\bM}{\bm{M}}
+\newcommand{\bC}{\bm{C}}
+\newcommand{\bG}{\bm{G}}
+
+% ── Coloured assessment boxes ────────────────────────────────────────────────
+\newenvironment{correct}{%
+  \begin{mdframed}[backgroundcolor=green!8, linecolor=green!50!black]%
+  \textbf{\color{green!50!black}\checkmark\; Correct.}\;}{\end{mdframed}}
+
+\newenvironment{incorrect}{%
+  \begin{mdframed}[backgroundcolor=red!8, linecolor=red!60!black]%
+  \textbf{\color{red!60!black}$\boldsymbol{\times}$\; Needs correction.}\;}{\end{mdframed}}
+
+\newenvironment{nuanced}{%
+  \begin{mdframed}[backgroundcolor=yellow!10, linecolor=orange!60!black]%
+  \textbf{\color{orange!60!black}$\sim$\; Partially correct / nuanced.}\;}{\end{mdframed}}
+
+\title{\textbf{Exosuit Design Meeting Notes}\\
+       \large Technical Analysis of Key Discussion Points\\[4pt]
+       \normalsize \texttt{cable/cable\_with\_exo\_springs*.py}}
+\date{April 2026}
+\author{Isaac-sim robotics notes}
+
+\begin{document}
+\maketitle
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Context}
+% ═════════════════════════════════════════════════════════════════════════════
+
+These notes document the design discussions around the exosuit
+co-contraction mechanism for the cup manipulator.  Each point raised in the
+meeting is stated, then assessed against the mathematical models derived in
+the companion document
+(\texttt{exosuit\_stiffness\_and\_co\_contraction.tex}).
+
+\medskip\noindent
+Two cable routing methods are under consideration:
+\begin{itemize}[nosep]
+  \item \textbf{Method~A} --- offset elbow pulleys
+    ($r_{\text{elb}} = 32\;\text{mm}$, $d_{\text{off}} = 103\;\text{mm}$);
+  \item \textbf{Method~B} --- centred elbow pulley
+    ($r_{\text{cp}} = 30\;\text{mm}$ from mesh, on joint axis).
+\end{itemize}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Point 1: Two Separate Pulleys vs.\ One Pulley with Two Grooves}
+\label{sec:point1}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\noindent
+\textbf{Meeting claim:} ``Use two separate elbow pulleys, one for each exo
+cable.''
+
+\begin{nuanced}
+This describes \textbf{Method~A}, which does use two separate elbow pulleys
+(right and left, offset from the joint axis).  However, the current
+Method~B implementation in
+\texttt{cable\_with\_exo\_springs\_elbow\_follow.py} uses a
+\textbf{single shared pulley} with \textbf{two grooves} separated by
+$3\;\text{mm}$ (upper at $Z = 286.55\;\text{mm}$, lower at
+$Z = 283.55\;\text{mm}$).
+
+\medskip\noindent
+Both approaches are valid but have different trade-offs:
+\begin{itemize}[nosep]
+  \item \textbf{Two separate pulleys} (Method~A): simpler tangent geometry
+    (no groove-level Z tracking), but variable moment arm and
+    $d_{\text{off}} \neq 0$.
+  \item \textbf{Single pulley, two grooves} (Method~B): constant moment
+    arm ($r_{\text{cp}}$), exact cable kinematics, but requires careful
+    Z-plane management and encoder tracking.
+\end{itemize}
+
+\noindent
+The code currently supports both.  The choice depends on whether the
+prototype uses the centred design (Method~B) or offset mounting
+(Method~A).
+\end{nuanced}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Point 2: Stepper Motor Latency for Zero-Resistance Feel}
+\label{sec:point2}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\noindent
+\textbf{Meeting claim:} ``A stepper motor can track the elbow encoder fast
+enough to maintain zero cable tension during free rotation.''
+
+\begin{nuanced}
+The encoder-tracking law for Method~B requires the motor to feed cable at:
+%
+\begin{equation}
+  \dot{l}_m = r_{\text{cp}} \cdot \dot{q}_2
+\end{equation}
+%
+For a fast elbow motion $\dot{q}_2 = 5\;\text{rad/s}$ and
+$r_{\text{cp}} = 47.75\;\text{mm}$:
+%
+\[
+  \dot{l}_m = 0.04775 \times 5 = 0.239\;\text{m/s}
+  = 239\;\text{mm/s}
+\]
+
+\noindent
+\textbf{Latency analysis:}
+A typical NEMA-17 stepper at~$3000\;\text{steps/s}$ with $1.8°$/step and
+$20\;\text{mm}$ pulley gives
+$v_{\max} \approx 300\;\text{mm/s}$ --- marginally sufficient.  However:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Step-direction latency}: $\sim 1\;\text{ms}$ (acceptable).
+  \item \textbf{Acceleration bandwidth}: Limited by rotor inertia and
+    holding torque.  During sudden direction changes
+    ($\ddot{q}_2 > 50\;\text{rad/s}^2$), the stepper may lose steps.
+  \item \textbf{Microstepping resonance}: At mid-range speeds
+    ($200$--$800\;\text{steps/s}$) steppers exhibit torque dips.
+\end{enumerate}
+
+\noindent
+The spring extension due to tracking latency $\Delta t$:
+\begin{equation}\label{eq:spring-lag}
+  \delta_{\text{lag}} = r_{\text{cp}} \cdot \dot{q}_2 \cdot \Delta t
+\end{equation}
+For $\Delta t = 5\;\text{ms}$ and $\dot{q}_2 = 5\;\text{rad/s}$:
+$\delta_{\text{lag}} = 0.04775 \times 5 \times 0.005 = 1.19\;\text{mm}$.
+Parasitic force: $F = k_{\text{exo}} \times 0.00119 = 0.24\;\text{N}$
+(with $k_{\text{exo}} = 200\;\text{N/m}$).
+
+\medskip\noindent
+\textbf{Verdict:} At slow motions ($\dot{q}_2 < 2\;\text{rad/s}$), stepper
+tracking is adequate.  At fast motions with sudden reversals, the parasitic
+force may be perceptible.  A \textbf{servo motor with encoder feedback}
+(e.g., closed-loop stepper or small BLDC) would provide tighter tracking.
+\end{nuanced}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Point 3: CubeMars Impedance Control Eliminating Compliance}
+\label{sec:point3}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\noindent
+\textbf{Meeting claim:} ``Using a CubeMars motor in impedance/torque mode
+could eliminate the need for physical springs entirely --- the motor itself
+provides the compliance.''
+
+\begin{nuanced}
+This is conceptually attractive but has important limitations:
+
+\medskip\noindent
+\textbf{What CubeMars MIT torque mode provides:}
+\begin{itemize}[nosep]
+  \item Direct torque control at $\sim 1\;\text{kHz}$ loop rate
+  \item Programmable virtual stiffness: $\tau = K_p(\theta_{\text{des}} - \theta) + K_d(\dot\theta_{\text{des}} - \dot\theta)$
+  \item AK60-6: $\tau_{\text{peak}} = 9\;\text{N\,m}$,
+    $J_m = 3.32 \times 10^{-5}\;\text{kg\,m}^2$, $N = 6$
+\end{itemize}
+
+\medskip\noindent
+\textbf{Why physical springs are still valuable:}
+\begin{enumerate}[nosep]
+  \item \textbf{Impact bandwidth:} An impact at the elbow has a
+    characteristic time $\sim 1$--$5\;\text{ms}$.  The CubeMars control
+    loop runs at $\sim 1\;\text{ms}$.  A physical spring responds at the
+    \emph{speed of sound in the material} ($\ll 0.1\;\text{ms}$) ---
+    orders of magnitude faster.
+  \item \textbf{Energy storage:} Springs absorb impact energy passively.
+    A motor must dissipate energy electrically (back-EMF, resistive losses).
+  \item \textbf{Fail-safe:} If motor power is lost, a pre-tensioned spring
+    still provides stiffness.  A virtual spring provides zero stiffness
+    when powered off.
+  \item \textbf{Motor resonance:} The reflected rotor inertia
+    $J_{\text{eff}} = N^2 \cdot J_m = 36 \times 3.32 \times 10^{-5}
+    = 1.2 \times 10^{-3}\;\text{kg\,m}^2$ creates a resonance with the
+    virtual spring:
+    \begin{equation}
+      \omega_n = \sqrt{\frac{K_p}{J_{\text{eff}}}}
+    \end{equation}
+    For $K_p = 10\;\text{N\,m/rad}$:
+    $\omega_n = \sqrt{10 / 0.0012} \approx 91\;\text{rad/s}$
+    ($14.5\;\text{Hz}$).  Above this frequency, the motor cannot track.
+\end{enumerate}
+
+\medskip\noindent
+\textbf{Verdict:} CubeMars impedance mode is excellent for \emph{low-frequency}
+stiffness modulation (trajectory following, gravity compensation) but
+\textbf{cannot replace physical springs for impact protection}.  The
+recommended architecture is \textbf{hybrid}: physical springs for
+high-bandwidth passive compliance + CubeMars for active stiffness tuning.
+This is exactly the SEA (Series Elastic Actuator) design already implemented
+in \texttt{actuators/sea.py}.
+\end{nuanced}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Point 4: The ``$2k$'' Co-Contraction Stiffness}
+\label{sec:point4}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\noindent
+\textbf{Meeting claim:} ``When both exo cables co-contract, the effective
+joint stiffness is $2k$ times some constant.''
+
+\begin{correct}
+This is exactly the co-contraction result derived in the companion document.
+For symmetric pretension on antagonistic cables, the effective stiffness at
+the joint is:
+%
+\begin{equation}\label{eq:keff-general}
+  \boxed{k_{\text{eff}} = 2 \, k_{\text{exo}} \, r_{\text{eff}}^2}
+\end{equation}
+%
+where the factor of~$2$ arises because \emph{both} cables contribute to
+restoring torque (one cable gets longer, the other shorter, and both resist
+the deflection).  The effective moment arm $r_{\text{eff}}$ depends on the
+method:
+
+\begin{itemize}[nosep]
+  \item \textbf{Method~A:}
+    $r_{\text{eff}} = l_c'(q_2)
+    \approx r_{\text{elb}} = 32\;\text{mm}$
+    $\;\Rightarrow\;
+    k_{\text{eff}}^A \approx 2 \times 200 \times 0.032^2
+    = 0.41\;\text{N\,m/rad}$
+
+  \item \textbf{Method~B:}
+    $r_{\text{eff}} = r_{\text{cp}} = 47.75\;\text{mm}$
+    $\;\Rightarrow\;
+    k_{\text{eff}}^B = 2 \times 200 \times 0.04775^2
+    = 0.91\;\text{N\,m/rad}$
+\end{itemize}
+
+\noindent
+\textbf{Derivation sketch:}
+A deflection $\Delta q$ from equilibrium changes each cable's spring
+extension by $\pm r_{\text{eff}} \cdot \Delta q$.  Each spring contributes
+force $k_{\text{exo}} \cdot r_{\text{eff}} \cdot \Delta q$, and each force
+acts through moment arm $r_{\text{eff}}$, giving torque
+$k_{\text{exo}} \cdot r_{\text{eff}}^2 \cdot \Delta q$ per cable.  Two
+cables $\Rightarrow$ factor of~2.
+\end{correct}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Point 5: Springs on the Upper Arm Side}
+\label{sec:point5}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\noindent
+\textbf{Meeting claim:} ``Place the springs on the upper arm (link~1) side
+of the elbow pulley.''
+
+\begin{incorrect}
+In the current architecture, the springs are placed \textbf{between the
+elbow pulley and the link-2 anchor} --- i.e., on the \textbf{forearm}
+(link~2) side, not the upper arm (link~1) side.
+
+\medskip\noindent
+\textbf{Why the forearm side is correct:}
+\begin{enumerate}[nosep]
+  \item The cable segment from motor $\to$ L1 pulley $\to$ elbow pulley must
+    be \emph{inextensible} --- the motor must control cable displacement
+    precisely.  A spring on this side would absorb motor motion and destroy
+    position authority.
+  \item The spring on the link-2 side acts as a \emph{force sensor}: spring
+    extension $\delta$ directly indicates cable tension
+    $F = k_{\text{exo}} \cdot \delta$.
+  \item From the TikZ architecture diagram
+    (\texttt{exosuit\_stiffness\_and\_co\_contraction.tex},
+    \cref{fig:architecture}): the cable path is
+    Motor $\to$ cable $\to$ L1 pulley $\to$ cable $\to$ Elbow pulley
+    $\to$ \textbf{spring} $\to$ cable $\to$ End anchor (link~2).
+  \item The spring provides compliance at the \emph{impact site} (link~2
+    interacts with objects), which is the correct place for impact
+    absorption.  A spring on the motor side would delay force transmission
+    rather than absorb impacts locally.
+\end{enumerate}
+
+\medskip\noindent
+In the code (\texttt{cable\_with\_exo\_springs\_elbow\_follow.py}), the
+spring visual is drawn as a fraction (\texttt{spring\_fraction} $= 0.12$)
+of the cable segment between the elbow pulley and the end anchor --- i.e.,
+on the link-2 side.
+\end{incorrect}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Point 6: Transmission Ratio via Pulley Diameters}
+\label{sec:point6}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\noindent
+\textbf{Meeting claim:} ``Changing the motor pulley diameter relative to the
+elbow pulley changes the transmission ratio and thus the stiffness.''
+
+\begin{correct}
+The transmission ratio between motor and joint is determined by the pulley
+radii.  Define:
+%
+\begin{align}
+  r_m &= \text{motor pulley radius}, \\
+  r_{\text{elb}} &= \text{elbow pulley radius (or } r_{\text{cp}} \text{ for Method~B)}.
+\end{align}
+%
+The kinematic relation is:
+\begin{equation}
+  l_m = r_m \cdot \theta_m, \qquad
+  l_c = r_{\text{elb}} \cdot q_2
+  \qquad\Rightarrow\qquad
+  \frac{\theta_m}{q_2} = \frac{r_{\text{elb}}}{r_m}
+\end{equation}
+%
+If the motor and elbow pulleys are the same radius
+($r_m = r_{\text{elb}} = r_{\text{cp}}$), the ratio is 1:1.
+
+\medskip\noindent
+\textbf{Effect on stiffness:}
+The spring extension becomes:
+\begin{equation}
+  \delta = r_m \cdot \theta_m - r_{\text{elb}} \cdot q_2
+\end{equation}
+The effective joint stiffness with co-contraction:
+\begin{equation}
+  k_{\text{eff}} = 2 \, k_{\text{exo}} \, r_{\text{elb}}^2
+\end{equation}
+Note: the elbow-side radius determines joint stiffness (it is the output
+lever arm).  Changing $r_m$ affects the \emph{motor-side resolution and
+torque requirement}:
+\begin{itemize}[nosep]
+  \item \textbf{Smaller $r_m$}: motor sees higher mechanical advantage,
+    needs less torque but more rotation per unit cable displacement.
+  \item \textbf{Larger $r_m$}: motor sees lower mechanical advantage,
+    needs more torque but less rotation.
+\end{itemize}
+
+\noindent
+Currently, Method~B uses $r_m = r_{\text{cp}} = 47.75\;\text{mm}$ (1:1
+ratio), which simplifies the encoder tracking law to
+$\theta_m = q_2 + \Delta\theta$.
+\end{correct}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Point 7: Encoder Tracking Necessity for Method~B}
+\label{sec:point7}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\noindent
+\textbf{Meeting claim:} ``Method~B (centred pulley) requires continuous
+encoder tracking to prevent parasitic forces during free rotation.''
+
+\begin{correct}
+This is the fundamental requirement of Method~B.  Because the elbow pulley
+is \emph{on} the joint axis, any rotation $\Delta q_2$ wraps/unwraps cable
+by exactly $r_{\text{cp}} \cdot \Delta q_2$.  Without motor compensation,
+the spring extends:
+%
+\begin{equation}
+  \delta = r_{\text{cp}} \cdot \Delta q_2
+\end{equation}
+%
+producing a parasitic restoring torque:
+\begin{equation}
+  \tau_{\text{parasitic}}
+  = k_{\text{exo}} \cdot r_{\text{cp}}^2 \cdot \Delta q_2
+  = k_{\text{eff}}^B \cdot \Delta q_2
+\end{equation}
+
+For $\Delta q_2 = 10°\;(0.175\;\text{rad})$:
+$\tau_{\text{parasitic}} = 0.91 \times 0.175 = 0.16\;\text{N\,m}$
+--- clearly perceptible and unacceptable for ``transparent'' free rotation.
+
+\medskip\noindent
+The tracking law is:
+\begin{equation}
+  \theta_{m,R} = q_2 + \Delta\theta, \qquad
+  \theta_{m,L} = -q_2 + \Delta\theta
+\end{equation}
+where $\Delta\theta = 0$ for exo~OFF (zero force) and
+$\Delta\theta > 0$ for co-contraction (symmetric pretension).
+
+\medskip\noindent
+\textbf{Contrast with Method~A:}
+In Method~A, the springs sit at rest \emph{passively} because the offset
+geometry does not couple $q_2$ rotation to spring extension (only the motor
+side of the cable connects to the offset pulley, and the spring is only
+loaded when the motor actively pulls).  The encoder is an \emph{upgrade},
+not a requirement.
+\end{correct}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Summary of Assessments}
+\label{sec:summary}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}clc@{}}
+\toprule
+\textbf{\#} & \textbf{Discussion Point} & \textbf{Assessment} \\
+\midrule
+1 & Two separate pulleys vs.\ one with two grooves
+  & \textcolor{orange!60!black}{Nuanced} \\
+2 & Stepper latency for zero-resistance feel
+  & \textcolor{orange!60!black}{Nuanced} \\
+3 & CubeMars impedance eliminating springs
+  & \textcolor{orange!60!black}{Nuanced} \\
+4 & ``$2k$'' co-contraction stiffness
+  & \textcolor{green!50!black}{Correct} \\
+5 & Springs on the upper arm side
+  & \textcolor{red!60!black}{Incorrect} \\
+6 & Transmission ratio via pulley diameters
+  & \textcolor{green!50!black}{Correct} \\
+7 & Encoder tracking required for Method~B
+  & \textcolor{green!50!black}{Correct} \\
+\bottomrule
+\end{tabular}
+\caption{Summary of meeting point assessments.}
+\label{tab:summary}
+\end{table}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Action Items}
+\label{sec:actions}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\begin{enumerate}
+  \item \textbf{Prototype decision:} Choose Method~A or~B for the first
+    physical build.  Method~B is mechanically simpler (one pulley, exact
+    kinematics) but requires reliable encoder tracking.
+
+  \item \textbf{Stepper vs.\ servo motor test:} Build a bench test with a
+    stepper (or closed-loop stepper) tracking an encoder at
+    $\dot{q}_2 \leq 5\;\text{rad/s}$.  Measure tracking latency and
+    parasitic spring force.
+
+  \item \textbf{Spring placement:} Confirm springs are between elbow pulley
+    exit and link-2 anchor (forearm side), not on the motor/upper-arm side.
+
+  \item \textbf{CubeMars integration path:} If CubeMars motors are used for
+    the exo cables, implement hybrid control: physical springs for
+    high-bandwidth impact response + motor torque mode for active stiffness
+    modulation.
+
+  \item \textbf{Pulley diameter trade study:} Evaluate whether a non-unity
+    transmission ratio ($r_m \neq r_{\text{cp}}$) improves motor torque
+    headroom or resolution.
+
+  \item \textbf{Simulation validation:} Add exo cable dynamics to the
+    Drake or Isaac~Sim pipeline.  Use the SEA infrastructure
+    (\texttt{actuators/sea.py}) as a template for the exo cable
+    spring-damper model.
+\end{enumerate}
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Progress Update --- 21 April 2026}
+\label{sec:progress-apr21}
+% ═════════════════════════════════════════════════════════════════════════════
+
+\noindent
+\textit{Recorded meeting: \texttt{Audio-Weekly progress-20260421\_115439-Meeting Recording.mp4}.
+Attendees: Debarup (in-person), Chris (remote, in lab), Ben (joined mid-meeting).
+Tube/rail strike restricted in-person attendance.}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Arduino Motor Driver}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{itemize}[nosep]
+  \item The wrong driver issue has been \textbf{resolved}.
+  \item Two candidate Arduino libraries found for communicating with the
+    DeBio motor controller via Arduino Uno:
+    \begin{enumerate}[nosep]
+      \item \textbf{Library~1} (PlatformIO-compatible, no English docs) ---
+        easy to install via PlatformIO but documentation is in Chinese only.
+      \item \textbf{Library~2} (English docs, not on PlatformIO) ---
+        documentation available but requires manual installation.
+    \end{enumerate}
+  \item Most library function names are in English; inferred usage despite
+    Chinese documentation.  Example mistranslation: ``point'' rendered as
+    ``indicator''.
+  \item \textbf{Recommended translation tool:} \textbf{DeepL}
+    (\url{https://www.deepl.com}) for technical documentation.
+  \item \textbf{Recommended workflow:} Clone the library's GitHub repo,
+    open in VS~Code, and use GitHub~Copilot to auto-generate English
+    documentation from the English source code.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Physical Hardware --- Cable Stoppers and Inserts}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{itemize}[nosep]
+  \item Currently \textbf{3D-printing replacement parts} for the cable
+    infrastructure (inserts and loop stoppers).
+  \item Need a \textbf{cable-loop stopper} (white stopper previously used for
+    the wire loop).  Attempting to replicate with 3D-printed plastic;
+    if insufficient, will order metal stoppers.
+  \item Additional bolts and inserts may also need ordering; list to be sent
+    by EOD 21~April.
+  \item \textbf{Power supply issue:} Desktop power supply has non-standard
+    plugs; may swap for a screw-terminal unit to connect motor and test rig.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Stepper vs.\ Servo Motor Decision}
+\label{sec:motor-choice}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{itemize}[nosep]
+  \item Original plan was to use a \textbf{stepper motor} to track the joint
+    encoder and maintain near-zero cable tension.
+  \item Key concern: steppers are \textbf{not back-drivable} and can
+    \textbf{miss steps} at high speed or under load---this adds perceptible
+    resistance when moving the exo freely.
+  \item \textbf{Servo motor alternative:} Peiyu (lab colleague) provided a
+    servo motor (brought from China for personal use).  This will be the
+    first hardware under test.
+  \item If the servo hypothesis validates, cheap but decent servo motors will
+    be ordered from Robot Shop (fast delivery).  The CubeMars motors are
+    reserved for the manipulator, not the exo cables.
+  \item The stepper latency test plan remains valid but the servo is now
+    the \textbf{primary candidate}.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{CubeMars Motor Procurement}
+\label{sec:cubemarks-procurement}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{itemize}[nosep]
+  \item \textbf{Compliance certificate approved.}
+  \item Two CubeMars motors ordered for the \textbf{manipulator} (not exo).
+  \item Procurement path:
+    \begin{enumerate}[nosep]
+      \item 3DXR registered as a \textbf{university approved supplier} (ICT
+        request submitted 21~April).
+      \item HALA asked to create a \textbf{VCC (Virtual Credit Card)} for
+        the order.  VCC approval typically takes 4--5 days.
+      \item Once VCC is issued, order placed; stock is available and
+        delivery is $\approx$1--2 days.
+    \end{enumerate}
+  \item Motors feature a \textbf{planetary gearbox} (ratio $\approx 1:6$,
+    back-drivable).  These are the same class of motor used in
+    humanoid/compliant robots.
+  \item Exo cable motors remain a separate problem requiring the
+    servo/stepper latency test.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{GitHub Copilot Student Access}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{itemize}[nosep]
+  \item Free access via the \textbf{GitHub Student Developer Pack}.
+    Chris already has this.  Strongly recommended for translating Chinese
+    library docs and generating docstrings.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Lab Access --- Robotics Area}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{itemize}[nosep]
+  \item Ben (Chris?) submitted a request for \textbf{general robotics lab
+    access} on 21~April.  Parker (lab manager) to register them.
+  \item General induction already completed.  Access list update pending
+    Becky's confirmation.
+  \item Currently using the Ideas Lab upstairs mainly for 3D printer access;
+    robotics area useful for hardware testing.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Exosuit Architecture --- Key Design Discussion (with Ben)}
+\label{sec:exo-architecture}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Ben joined mid-meeting and described the wearable exosuit hardware.  A major
+architectural discussion followed on how the exosuit, manipulator, and
+contraction-theory controller should be integrated.
+
+\subsubsection*{Ben's Wearable Exosuit Hardware}
+
+\begin{itemize}[nosep]
+  \item \textbf{Current wearable prototype:} single fixed elbow pulley +
+    two separate braided cables routed to small motors.  The motors can
+    independently tension the exo springs.
+  \item The two motors (``purple'' cables in the diagram) \emph{do not drive
+    the joint} --- they only add stiffness.  The joint moves freely; the
+    cables create a symmetric restoring force (co-contraction stiffness
+    $k_{\text{eff}} = 2 k_{\text{exo}} r_{\text{eff}}^2$).
+  \item The adapter pulley is \textbf{mounted on the joint shaft}, so it
+    rotates with the joint.  Without motor compensation, this wraps/unwraps
+    cable and stretches the springs (parasitic stiffness, see
+    \cref{sec:point7}).  \textbf{Active encoder tracking nullifies this.}
+\end{itemize}
+
+\subsubsection*{Exosuit as a Signal Source (Not a Force Actuator)}
+
+The central design insight agreed in this meeting:
+
+\begin{mdframed}[backgroundcolor=blue!5, linecolor=blue!40]
+\textbf{Key principle:} The exosuit is \emph{not} meant to generate the
+required stiffness directly.  It acts as a \textbf{stiffness signal source}
+that tells the manipulator/robot how much stiffness to generate.  The
+manipulator's own back-drivable motors implement that stiffness via
+co-contraction.
+\end{mdframed}
+
+\noindent
+Consequences:
+\begin{itemize}[nosep]
+  \item The exosuit motors need only be small and lightweight --- they give
+    a $\delta\theta$ command (tug), not a full torque command.
+  \item When the manipulator already has the correct stiffness, the exosuit
+    commands $\delta\theta = 0$ (stays passive).
+  \item When a disturbance arrives and stiffness is insufficient, the exosuit
+    activates: applies $q_2 \pm \delta\theta$ to stiffen the spring in the
+    opposing direction.  This is exactly the $\Delta\theta$ co-contraction
+    command already implemented in simulation.
+  \item Analogy used in meeting: ``like a horse rider --- you keep giving
+    signals until the horse picks up speed, then you stop.''
+\end{itemize}
+
+\subsubsection*{Three-Layer Control Architecture}
+
+The full system consists of three independent but cooperating layers:
+
+\begin{enumerate}
+  \item \textbf{Motion control} (manipulator joint trajectories) ---
+    computed-torque / LQR controller.
+  \item \textbf{Stiffness control} (co-contraction via manipulator exo
+    springs + back-drivable motors) --- driven by the contraction-theory
+    algorithm (\texttt{contraction-theory/}).  This layer decides the
+    correct $k_{\text{eff}}$ given the disturbance.
+  \item \textbf{Exosuit signal layer} (wearable, lightweight) --- a third
+    add-on that monitors stiffness error and sends $\delta\theta$ signals to
+    Layer~2 to ``teach'' it the correct stiffness level.
+\end{enumerate}
+
+\noindent
+\textbf{Impairment analogy:} Treat the manipulator's stiffness controller
+as an ``impaired brain'' that does not know the optimal co-contraction level.
+The exosuit (Layer~3) is the rehabilitation tool: it provides an external
+stiffness signal until Layer~2 learns the correct response.  Once Layer~2
+converges, Layer~3 becomes passive.
+
+\subsubsection*{Are Manipulator Springs Still Needed?}
+
+\begin{itemize}[nosep]
+  \item If the manipulator uses \textbf{back-drivable motors} (e.g.,
+    CubeMars), physical springs in the cable path may be redundant ---
+    the motor itself provides programmable stiffness.
+  \item Springs are still needed for the \textbf{exo cable motors} if those
+    use steppers (not back-drivable).
+  \item Conclusion: \textbf{springs may be removed from the manipulator
+    cable path} once CubeMars motors are installed, but retained on the
+    exo cable motors until a back-drivable alternative is confirmed.
+\end{itemize}
+
+\subsubsection*{Stiffness Modulation Ideas Discussed}
+
+Two lightweight alternatives to continuous motor pretension were discussed,
+motivated by the desire to make the wearable exosuit as small and
+power-efficient as possible.
+
+% ── PWM ─────────────────────────────────────────────────────────────────────
+\paragraph{Option A: PWM stiffness modulation.}
+
+The motor drives the cable at full amplitude but is switched on/off at a
+high duty cycle $D \in [0,1]$.  When ON the spring is engaged at its full
+stiffness $k_{\text{exo}}$; when OFF the motor back-drives freely and the
+spring goes slack.  Averaged over one PWM period, the effective joint
+stiffness is approximately:
+%
+\begin{equation}\label{eq:pwm-keff}
+  k_{\text{eff,PWM}} \approx D \cdot 2\,k_{\text{exo}}\,r_{\text{cp}}^2
+\end{equation}
+%
+so varying $D$ from 0 to 1 continuously sweeps $k_{\text{eff}}$ from zero
+to its maximum value.
+
+\medskip\noindent
+\textbf{Condition for validity:}  The PWM frequency $f_{\text{PWM}}$ must be
+much higher than the mechanical bandwidth of the joint:
+%
+\begin{equation}
+  f_{\text{PWM}} \gg \frac{1}{2\pi}\sqrt{\frac{k_{\text{eff,max}}}{J_{\text{link}}}}
+  \approx \frac{1}{2\pi}\sqrt{\frac{0.91}{0.05}} \approx 21\;\text{Hz}
+\end{equation}
+%
+so $f_{\text{PWM}} > 300\;\text{Hz}$ (well within electrical limits).
+However, the \emph{mechanical} system (motor inertia + cable compliance)
+may not follow at that frequency, causing the joint to feel discrete
+on/off pulses as jitter rather than smooth intermediate stiffness.
+\textbf{Needs experimental validation.}
+
+% ── Clutch ───────────────────────────────────────────────────────────────────
+\paragraph{Option B: Clutch / brake-pad (binary stiffness switch).}
+
+Replace the motor+spring with a \textbf{lockable cable mechanism} --- a
+spring pre-tensioned at assembly, held free by a clutch.  On command
+(solenoid, shape-memory wire, or micro-servo), the clutch engages and locks
+the cable, instantly loading the spring.
+
+\medskip\noindent
+The torque applied to the joint becomes:
+%
+\begin{equation}\label{eq:clutch-tau}
+  \tau_{\text{exo}} =
+  \begin{cases}
+    k_{\text{exo}}\,r_{\text{cp}}\,\bigl(r_{\text{cp}}\,\delta q - \delta_0\bigr)
+      & \text{clutch ON (spring engaged)} \\
+    0 & \text{clutch OFF (cable free)}
+  \end{cases}
+\end{equation}
+%
+where $\delta_0$ is the spring pre-compression at rest and $\delta q$ is
+the joint deflection from nominal.
+
+\medskip\noindent
+\textbf{Effective behaviour:}
+\begin{itemize}[nosep]
+  \item Engagement is \emph{mechanical} speed --- not limited by a
+    control loop.  Response is sub-millisecond for solenoid actuation.
+  \item No continuous power is required to hold stiffness (spring is
+    passive once locked).
+  \item The energy absorbed when the clutch engages mid-motion goes into
+    the spring (elastic storage), not heat --- safe for wearable use.
+  \item The on/off nature provides \emph{bang-bang stiffness}: either full
+    $k_{\text{eff}}$ or zero.  For the signal-source use case this is
+    sufficient --- the exosuit only needs to indicate ``stiffen now'',
+    not modulate a precise level.
+\end{itemize}
+
+\medskip\noindent
+\textbf{Comparison:}
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Mechanism} & \textbf{Stiffness} & \textbf{Complexity}
+  & \textbf{Weight} & \textbf{Power (hold)} & \textbf{Bandwidth} \\
+\midrule
+Motor + spring (current) & Continuous & High & Medium & High & Servo BW \\
+PWM motor               & Pseudo-variable & Medium & Medium & Medium & Needs test \\
+Clutch / brake-pad      & Binary ($0$ or $k_s$) & Low & Low & None & Mechanical \\
+\bottomrule
+\end{tabular}
+\caption{Comparison of exosuit stiffness modulation options.}
+\label{tab:stiffness-options}
+\end{table}
+
+\noindent
+For a \textbf{lightweight wearable signal source}, the clutch option is the
+most attractive: a small solenoid (mass $<30\;\text{g}$) or shape-memory
+actuator can lock/unlock the cable, requiring only a brief current pulse
+(not sustained power) to change state.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Agreed Next Steps}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{enumerate}
+  \item \textbf{[Chris, \(\leq\)28~Apr]} Complete stepper/servo latency
+    test: measure tracking lag between joint encoder and exo motor at
+    $\dot{q}_2 \leq 2\;\text{rad/s}$.  Use Peiyu's servo motor as first
+    candidate.  If lag is acceptable, order cheap servo motors from Robot
+    Shop.
+  \item \textbf{[Chris, EOD 21~Apr]} Confirm 3D-printed cable-loop stopper
+    feasibility; send purchase list for stoppers and bolts if 3D printing
+    inadequate.
+  \item \textbf{[Chris]} Resolve Arduino library choice; use DeepL /
+    Copilot for Chinese documentation.
+  \item \textbf{[Chris]} Register for GitHub Student Developer Pack.
+  \item \textbf{[Debarup]} Finalise VCC with HALA; order two CubeMars
+    motors from 3DXR once ICT approves supplier.
+  \item \textbf{[Debarup/Ben]} Implement contraction-theory stiffness
+    controller on the manipulator \emph{first} (without exosuit), validate
+    that it generates correct $k_{\text{eff}}$ under disturbances.
+  \item \textbf{[All]} Add the wearable exosuit signal layer as a third
+    add-on once Layers~1 and~2 are stable.
+  \item \textbf{[Ben]} Review CubeMars motor spec (planetary gear, 1:6
+    ratio, back-drivable) against exo motor requirements via links already
+    shared.
+\end{enumerate}
+
+\end{document}

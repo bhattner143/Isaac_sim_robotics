@@ -1,0 +1,13 @@
+{
+    "configuration": "default",
+    "documentId": "b39b411822989851cca3e813",
+    "documentMicroversion": "55a84ab1cc9c00dd8e1441b0",
+    "elementId": "3c3cb3996b3ae3781951d20a",
+    "fullConfiguration": "default",
+    "id": "MiFs6XGZyDElQ2HxL",
+    "isStandardContent": false,
+    "name": "simple_ball_spring_cable <1>",
+    "partId": "JID",
+    "suppressed": false,
+    "type": "Part"
+}

@@ -142,6 +142,10 @@ def draw_cables(meshcat, plant, plant_context, manipulator, rig,
             for th in np.linspace(0.0, angle, n_arc_pts)
         ])
 
+    # ── 2b. Drive-cable wrap arcs (only for CableRig with drive pulleys) ────
+    if not hasattr(rig, "drive_pulley"):
+        return   # ExoCableRig — no drive pulleys to draw wrap arcs for
+
     _G = Rgba(0.1, 0.85, 0.1, 1.0)   # green cable
     _R = Rgba(0.9, 0.1,  0.1, 1.0)   # red   cable
     dp, ir, il, pb = rig.drive_pulley, rig.idler_r, rig.idler_l, rig.pulley_big

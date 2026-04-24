@@ -50,3 +50,9 @@ CT Controller → (+Δτ from RL) → SEA Model → PhysX Plant
 ## State Vectors
 - **Cart-Pendulum 2D** (8D): `[x, y, α, β, ẋ, ẏ, α̇, β̇]`
 - **Extended System** (14D): adds `[F_x, F_y, x_ref, y_ref, ẋ_ref, ẏ_ref]`
+- **SEA Cable Manipulator — Torque mode** (6D): `[q₁, q₂, q̇₁, q̇₂ | θ_m, θ̇_m]`
+  - Plant (4D): q₁ = shoulder (link1_base), q₂ = elbow (link2_link1), q̇₁, q̇₂
+  - Motor (2D): θ_m = motor-side angle [rad], θ̇_m = motor-side velocity [rad/s]
+  - Spring: δ = r_p·(θ_m/N − q₂), F = k_s·δ + b_c·δ̇, τ₂ = r_p·max(F, 0)
+- **SEA Cable Manipulator — Position mode** (5D): `[q₁, q₂, q̇₁, q̇₂ | l_m]`
+  - Motor (1D): l_m = cable displacement [m], l̇_m = ω_m·(l_m_des − l_m)

@@ -31,6 +31,7 @@ from typing import Optional, List
 from pydrake.geometry import Rgba, Cylinder
 
 sys.path.append(str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # project root
 
 from pydrake.all import (
     DiagramBuilder,

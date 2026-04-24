@@ -1,0 +1,2280 @@
+1
+00:00:00,000 --> 00:00:02,000
+you
+
+2
+00:00:30,000 --> 00:00:32,000
+you
+
+3
+00:01:00,000 --> 00:01:02,000
+you
+
+4
+00:01:30,000 --> 00:01:32,000
+you
+
+5
+00:02:00,000 --> 00:02:02,000
+you
+
+6
+00:02:30,000 --> 00:02:32,000
+you
+
+7
+00:03:00,000 --> 00:03:02,000
+you
+
+8
+00:03:30,000 --> 00:03:32,000
+you
+
+9
+00:04:00,000 --> 00:04:02,000
+you
+
+10
+00:04:30,000 --> 00:04:32,000
+you
+
+11
+00:05:00,000 --> 00:05:02,000
+you
+
+12
+00:05:30,000 --> 00:05:32,000
+you
+
+13
+00:06:00,000 --> 00:06:02,000
+you
+
+14
+00:06:30,000 --> 00:06:32,000
+you
+
+15
+00:07:00,000 --> 00:07:02,000
+you
+
+16
+00:07:31,000 --> 00:07:32,000
+you
+
+17
+00:07:32,000 --> 00:07:33,000
+I
+
+18
+00:07:33,000 --> 00:07:34,000
+think you
+
+19
+00:07:34,000 --> 00:07:35,000
+know
+
+20
+00:07:35,000 --> 00:07:37,000
+well, you're
+
+21
+00:07:37,000 --> 00:07:39,000
+at work today. Yeah. Yeah. Yeah. We go here like I was
+
+22
+00:07:39,000 --> 00:07:43,000
+able to. But that you this is the tube strike. Right. But you you
+
+23
+00:07:43,000 --> 00:07:45,000
+are psycho.
+
+24
+00:07:45,000 --> 00:07:48,000
+Oh yeah, yeah, for you, it's fine. Okay. Cool. Yeah.
+
+25
+00:07:48,000 --> 00:07:54,000
+So yeah, waiting for thresh, I'm not sure whether he accepted my invite
+
+26
+00:07:54,000 --> 00:08:02,560
+now. It's not coming right? I don't know if that means he's not coming if he just doesn't
+
+27
+00:08:02,560 --> 00:08:07,839
+come to that. Let me check. Yeah. So
+
+28
+00:08:24,000 --> 00:08:49,200
+yeah. Yeah. Anyway, so if he's not coming, I don't know for some reason. Maybe I have done
+
+29
+00:08:49,200 --> 00:09:02,000
+some mistake. Yeah. So maybe we can discuss. Yeah. Cool. So what do you have been like? Yeah, we can have it.
+
+30
+00:09:03,280 --> 00:09:11,280
+I haven't actually made loads of progress. Sorry. So, you know, it came down to the wrong driver.
+
+31
+00:09:11,280 --> 00:09:18,480
+So I've got that resolved. And I've been looking at the problem is so in terms of libraries, I found
+
+32
+00:09:18,480 --> 00:09:27,279
+the, I found one which is in the like platform, I installed us as rent, please, and install. Then I
+
+33
+00:09:27,279 --> 00:09:32,399
+don't have any documentation in English. You're meeting for the Arduino or for the motor?
+
+34
+00:09:33,039 --> 00:09:39,600
+But so the library for the Arduino to talk to the motor. Yeah. So,
+
+35
+00:09:39,600 --> 00:09:45,840
+found once has no documentation in English, I can, is on platform iOS as easy to do. And then one
+
+36
+00:09:45,840 --> 00:09:51,200
+that does have documentation in English is not platform iOS. So it's been trying to work out one of those too.
+
+37
+00:09:52,960 --> 00:10:00,399
+I'm currently printing off. So I mean, the parts I should need to swap out the physical infrastructure.
+
+38
+00:10:00,399 --> 00:10:05,759
+So I've been structured for some of that about connecting cables. I think I might be able to
+
+39
+00:10:05,759 --> 00:10:10,400
+with 3D printed inserts. If not, we'll need to order in some like,
+
+40
+00:10:10,399 --> 00:10:15,439
+that's so first I might have some I can take. What do you need to order? Sorry.
+
+41
+00:10:17,120 --> 00:10:21,439
+I don't know. I might be able to get really 3D printing. So remember to let the stopper.
+
+42
+00:10:21,439 --> 00:10:29,199
+Okay. For the wire. Yeah. So I need something to make a loop with that. So in theory, I could do the same thing.
+
+43
+00:10:29,199 --> 00:10:32,959
+I just need to, I just need to see if I can actually get away with 3D printing a thing. And then,
+
+44
+00:10:32,959 --> 00:10:34,960
+okay, okay. Eating up the metal someone's ticket.
+
+45
+00:10:34,960 --> 00:10:38,000
+If you know some stopper, you can give it to me. I can order.
+
+46
+00:10:39,440 --> 00:10:42,240
+Yeah. Let me work it out.
+
+47
+00:10:42,240 --> 00:10:49,040
+By the end of the day, is it all right? Let's say, let me work out if I could do it with 3D printing.
+
+48
+00:10:49,040 --> 00:10:53,920
+If not, I'll send you the things to buy. I think we might also get some more bolts. So work out exactly
+
+49
+00:10:53,920 --> 00:10:57,200
+which bolts and inserts we need. And then send you that as well.
+
+50
+00:10:57,440 --> 00:11:08,000
+Yeah. Okay. So yeah. For the library for the motor, right? So can you ask pay you if he's there?
+
+51
+00:11:08,000 --> 00:11:13,920
+He can he might be able to help you because he this is his motor actually. But yeah, I think we
+
+52
+00:11:13,920 --> 00:11:19,040
+will get soon get the cube Mars motor. Yeah. It has been accepted actually now. And I've got all
+
+53
+00:11:19,040 --> 00:11:26,240
+the certificate so we can get the best motor. So yeah. So let's see, let's see fingers crossed
+
+54
+00:11:26,240 --> 00:11:31,600
+till now unless it gets solved. Yeah. I think I have basically worked out the library. It was just
+
+55
+00:11:31,600 --> 00:11:37,600
+a matter of translating the documentation. It wasn't in English. Is it all in? Yeah. Okay. Okay.
+
+56
+00:11:37,600 --> 00:11:45,120
+Is it it was in Chinese? I think so. Yes. I didn't actually check. I just used the book. But does the translation work?
+
+57
+00:11:47,840 --> 00:11:53,360
+Not completely. It translates to general meaning, but then it loses some specific technical language.
+
+58
+00:11:53,360 --> 00:12:00,399
+So you should be using. So this is the best translation I believe. It's deep L, right? Or something.
+
+59
+00:12:06,960 --> 00:12:12,399
+Yeah. I think deep L you should be using deep L are using this. This is the best translator for
+
+60
+00:12:12,399 --> 00:12:19,920
+technical one. You can try this and see it's here. Get it. I think it's I think we I think you can try.
+
+61
+00:12:20,159 --> 00:12:26,399
+Okay. Yeah. I have managed to work out most of the things because the function names stuff are still in English.
+
+62
+00:12:27,199 --> 00:12:35,519
+So yeah. If it's going on, which is set zero, I'm pretty sure I know about me. Okay. Okay. And it's kind of
+
+63
+00:12:35,519 --> 00:12:43,599
+thing of it doesn't. For example, like it translated point as indicator. Right. But I like I was able to work
+
+64
+00:12:43,600 --> 00:12:49,200
+it out. So can't you can't you just use my VS code scope highlight to directly do it?
+
+65
+00:12:50,000 --> 00:12:56,159
+You can use the co-pilot some some agent to do the translation and start the basic
+
+66
+00:12:56,159 --> 00:13:02,399
+codes for you. Uh, no. So the like the functions stuff is still written in English, but then the
+
+67
+00:13:02,399 --> 00:13:09,040
+external documentation in GitHub is written in Chinese. Yeah. So you can download the whole GitHub.
+
+68
+00:13:09,039 --> 00:13:12,559
+Yeah. So you can download my browser and using Google's template.
+
+69
+00:13:14,079 --> 00:13:20,240
+Maybe maybe you should. Okay. If it's working, it's fine, but maybe consider downloading the whole GitHub
+
+70
+00:13:20,240 --> 00:13:29,839
+and then make it as a VS code project and then use co-pilot to ask him to start an English
+
+71
+00:13:29,839 --> 00:13:34,240
+documentation for the whole project. It can read the projects because the files are in English,
+
+72
+00:13:34,240 --> 00:13:37,519
+right? And it can give you and its own documentation to start with.
+
+73
+00:13:40,000 --> 00:13:49,679
+Sure. Yeah. Okay. Oh, yes. I think I should be fine. I think I'll just end up taking a bit of time.
+
+74
+00:13:51,279 --> 00:13:52,559
+Okay. Oh, remember that. Oh, remember that.
+
+75
+00:13:52,559 --> 00:13:57,839
+The next time. Yeah. Yeah. Yeah. So I would say the easiest way is like, download any GitHub.
+
+76
+00:13:58,399 --> 00:14:04,399
+So do you have a Microsoft co-pilot? You can get a free co-pilot, you know, from education version.
+
+77
+00:14:05,279 --> 00:14:10,879
+You should register that. Do you know that? Yeah. I mean, I've like tried to do a couple of times.
+
+78
+00:14:10,879 --> 00:14:16,639
+I haven't really done what I wanted to. Yeah. You can ask him. You can ask. He has it. Actually,
+
+79
+00:14:16,639 --> 00:14:24,720
+you can ask how to do it. Chris, he did it already and he got the co-pilot approved as a student.
+
+80
+00:14:25,600 --> 00:14:32,720
+So now you have a good amount of what you call points to be used for a month and you can use them
+
+81
+00:14:32,720 --> 00:14:38,320
+for any kind of like. Yeah. It will be really helpful and fast. Trust me. Yeah.
+
+82
+00:14:40,639 --> 00:14:46,560
+Yeah. I'm looking forward to seeing the status and to communicate with the logic for
+
+83
+00:14:46,560 --> 00:14:51,279
+the service itself. I need to actually see the return character. Yes.
+
+84
+00:14:54,960 --> 00:15:00,160
+Okay. So yeah. So let's do it. And I don't know like the problem with me is that this figure
+
+85
+00:15:00,159 --> 00:15:04,959
+won't be we be able to come because the stupe strike every day and I need to take the picket
+
+86
+00:15:04,959 --> 00:15:13,839
+airline. Okay. Yeah. Yeah. So if you need any help, then we can just coordinate on remotely. I
+
+87
+00:15:13,839 --> 00:15:20,159
+think that's the easiest way. If you need to buy something, some small parts, you can make a list
+
+88
+00:15:20,159 --> 00:15:28,959
+as I told you before and send it to me. And yeah. So now the first idea is like
+
+89
+00:15:30,399 --> 00:15:36,079
+you're you're trying you need to do a initial testing, right? Whether the the delay between our
+
+90
+00:15:36,079 --> 00:15:40,879
+joint and the delay between the stepper and that sorry, this motor and that works or not,
+
+91
+00:15:40,879 --> 00:15:48,879
+right? That hypothesis. Okay. Yeah. Okay. So do you think like a week or two should be a good
+
+92
+00:15:48,879 --> 00:15:55,759
+timeline to like finish at least this part of the work or? Yeah. Yeah. For trying to think who I
+
+93
+00:15:55,759 --> 00:16:06,080
+still need to get done. I can't want to set the aim of by the end of the suite, but then. Okay.
+
+94
+00:16:08,960 --> 00:16:14,799
+Yeah. I'd like I think I should be able to get it done within a week. Okay. Okay. Now mine. Yeah.
+
+95
+00:16:14,799 --> 00:16:21,279
+So we got to is just okay. Just fine. Yeah. Yeah. So that we can at least get the idea to proceed,
+
+96
+00:16:21,279 --> 00:16:27,120
+you know, further. Yeah. Because even if we get the QMRS motor, those they did they are like now
+
+97
+00:16:27,120 --> 00:16:31,360
+two motors we'll be getting. So we'll be using that for the manipulator. We still need to fix the
+
+98
+00:16:32,079 --> 00:16:39,679
+issue with the other motors for the exhaust. Yeah. Sure. Yeah. So let's see. Yeah. So hopefully we'll
+
+99
+00:16:39,679 --> 00:16:45,839
+get it then. Yeah. Okay. Cool. Thank you. Anything else you want to discuss or share?
+
+100
+00:16:46,639 --> 00:16:49,840
+Uh, now we're good. Uh, yeah. If I've got any questions, I'll
+
+101
+00:16:49,840 --> 00:16:56,879
+then you will possibly ask me. Yes. Yeah. Just keep in touch. Yeah. Just that it's the week is
+
+102
+00:16:56,879 --> 00:17:01,440
+a sad week that there's so much strike is going on and so much to stuff. Yeah. Are they for
+
+103
+00:17:02,080 --> 00:17:09,279
+the strikes for the whole week or? Still Friday, midday, right? I think. Okay. Yeah. Like I don't
+
+104
+00:17:09,279 --> 00:17:14,319
+really follow two strikes. Yeah. You don't need to write you. You do take the yeah. I don't know how
+
+105
+00:17:14,319 --> 00:17:20,159
+Chris arrived of. Yeah. I mean, I took the district line yesterday. That was. Yeah. Monday was okay.
+
+106
+00:17:20,159 --> 00:17:26,720
+It started today, right? Okay. Yeah. Okay. I just got on the tube. Sorry. Okay. So,
+
+107
+00:17:26,720 --> 00:17:33,359
+but no, it's yeah, because I chewed up the family and Wimbledon Monday. Okay. Okay. Okay.
+
+108
+00:17:34,079 --> 00:17:42,079
+Okay. What did you teach? Um, maths. Okay. Nice. Very good. Yeah. Yeah. Like the two-term maths is
+
+109
+00:17:42,079 --> 00:17:47,519
+pretty. Yeah. Like the high school middle school. I don't know how it works.
+
+110
+00:17:48,399 --> 00:17:52,240
+She sure I'm treating. She gives a GC level. Sorry. Oh. Okay.
+
+111
+00:17:53,679 --> 00:17:57,919
+Oh, I never do. Two meeting in the US. I think I was on the room call.
+
+112
+00:17:59,119 --> 00:18:05,519
+Oh, okay. So I think I made a mistake then. Oh, so I think every time I go to your
+
+113
+00:18:05,519 --> 00:18:11,440
+outlook and book a meeting. Yeah. And then, uh, okay, okay. So that creates duplicate meetings,
+
+114
+00:18:11,440 --> 00:18:17,039
+maybe it's my mistakes. I go to your link of for the outlook and book a slot. And then I come to
+
+115
+00:18:17,039 --> 00:18:23,200
+outlook and book a meeting. So I think no, no, no. Okay. That creates a meeting automatically.
+
+116
+00:18:23,200 --> 00:18:28,559
+Okay. Okay. Okay. I get it. I get it. I thought that you we use it to book a slot for you.
+
+117
+00:18:28,559 --> 00:18:31,920
+And then I need to create a meeting in that slot. It puts a team's link.
+
+118
+00:18:32,480 --> 00:18:35,440
+What do we know? Okay. Okay. Yeah. I think it was my fault. Yeah. I get it.
+
+119
+00:18:36,080 --> 00:18:38,960
+Oh, so I think I did it for your other meetings also.
+
+120
+00:18:40,720 --> 00:18:47,200
+Oh, yeah. Like for especially for the meeting with Dagmar and also.
+
+121
+00:18:48,720 --> 00:18:53,279
+You can do it. No, no, no, no, sorry. For the Dagmar one, I didn't book you yet.
+
+122
+00:18:53,279 --> 00:18:59,759
+Yeah. Okay. Okay. But that's when you can see a well of a slot from that and not
+
+123
+00:19:00,319 --> 00:19:04,799
+and then come to the other one. Yeah. From outlook directly. Right?
+
+124
+00:19:04,799 --> 00:19:14,400
+Oh, yeah. Okay. Okay. Yeah. So. Okay. So I was just discussing with Chris regarding what he did.
+
+125
+00:19:14,400 --> 00:19:22,640
+So yeah, I think. Yeah. So we are trying to now match. So maybe Chris can give you,
+
+126
+00:19:22,640 --> 00:19:27,200
+give tell you what he's now doing. Yeah. He's trying to do some hypothesis. Yeah.
+
+127
+00:19:27,279 --> 00:19:29,840
+Oh, sorry. Ben. Sorry. Yeah. Yeah.
+
+128
+00:19:31,360 --> 00:19:38,799
+Yeah. So I thought you were going to go. So I'm currently modifying the robot arm.
+
+129
+00:19:39,759 --> 00:19:43,759
+So I've probably got a few bits printing upstairs and then we're working on. So I've got the
+
+130
+00:19:43,759 --> 00:19:51,519
+Adriano Uno and the DeBioMotor that they gave me. So I managed to find a library for it and
+
+131
+00:19:51,519 --> 00:19:59,920
+translate the documentation. So it's just I need to actually power up because there's the desktop
+
+132
+00:19:59,920 --> 00:20:06,559
+pass flow we've got takes plugs that might actually swap an outform with a screw game. So it's just
+
+133
+00:20:06,559 --> 00:20:13,200
+easier to connect up to the motor and the test motor and then I'll need to install the replacement
+
+134
+00:20:13,200 --> 00:20:21,440
+parts and swap up the cabling, which will be annoying. Should be fine. And then we can run a test
+
+135
+00:20:22,240 --> 00:20:27,759
+to see how much lack we get on the motor based on the rotary encoder. Yeah. That's one of the
+
+136
+00:20:27,759 --> 00:20:32,559
+we need to plug it out because the current plan is to use the step motor to adjust it.
+
+137
+00:20:33,440 --> 00:20:37,920
+And if you step much is too slow, then you'll be feeling like resistance when you try and move around.
+
+138
+00:20:39,200 --> 00:20:44,720
+So do we use a step motor or so? What is it better to use?
+
+139
+00:20:44,799 --> 00:20:53,120
+So Trisha, the idea is that we actually plan to use the step motor but then I think it's
+
+140
+00:20:53,680 --> 00:21:00,000
+I think we found a server motor from from pay you actually. He gave me a server motor. He brought
+
+141
+00:21:00,000 --> 00:21:06,559
+from China for a personal use. So we are trying to give it a shot. If it works, then maybe we can buy
+
+142
+00:21:06,559 --> 00:21:11,360
+some cheap server motors like like the decent one, not the cube marks one, the one we are planning
+
+143
+00:21:11,359 --> 00:21:16,399
+to order for them in a later. But maybe decent one, we can order if hypothesis works and we can
+
+144
+00:21:16,399 --> 00:21:22,799
+order something from robot shop very fast. Yeah. Okay. Okay. Yeah. I am a bit reluctant to use the
+
+145
+00:21:22,799 --> 00:21:28,719
+step motor because I don't think the step motor won't be able to match the, yeah. They're not
+
+146
+00:21:28,719 --> 00:21:37,919
+back drivable and they can miss steps if it was allowed. So that's why we have just got one
+
+147
+00:21:38,000 --> 00:21:43,920
+motor now, which we got from pay you and we are still trying to figure out the cube marks motor
+
+148
+00:21:43,920 --> 00:21:51,279
+from 3DXR. I think you have got all the email conversations cc to you, right? We got the compliance
+
+149
+00:21:51,279 --> 00:21:59,039
+certificate recently and now we can, I have also registered today 3DXR as our registered supplier,
+
+150
+00:21:59,039 --> 00:22:05,440
+ask the ICT to register them. And meanwhile, I have also asked HALA to create a VCC now so that
+
+151
+00:22:05,440 --> 00:22:12,320
+we can order because we have got the compliance certificate for the motors. And if we can get
+
+152
+00:22:12,320 --> 00:22:19,120
+the motors through VCC and if ICT accepts the 3DXR as our supplier, so next time we can I think
+
+153
+00:22:19,120 --> 00:22:26,080
+directly order. Cool. That's good. Yeah. We need back drivable motors. That's the planetary gear,
+
+154
+00:22:26,080 --> 00:22:34,640
+right? So the one you you were ordering, it has a planetary gear. Yeah. I don't know what is that
+
+155
+00:22:35,200 --> 00:22:44,160
+I think it had a planetary, so you have a central gear and then other like 304 rotating gears and
+
+156
+00:22:44,160 --> 00:22:51,360
+that makes it back drivable. I think these are all mostly gearless motor, right? It has a
+
+157
+00:22:51,360 --> 00:23:02,400
+gear, a planetary gear. Okay. Okay. But it's I think the ratio is one is to six or one is to eight.
+
+158
+00:23:02,400 --> 00:23:09,200
+Yeah, one is just six and back drivable. Yes. Very very good. These are like these are the motors
+
+159
+00:23:09,200 --> 00:23:14,800
+are used to design the human rights robots actually, actual motors. Yeah. Yeah. Yeah. They use it for
+
+160
+00:23:14,800 --> 00:23:23,519
+all the human rights robots. Yeah. That's good. So yeah, when will it come? No, we have I have asked HALA to
+
+161
+00:23:23,519 --> 00:23:29,040
+create a VCC for us. Then I can order and I think it should be able to if we can get the VCC
+
+162
+00:23:29,039 --> 00:23:34,960
+fast and then I think the order takes about a day or two. It's in stock. Yeah. VCC takes usually about
+
+163
+00:23:36,159 --> 00:23:42,639
+four to five days. Yeah. So once I order, then I think it should be pretty fast. Yeah. Okay. Cool.
+
+164
+00:23:45,039 --> 00:23:48,240
+Yeah. Yeah. So Ben is right. Good.
+
+165
+00:23:48,720 --> 00:23:56,160
+The the the wearable side
+
+166
+00:23:58,720 --> 00:24:03,200
+maybe if you have a do you have a can trolling with?
+
+167
+00:24:04,960 --> 00:24:08,000
+The can trolling loaded so I've been recovering
+
+168
+00:24:08,480 --> 00:24:17,359
+parts, uh, obviously. Um, it does the wearable side. It's a different setup to the one in the paper
+
+169
+00:24:17,359 --> 00:24:24,720
+you showed. Instead, we've got a single fixed pulley and then, uh, do separate
+
+170
+00:24:24,720 --> 00:24:29,680
+brunette packed cables with motors, the motors can tension the springs. We just at which
+
+171
+00:24:30,799 --> 00:24:33,519
+seem to be easier to make. Okay. Okay.
+
+172
+00:24:34,240 --> 00:24:44,319
+So the critical thing is allows us to adapt the tension in the spring independently so you can
+
+173
+00:24:44,319 --> 00:24:54,079
+change where the equilibrium points is too much. Right. So just can you see the purple two purple ones
+
+174
+00:24:54,079 --> 00:25:01,440
+like so they they don't dry the joint right? So it is it is just just stiffness. Yeah. So this is
+
+175
+00:25:01,680 --> 00:25:06,240
+kind of what we are doing with the main manipulator also. Right Ben? I think you're using the same
+
+176
+00:25:06,240 --> 00:25:12,480
+way. So what we will be doing is like this will be feeding the cables when the joint moves.
+
+177
+00:25:13,360 --> 00:25:18,000
+Yeah. Just it won't be pulling any getting any force. So it's like just a super nice the two.
+
+178
+00:25:18,799 --> 00:25:26,160
+That's what we and the purple ones. So we will try to synchronize with the we have a motor
+
+179
+00:25:26,160 --> 00:25:31,279
+encoder here, right? We will try to synchronize it with that. In the encoder feedback.
+
+180
+00:25:31,359 --> 00:25:39,200
+And then control that motor. Yeah. Yeah. Okay. Yeah. We will that's what we are trying to test like
+
+181
+00:25:39,200 --> 00:25:45,440
+how what will be the latency between the two. Okay. Okay. That's the problem. Yeah.
+
+182
+00:25:45,440 --> 00:25:52,559
+There can be jitter coming from that like you know if there's any face like. Yeah. Right.
+
+183
+00:25:53,359 --> 00:26:03,359
+I am thinking of is there any mechanical way to couple them? So the the motor that drives the joints.
+
+184
+00:26:07,519 --> 00:26:15,759
+It's okay. So you mean like mechanical. But of course I think we are isolated from the joint.
+
+185
+00:26:15,759 --> 00:26:22,720
+Like so basically these tifters control is mounted on the on the shaft of this joint.
+
+186
+00:26:23,359 --> 00:26:33,839
+And then it always rotates with that. Yeah. So right now right now there the this pulley is actually
+
+187
+00:26:33,839 --> 00:26:44,240
+mounted on this joint. Yeah. And then and then let's say there is this motors are not powered.
+
+188
+00:26:44,240 --> 00:26:50,319
+So when you when we move this manipulator. So it will generate a bad driveable force to the motor.
+
+189
+00:26:50,319 --> 00:26:56,559
+Right. So that will add some extra stiffness to remove that. We will actively more move this
+
+190
+00:26:56,559 --> 00:27:01,759
+motors in the other direction so that they keep feeding the cables to the joints. So that we can
+
+191
+00:27:01,759 --> 00:27:10,240
+nullify that stiffness. That's the plan. Okay. Okay. Yeah. But then when when it comes to the
+
+192
+00:27:10,240 --> 00:27:20,319
+variable real variable thing. Yeah. We don't have motors. We can we can have motors with the back
+
+193
+00:27:20,319 --> 00:27:26,319
+right and then drive it through body and device when it is translated to him on head.
+
+194
+00:27:30,400 --> 00:27:30,720
+Okay.
+
+195
+00:27:30,880 --> 00:27:40,640
+But we can still have the encoder readings from the hand right. That is the actual hand joint and yeah.
+
+196
+00:27:40,640 --> 00:27:44,160
+And then translate that to the operators at the back.
+
+197
+00:27:46,640 --> 00:27:59,200
+Oh, I'm thinking just thinking like it looks like it is it is a it is a it's a big
+
+198
+00:27:59,200 --> 00:28:06,400
+intervention. So can we have a smaller motor which is almost bearable. Okay. And then have just
+
+199
+00:28:06,400 --> 00:28:10,880
+just give it the tag only like you know stiffness indicator only.
+
+200
+00:28:13,759 --> 00:28:20,640
+Good. Brother and giving the total stiffness required. Yeah. We are giving some delta theta only.
+
+201
+00:28:20,640 --> 00:28:26,480
+So it's like the movement. It's like the movement. Let's say it gets a disturbance right. We just
+
+202
+00:28:26,880 --> 00:28:33,279
+at that point there is a lag and we get the actual angle and then we can just apply some delta theta
+
+203
+00:28:33,279 --> 00:28:39,039
+in the opposite direction. So it just gives a tug that's the that's what actually I'm doing in simulation.
+
+204
+00:28:39,039 --> 00:28:40,559
+Yeah. So.
+
+205
+00:28:43,360 --> 00:28:48,799
+So right now this is the plan actually. So this is the actually joint following and we just give
+
+206
+00:28:48,799 --> 00:28:58,480
+the delta theta difference. That is coming from the bearable thing. That's a suit. Yeah.
+
+207
+00:29:01,039 --> 00:29:07,359
+Okay. So exosuit will give. So let's say the exosuit is following Q2 right. Q2 is the joint of
+
+208
+00:29:07,359 --> 00:29:13,599
+the elbow right. And let's say disturbance comes right. So we just give it like Q2 plus or Q2
+
+209
+00:29:13,599 --> 00:29:19,759
+minus delta theta and then it will just make those spring stiff in the other direction right.
+
+210
+00:29:19,759 --> 00:29:29,839
+That's your employee. So that stiffness we don't have to give the required total stiffness.
+
+211
+00:29:30,879 --> 00:29:41,599
+We can ask the joint to create the stiffness and then the stiffness signal you are giving from
+
+212
+00:29:41,599 --> 00:29:51,279
+the exosuit is just a error signal only. Let's say if your joint is already in the right stiffness
+
+213
+00:29:51,279 --> 00:30:00,319
+level it withdraws. It just stops giving you that delta theta or the stiffness command signal.
+
+214
+00:30:00,319 --> 00:30:11,199
+So just use the exosuit as a signal source. Okay. So otherwise like if we if we get the exosuit to
+
+215
+00:30:11,200 --> 00:30:19,680
+give that stiffness then the hand does nothing. Right. Okay. We are not getting the hand to work on that.
+
+216
+00:30:23,120 --> 00:30:29,519
+So when the hand is working properly so that I do does nothing. Does nothing right now it's
+
+217
+00:30:29,519 --> 00:30:35,120
+doing nothing because it's just feeding the cables in the other direction just to
+
+218
+00:30:36,079 --> 00:30:41,919
+feeding the cables in other direction. That's what it is doing. No, it's not fully fine. But the thing is
+
+219
+00:30:41,919 --> 00:30:48,879
+like we can then there's another step to minima kind of miniature eyes or make it lightweight so that
+
+220
+00:30:48,879 --> 00:30:55,679
+it is wearable on a human head. Okay. So the question is can we straight away jump to that?
+
+221
+00:30:55,680 --> 00:31:11,600
+The lightweight design where it generates basically is signal for the robot manipulator to act on that.
+
+222
+00:31:14,400 --> 00:31:17,840
+That means we need to remove this active coupling right.
+
+223
+00:31:18,559 --> 00:31:28,159
+Hmm. This coupling here. There can be a coupling but like not powerful motors. It is a simple.
+
+224
+00:31:32,240 --> 00:31:36,000
+You mean these two motors right purple? Yeah. Yeah. That is too much I think.
+
+225
+00:31:39,679 --> 00:31:43,839
+No, it's just for diagram actually. We are planning to use very simple motors, small motors.
+
+226
+00:31:43,839 --> 00:31:49,759
+Okay. Okay. Yeah. This is just what I have. It's just I made this is not the actual the cat diagram.
+
+227
+00:31:49,759 --> 00:31:53,039
+The cat drive ground. Okay. The actual cat diagram is the one used by Ben.
+
+228
+00:31:54,159 --> 00:32:00,480
+Right. But that's fine. Like I mean if we can have very light there are I think we already have them
+
+229
+00:32:00,480 --> 00:32:11,439
+in the lab like simple you couldn't bought a lot of them. Disc motors. Okay. Okay. So you're saying that
+
+230
+00:32:11,440 --> 00:32:15,440
+we've designed the exhaust suit in a lightweight manner and those small motors we just
+
+231
+00:32:17,200 --> 00:32:22,880
+but for the exhaust suit we need board and cables as well. So or maybe we can we can also or we can use
+
+232
+00:32:22,880 --> 00:32:28,320
+this cable. So we do the board and cables or we can route the pool cables.
+
+233
+00:32:29,600 --> 00:32:36,160
+Routing. I think routing is easier than boring. Yeah. Because it's like at the end it is just like
+
+234
+00:32:36,240 --> 00:32:45,200
+yarn routing. Yeah. But we make it as light as possible and then change the whole paradigm like
+
+235
+00:32:45,200 --> 00:32:53,279
+the exhaust suit is not not giving active talk. It is just giving a signal for the hand to work.
+
+236
+00:32:54,960 --> 00:32:55,360
+Okay.
+
+237
+00:32:59,920 --> 00:33:05,440
+So in the actual exhaust suit what I believe when we will get the small motors it's just gonna be
+
+238
+00:33:05,440 --> 00:33:11,279
+not doing it's gonna be actively working in the other direction right to just to keep the cables
+
+239
+00:33:11,279 --> 00:33:16,000
+a little bit taught right otherwise it will go slight. Then the hand feels that which way the
+
+240
+00:33:16,000 --> 00:33:22,480
+hand should be doing what the hand should be doing. Right. Yeah. It's like basically giving a
+
+241
+00:33:22,480 --> 00:33:24,799
+tug for you to move. Yeah.
+
+242
+00:33:30,000 --> 00:33:37,599
+Yeah with the mistake a lot of people are doing is they try to make the exhaust suit to work on
+
+243
+00:33:37,599 --> 00:33:46,400
+the movement rather than giving a signal. Yeah. Yeah. So we stay away from that.
+
+244
+00:33:47,040 --> 00:33:47,519
+Yeah.
+
+245
+00:33:49,040 --> 00:33:55,840
+Ben, Ben are you with us? Yes. Yeah. No. It matches what you were talking about.
+
+246
+00:33:57,200 --> 00:34:02,320
+When we talk about this last time a few weeks ago when you were training or it's more of the
+
+247
+00:34:02,320 --> 00:34:07,440
+assistive tool. Yeah. There's something other people are not trying. So other people try to overtake
+
+248
+00:34:07,440 --> 00:34:16,160
+the hand. We try to help the hand in a in a direct way. So giving it a signal. Okay.
+
+249
+00:34:16,159 --> 00:34:23,119
+This is what you should be doing. But sorry just to confirm you're still happy with the general
+
+250
+00:34:23,119 --> 00:34:30,079
+structure of the system. Yeah. Yeah. Yeah. Just make it light. Yeah. Yeah. Yeah. So
+
+251
+00:34:31,839 --> 00:34:37,199
+yeah. So it's another word the prototyping stage. So we could use that. Of course.
+
+252
+00:34:37,199 --> 00:34:43,679
+It's very easy to use. Yeah. Like I'm writing that or I will ask you can I don't know where we put
+
+253
+00:34:43,679 --> 00:34:52,480
+those motors like those tiny step of motors. You can use them. Okay. Yeah. Okay.
+
+254
+00:34:52,480 --> 00:34:58,000
+Because the other thing I need to ask you is about getting access to the robotics. Oh yeah.
+
+255
+00:34:58,000 --> 00:35:07,440
+That's what you have a general general general access. Yes. Okay. Then I can submit a request.
+
+256
+00:35:07,599 --> 00:35:17,039
+Yes. The Parker can you give an induction to the robotics area? Okay. I think I've already taken him and given.
+
+257
+00:35:17,039 --> 00:35:24,559
+You have given. Okay. So then I'll I had to submit a request. I will do that now. Okay.
+
+258
+00:35:38,000 --> 00:35:43,679
+Yeah. I've probably been using the ideas lab upstairs because mainly because of the access to 3G printers.
+
+259
+00:35:43,679 --> 00:35:52,559
+But you're useful to ask to the robotics. Yeah. Of course. I'm just checking if Becky updated the list.
+
+260
+00:35:55,360 --> 00:36:03,679
+Should be because I've got car access to the general basement space. When I give him an
+
+261
+00:36:03,679 --> 00:36:08,079
+induction. When I give him do I need to register or do something or just give him a normal. No,
+
+262
+00:36:08,079 --> 00:36:13,199
+no. I have to register in there. Okay. Okay. I will do that now.
+
+263
+00:36:20,000 --> 00:36:21,039
+Okay. So I think
+
+264
+00:36:21,039 --> 00:36:50,079
+I think I have to ask whether he got the general induction yet or not as well.
+
+265
+00:36:51,519 --> 00:36:57,920
+I don't think he has unless he's done it. Okay. Yeah. Once he's done, let me know.
+
+266
+00:37:01,199 --> 00:37:06,079
+Still fat produce us. Okay. I had to edit the list.
+
+267
+00:37:06,079 --> 00:37:32,719
+Yeah. Cool. Cool. I think. Then how do you pronounce yours the last name? So S U.
+
+268
+00:37:33,679 --> 00:37:46,319
+R T double E. Yeah. S U R D double E. I need to put it in the chat.
+
+269
+00:37:52,319 --> 00:37:55,199
+S U R D E ES. Okay. Yeah.
+
+270
+00:37:55,839 --> 00:37:58,319
+Yeah. Yeah. Yeah.
+
+271
+00:37:58,319 --> 00:38:00,480
+I think. Yeah.
+
+272
+00:38:00,480 --> 00:38:04,159
+Yeah. Cool. I did that.
+
+273
+00:38:07,439 --> 00:38:15,359
+Did you didn't did you get a silicon workshop? Do you need? No. I don't need it.
+
+274
+00:38:15,919 --> 00:38:18,719
+If I need it in the future, I can ask. Yeah. Let me know. I get an induction.
+
+275
+00:38:18,719 --> 00:38:26,480
+If you need that. And then I submit.
+
+276
+00:38:26,639 --> 00:38:33,119
+Okay.
+
+277
+00:38:48,400 --> 00:38:49,519
+Okay. I submitted.
+
+278
+00:38:49,519 --> 00:38:59,519
+So it will go to the college and they will do it.
+
+279
+00:38:59,519 --> 00:39:04,519
+Yeah, so I think it is good.
+
+280
+00:39:04,519 --> 00:39:18,519
+And then I think till the motors come, then maybe Ben can have a look at what the motor specifications, the bunker is ordering.
+
+281
+00:39:19,519 --> 00:39:25,519
+So those motors will be for the manipulator which actually not for the exo.
+
+282
+00:39:25,519 --> 00:39:30,519
+Yeah, for the exo we could for him to know like so what is happening.
+
+283
+00:39:30,519 --> 00:39:33,519
+And I have sent him the link.
+
+284
+00:39:33,519 --> 00:39:41,519
+Yeah, look at the planetary gears and then the arrangements.
+
+285
+00:39:41,519 --> 00:39:45,519
+It's interesting. It's very, very cool.
+
+286
+00:39:46,519 --> 00:39:51,519
+Yeah, I've used the planetary gears before, it's not a planetary gearbox.
+
+287
+00:39:51,519 --> 00:39:54,519
+You have, okay.
+
+288
+00:39:54,519 --> 00:39:57,519
+Nice, nice.
+
+289
+00:39:57,519 --> 00:39:59,519
+Yeah, so I think that's the scope.
+
+290
+00:39:59,519 --> 00:40:09,519
+And then the challenge is to synchronize the manipulator motors and this exosuit motors.
+
+291
+00:40:09,519 --> 00:40:12,519
+We'll see how that goes.
+
+292
+00:40:12,519 --> 00:40:18,519
+Yeah, I mean, if there is a direct coupling mechanical coupling that much is better, like if we can think of it.
+
+293
+00:40:18,519 --> 00:40:21,519
+But we can start from somewhere.
+
+294
+00:40:21,519 --> 00:40:22,519
+Sorry.
+
+295
+00:40:22,519 --> 00:40:30,519
+We want a mechanical coupling because isn't the manipulator meant to implement with the arms so you wouldn't necessarily be able to connect.
+
+296
+00:40:30,519 --> 00:40:32,519
+Yes, actually.
+
+297
+00:40:32,519 --> 00:40:38,519
+I guess you basically like something that stays passive to the joint.
+
+298
+00:40:38,519 --> 00:40:41,519
+And then given a command, it's different.
+
+299
+00:40:41,519 --> 00:40:43,519
+That's all.
+
+300
+00:40:43,519 --> 00:40:44,519
+Yeah.
+
+301
+00:40:44,519 --> 00:40:46,519
+Yeah, so that's effective.
+
+302
+00:40:46,519 --> 00:40:55,519
+Yeah, so I guess the problem with my setup is it needs to actively with the current design is it needs to actively adapt to keep.
+
+303
+00:40:55,519 --> 00:40:59,519
+That's the thing that if you can avoid that problem.
+
+304
+00:40:59,519 --> 00:41:06,519
+And then if you can have a passive thing we can plug into that joint.
+
+305
+00:41:06,519 --> 00:41:15,519
+It just is so compliant and it moves with the manipulator and so lightweight that it is not going to add too much inertia to the thing.
+
+306
+00:41:15,519 --> 00:41:20,519
+But when we just give a signal, it can stiffen.
+
+307
+00:41:20,519 --> 00:41:27,519
+But I you know what one thing we can do is like we can we can have an on-off stiffness.
+
+308
+00:41:27,519 --> 00:41:30,519
+Yeah, because it's just a signal.
+
+309
+00:41:30,519 --> 00:41:31,519
+Okay.
+
+310
+00:41:31,519 --> 00:41:33,519
+Right, the bunker.
+
+311
+00:41:33,519 --> 00:41:41,519
+Yeah, I mean the problem is like we have analog stiffness that needs changing right.
+
+312
+00:41:41,519 --> 00:41:48,519
+But actually what we can do is like we can have this spring kind of constant.
+
+313
+00:41:48,519 --> 00:41:59,519
+And then have a PWM motor like it's like a more like a stiffness modulated with the PWM signal.
+
+314
+00:42:00,519 --> 00:42:02,519
+Right.
+
+315
+00:42:02,519 --> 00:42:07,519
+We can we can we can check if it works.
+
+316
+00:42:07,519 --> 00:42:11,519
+So basically we on and off a stiffness.
+
+317
+00:42:11,519 --> 00:42:18,519
+But with a PWM signal.
+
+318
+00:42:18,519 --> 00:42:19,519
+Okay.
+
+319
+00:42:19,519 --> 00:42:20,519
+What do you think Ben?
+
+320
+00:42:20,519 --> 00:42:25,519
+So you know a PWM is just just driving a motor with them.
+
+321
+00:42:25,519 --> 00:42:34,519
+0 5 0 5 but like on and off cycle due to cycle is basically you know playing with inertia right.
+
+322
+00:42:34,519 --> 00:42:41,519
+Yeah, and then rather than playing with inertia how about like you know couple it with stiffness.
+
+323
+00:42:41,519 --> 00:42:47,519
+Diffness of the spring or stiffness of the joints stiffness of the spring was spring.
+
+324
+00:42:47,519 --> 00:42:50,519
+Yeah.
+
+325
+00:42:50,519 --> 00:42:55,519
+So this is just one spring.
+
+326
+00:42:55,519 --> 00:43:04,519
+We can have just one spring and then it is just adding a stiffness to the joint that all.
+
+327
+00:43:04,519 --> 00:43:09,519
+Yeah, because we all what you need is a stiffness signal.
+
+328
+00:43:09,519 --> 00:43:12,519
+It is not really a stiffness right.
+
+329
+00:43:12,519 --> 00:43:17,519
+So is this stiffness that stops the on from moving.
+
+330
+00:43:17,519 --> 00:43:21,519
+In that case why.
+
+331
+00:43:21,519 --> 00:43:27,519
+Just look at other options could you use a system other than a spring and a motor like I'm thinking what if you had like a break pad type thing.
+
+332
+00:43:27,519 --> 00:43:31,519
+So yeah, that is a damper right not just stiffness.
+
+333
+00:43:31,519 --> 00:43:40,519
+So so it is giving a damper like we can have a clutch that still you know switches right.
+
+334
+00:43:40,519 --> 00:43:48,519
+It is giving a damping effect but if you can have a spring loaded clutch for example.
+
+335
+00:43:48,519 --> 00:43:50,519
+Yeah, right that might be interesting.
+
+336
+00:43:50,519 --> 00:43:58,519
+So we can explore those those things because all what we need is a signal.
+
+337
+00:43:58,519 --> 00:44:09,519
+Is it a signal from where sorry from the off as a stiffness or impedance signal to the to the manipulator basically the robot manipulator suddenly feels that something is impeding it.
+
+338
+00:44:09,519 --> 00:44:16,519
+Oh, so it's so you use the motor is a force sensor rather than.
+
+339
+00:44:16,519 --> 00:44:33,519
+Yeah, it's not actually it is just giving a signal to the manipulator saying okay you should generate some stiffness and then I'm indicating you what you should be doing.
+
+340
+00:44:33,519 --> 00:44:39,519
+Okay, and how would the suit generate the stiffness.
+
+341
+00:44:39,519 --> 00:44:51,519
+The when you have the backgrabble borders we can change its its its begin or begin.
+
+342
+00:44:51,519 --> 00:44:54,519
+Like we can create that stiffness.
+
+343
+00:44:54,519 --> 00:45:01,519
+Actually we can have that stiffness change a mechanism in the in the way you have shown.
+
+344
+00:45:01,519 --> 00:45:07,519
+Okay, so this is the actual stiffness control mechanism.
+
+345
+00:45:07,519 --> 00:45:12,519
+Yeah, that is part of the manipulator right.
+
+346
+00:45:12,519 --> 00:45:20,519
+We need additional variable like a very lightweight variable thing that gives the signal.
+
+347
+00:45:20,519 --> 00:45:26,519
+How which will be changing the stiffness.
+
+348
+00:45:26,519 --> 00:45:35,519
+So sorry, so right now the exhaust would be our the motors and those those two cables are replicating the exhaust right.
+
+349
+00:45:35,519 --> 00:45:45,519
+Yeah, what I'm saying is rather than doing that we use these motors to do actual stiffness control like you know you have powerful motors there.
+
+350
+00:45:45,519 --> 00:45:48,519
+Yeah.
+
+351
+00:45:48,519 --> 00:45:50,519
+So you don't need the springs.
+
+352
+00:45:50,519 --> 00:45:53,519
+You can just have the like you.
+
+353
+00:45:53,519 --> 00:45:56,519
+You need the springs to give stiffness.
+
+354
+00:45:56,519 --> 00:46:00,519
+I mean if we cannot if cannot do that with.
+
+355
+00:46:00,519 --> 00:46:04,519
+I mean you are simulating co-contration of muscles right.
+
+356
+00:46:04,519 --> 00:46:12,519
+But then we have additional exhaust which is just giving the signal.
+
+357
+00:46:12,519 --> 00:46:24,519
+It is giving us stiffness signal till the the manipulator stiffness reaches the desired level.
+
+358
+00:46:24,519 --> 00:46:29,519
+Yeah, okay.
+
+359
+00:46:29,519 --> 00:46:33,519
+Right and then the exhaust would stop giving that signal.
+
+360
+00:46:33,519 --> 00:46:38,519
+When the manipulator reaches the right stiffness.
+
+361
+00:46:38,519 --> 00:46:48,519
+It's like a horse rider so you are you keep giving waves to the horse till it picks up the speed and then you stop.
+
+362
+00:46:48,519 --> 00:46:52,519
+What determines the correct stiffness.
+
+363
+00:46:52,519 --> 00:47:02,519
+Oh, that comes from that contraction theory algorithm.
+
+364
+00:47:02,519 --> 00:47:04,519
+I'm not.
+
+365
+00:47:04,519 --> 00:47:09,519
+Yeah, I can explain.
+
+366
+00:47:09,519 --> 00:47:11,519
+Yeah, I'm not really aware of.
+
+367
+00:47:11,519 --> 00:47:12,519
+Yeah, yeah, no, no, it's fine.
+
+368
+00:47:12,519 --> 00:47:19,519
+So I think it's a control algorithm that just generates a correct level of stiffness and damping.
+
+369
+00:47:19,519 --> 00:47:24,519
+And then now the robot has to.
+
+370
+00:47:24,519 --> 00:47:31,519
+Manipulate that and then but like we decouple that we are saying.
+
+371
+00:47:31,519 --> 00:47:34,519
+The brain cannot really.
+
+372
+00:47:34,519 --> 00:47:38,519
+The brain doesn't know how to generate that brain doesn't have that algorithm.
+
+373
+00:47:38,519 --> 00:47:40,519
+Let's say, okay.
+
+374
+00:47:40,519 --> 00:47:46,519
+So and the brain, even if it has it, it cannot generate that stiffness.
+
+375
+00:47:46,519 --> 00:47:56,519
+Now what we do is we have a artificial exhaust suit that has that algorithm of generating the contraction level.
+
+376
+00:47:56,519 --> 00:48:01,519
+And then it it teaches the brain how to get to that.
+
+377
+00:48:01,519 --> 00:48:04,519
+Right. So that also by giving a signal.
+
+378
+00:48:04,519 --> 00:48:09,519
+Okay, can you can you stiffer little bit more and things like that.
+
+379
+00:48:09,519 --> 00:48:12,519
+And then it is just a guide.
+
+380
+00:48:12,519 --> 00:48:16,519
+And the brain is trying to learn in the background.
+
+381
+00:48:16,519 --> 00:48:21,519
+So if the robot manipulator is let's say ideal brain.
+
+382
+00:48:21,519 --> 00:48:30,519
+It learns what the exhaust knows at some point.
+
+383
+00:48:30,519 --> 00:48:32,519
+That is what we are simulating.
+
+384
+00:48:32,519 --> 00:48:35,519
+Is that is that right?
+
+385
+00:48:35,519 --> 00:48:38,519
+Yes.
+
+386
+00:48:38,519 --> 00:48:44,519
+I'm just thinking like we will also consider the manipulator as our impaired arm, right?
+
+387
+00:48:44,519 --> 00:48:46,519
+Impair down with the.
+
+388
+00:48:46,519 --> 00:48:52,519
+Yeah, with the stiffness control mechanism as the brain that part of the brain that should be.
+
+389
+00:48:52,519 --> 00:48:53,519
+Yeah.
+
+390
+00:48:53,519 --> 00:48:54,519
+A stiffness control.
+
+391
+00:48:54,519 --> 00:48:58,519
+Let's say it is impaired and then it doesn't know.
+
+392
+00:48:58,519 --> 00:49:04,519
+Basically, it is getting a signal from outside to learn that impairment.
+
+393
+00:49:04,519 --> 00:49:09,519
+Oh, composite for that impaired.
+
+394
+00:49:09,519 --> 00:49:11,519
+Because the robot manipulator is ideal.
+
+395
+00:49:11,519 --> 00:49:16,519
+It will learn it as far as the signal comes.
+
+396
+00:49:16,519 --> 00:49:17,519
+Yeah.
+
+397
+00:49:17,519 --> 00:49:24,519
+What we are saying is we assume that the brain first doesn't know how to recover.
+
+398
+00:49:24,519 --> 00:49:29,519
+And then with the with the exhaust food that knows how to do the math.
+
+399
+00:49:29,519 --> 00:49:32,519
+We'll give the signals to it.
+
+400
+00:49:32,519 --> 00:49:37,519
+It's like, but we are starting the manipulator with a very weak spring here, right?
+
+401
+00:49:37,519 --> 00:49:38,519
+So it is already.
+
+402
+00:49:38,519 --> 00:49:41,519
+Yeah, that's like it has a baseline something.
+
+403
+00:49:41,519 --> 00:49:43,519
+Yeah, so it's very weak, right?
+
+404
+00:49:43,519 --> 00:49:51,519
+So if we there is always a lag between when we pull the cable here and then it reaches the position.
+
+405
+00:49:51,519 --> 00:49:52,519
+It's very weak, right?
+
+406
+00:49:52,519 --> 00:49:58,519
+And I'm sure that if it strikes something because the stiffness is so weak that it's going to be oscillating a lot, right?
+
+407
+00:49:58,519 --> 00:49:59,519
+If the damping is also.
+
+408
+00:49:59,519 --> 00:50:04,519
+Yeah, so at some point it should it should first start with that very weak thing.
+
+409
+00:50:04,519 --> 00:50:09,519
+And then it should it should come to the right level of stiffness.
+
+410
+00:50:09,519 --> 00:50:14,519
+Yeah, so when we add these two springs, so it is actually multiplying.
+
+411
+00:50:14,519 --> 00:50:16,519
+It is adding the effective stiffness.
+
+412
+00:50:16,519 --> 00:50:20,519
+Now it's going to be something like K effective R square, right?
+
+413
+00:50:20,519 --> 00:50:25,519
+Yeah, so there's real stiffness is coming from the two more test co-contracting.
+
+414
+00:50:25,519 --> 00:50:27,519
+Yeah, these two, right?
+
+415
+00:50:27,519 --> 00:50:30,519
+Yeah.
+
+416
+00:50:30,519 --> 00:50:34,519
+So those two pulling together will create the co-contraction.
+
+417
+00:50:34,519 --> 00:50:37,519
+Yeah, so this is the what it is.
+
+418
+00:50:37,519 --> 00:50:40,519
+So let's say when without it, it's going to move very.
+
+419
+00:50:40,519 --> 00:50:45,519
+It's going to move and not properly if it strikes something that's a disturbance.
+
+420
+00:50:45,519 --> 00:50:48,519
+And then at that time these motors will be activated.
+
+421
+00:50:48,519 --> 00:50:53,519
+And then it will just try to bring it back to the nominal position, right?
+
+422
+00:50:53,519 --> 00:50:54,519
+Yeah, yeah, at that.
+
+423
+00:50:54,519 --> 00:51:00,519
+So this is I think what we are doing, but I still didn't understand you said we need some like
+
+424
+00:51:00,519 --> 00:51:04,519
+instead of this kind of coupling, we need some active coupling, you know,
+
+425
+00:51:04,519 --> 00:51:08,519
+to make it from the episode because I was also thinking like.
+
+426
+00:51:08,519 --> 00:51:10,519
+No, there's also this separate thing now.
+
+427
+00:51:10,519 --> 00:51:14,519
+So this is this is the stiffness control mechanism.
+
+428
+00:51:14,519 --> 00:51:16,519
+Yeah.
+
+429
+00:51:16,519 --> 00:51:18,519
+And that is not the episode.
+
+430
+00:51:18,519 --> 00:51:21,519
+So that is basically.
+
+431
+00:51:21,519 --> 00:51:26,519
+Okay, so now we are simulating two parts of the brain, right?
+
+432
+00:51:26,519 --> 00:51:30,519
+So one part of the brain is motion control.
+
+433
+00:51:30,519 --> 00:51:34,519
+Yeah, it is just doing motion control, joint motion.
+
+434
+00:51:34,519 --> 00:51:38,519
+And then another part of the brain doing stiffness control.
+
+435
+00:51:38,519 --> 00:51:39,519
+Yeah.
+
+436
+00:51:39,519 --> 00:51:44,519
+And then there are two controllers independent controllers, one supporting the other, right?
+
+437
+00:51:44,519 --> 00:51:49,519
+So basically stiffness control is supporting the movement
+
+438
+00:51:49,519 --> 00:51:52,519
+to generate some stable force interaction.
+
+439
+00:51:52,519 --> 00:51:54,519
+Yeah.
+
+440
+00:51:54,519 --> 00:52:00,519
+Now say your stiffness control mechanism is now impaired.
+
+441
+00:52:00,519 --> 00:52:01,519
+Yeah.
+
+442
+00:52:01,519 --> 00:52:06,519
+Now it has to learn the best stiffness level given the disturbance.
+
+443
+00:52:06,519 --> 00:52:09,519
+It doesn't know how to do that.
+
+444
+00:52:09,519 --> 00:52:12,519
+Either it is weak or doesn't know.
+
+445
+00:52:12,519 --> 00:52:18,519
+And then now then we have a signal coming from the exhaustor which is the third layer.
+
+446
+00:52:18,519 --> 00:52:19,519
+Yeah.
+
+447
+00:52:19,519 --> 00:52:20,519
+Right.
+
+448
+00:52:20,519 --> 00:52:29,519
+And saying, okay, so like this is a reward or punish for something like a reward or a teaching signal.
+
+449
+00:52:29,519 --> 00:52:42,519
+Okay, given this disturbance, I will give you a stiffness signal so that you can try to learn that.
+
+450
+00:52:42,519 --> 00:52:48,519
+So it is sitting on top of all these things and then adding a stiffness to the joint.
+
+451
+00:52:48,519 --> 00:52:50,519
+We never needed it.
+
+452
+00:52:50,519 --> 00:53:02,519
+And then the purple motors should try to you know, follow that and kind of identify that.
+
+453
+00:53:02,519 --> 00:53:03,519
+Right.
+
+454
+00:53:03,519 --> 00:53:09,519
+So next time when there's a disturbance, if the purple motors does fairly a good job,
+
+455
+00:53:09,519 --> 00:53:12,519
+then the exhaustor doesn't do much.
+
+456
+00:53:12,519 --> 00:53:17,519
+So it just says, okay, passively stays there.
+
+457
+00:53:17,519 --> 00:53:19,519
+But is there something missing?
+
+458
+00:53:19,519 --> 00:53:24,519
+Then it'll activate that stiffness and give that signal.
+
+459
+00:53:24,519 --> 00:53:26,519
+Yeah.
+
+460
+00:53:26,519 --> 00:53:30,519
+So the exhaustor will be, so it's this is our hand, right?
+
+461
+00:53:30,519 --> 00:53:37,519
+So the exhaustor will be the main controller which will be controlling these two motors, right?
+
+462
+00:53:37,519 --> 00:53:42,519
+The exhaustor will be a third one, third addition.
+
+463
+00:53:42,519 --> 00:53:46,519
+So why do we then why do we have these springs for the manipulator?
+
+464
+00:53:46,519 --> 00:53:47,519
+We don't need them, right?
+
+465
+00:53:47,519 --> 00:53:55,519
+Then we can just have the as far as the motors are back drivable, then then you don't need them.
+
+466
+00:53:55,519 --> 00:54:00,519
+Yeah, for the if they are a step a motor, then you need them.
+
+467
+00:54:00,519 --> 00:54:02,519
+Yeah, it's a back drivable motor.
+
+468
+00:54:02,519 --> 00:54:07,519
+So so we don't need the manipulator springs, then, right?
+
+469
+00:54:07,519 --> 00:54:09,519
+You don't need them.
+
+470
+00:54:09,519 --> 00:54:14,519
+Yeah, we just need the springs for the this this other other two motors.
+
+471
+00:54:14,519 --> 00:54:15,519
+Exactly.
+
+472
+00:54:15,519 --> 00:54:16,519
+Yeah.
+
+473
+00:54:16,519 --> 00:54:18,519
+Yeah.
+
+474
+00:54:18,519 --> 00:54:25,519
+If you need the baseline stiffness, you can have it, but like it's duplicating efforts.
+
+475
+00:54:25,519 --> 00:54:26,519
+Yeah.
+
+476
+00:54:32,519 --> 00:54:41,519
+So what's the next steps?
+
+477
+00:54:41,519 --> 00:54:48,519
+I think let's get let's get these two work first.
+
+478
+00:54:48,519 --> 00:54:53,519
+And then we add the exhaustor later.
+
+479
+00:54:53,519 --> 00:54:54,519
+Yeah, I will.
+
+480
+00:54:54,519 --> 00:55:01,519
+Yeah, for the real arm, okay, we have the arm and then we put the exhaustor and this mechanism of the two motors will be on top of the.
+
+481
+00:55:01,519 --> 00:55:02,519
+Right?
+
+482
+00:55:02,519 --> 00:55:11,519
+Yeah, so the exhaustor will be a third addition to this.
+
+483
+00:55:11,519 --> 00:55:16,519
+No, I mean like the actual picture we're looking at.
+
+484
+00:55:16,519 --> 00:55:23,519
+Yeah, not from the this reward, you know, like like a human when he is wearing it.
+
+485
+00:55:23,519 --> 00:55:25,519
+Yeah, so the manipulator will be the arm.
+
+486
+00:55:25,519 --> 00:55:33,519
+So then he will wear the some some some kind of I don't know, he's going to wear some kind of textiles stuff, right?
+
+487
+00:55:33,519 --> 00:55:34,519
+Right.
+
+488
+00:55:34,519 --> 00:55:39,519
+And then on top of that, we will have these two cables and motors, right?
+
+489
+00:55:39,519 --> 00:55:42,519
+Right.
+
+490
+00:55:42,519 --> 00:55:49,519
+So we are just separating the stiffness control and motion control on purpose here.
+
+491
+00:55:49,519 --> 00:55:53,519
+Yeah.
+
+492
+00:55:53,519 --> 00:56:03,519
+And then we learn the two kind of complimentary mechanisms in parallel.
+
+493
+00:56:03,519 --> 00:56:06,519
+Sorry.
+
+494
+00:56:06,519 --> 00:56:16,519
+I think we can we can go backwards and then we can get your.
+
+495
+00:56:16,519 --> 00:56:24,519
+Contraction theory implemented in this manipulator without any exhaustor first and then see if it really works, right?
+
+496
+00:56:24,519 --> 00:56:25,519
+Yeah.
+
+497
+00:56:25,519 --> 00:56:31,519
+And then we pretend that we don't have that and then we get to the exhaustor.
+
+498
+00:56:31,519 --> 00:56:36,519
+Yeah, so we'll first use the contraction based controller to find out that stiffness, right?
+
+499
+00:56:36,519 --> 00:56:38,519
+Yeah.
+
+500
+00:56:38,519 --> 00:56:40,519
+That's actually the plan.
+
+501
+00:56:40,519 --> 00:56:43,519
+And then can focus on that.
+
+502
+00:56:43,519 --> 00:56:48,519
+This this this stiffness control.
+
+503
+00:56:48,519 --> 00:56:58,519
+Part first and then when we'll understand what the contraction control is doing and then once we are comfortable with that, then we can think of.
+
+504
+00:56:58,519 --> 00:57:05,519
+The exosuit part, which is which is a complication like so it is a add on.
+
+505
+00:57:05,519 --> 00:57:13,519
+I think we can keep thinking about it, but like we don't have to come up with the solution right now.
+
+506
+00:57:13,519 --> 00:57:20,519
+We have enough problem to solve in this this setup.
+
+507
+00:57:20,519 --> 00:57:21,519
+Yes.
+
+508
+00:57:21,519 --> 00:57:23,519
+I believe first problem is the the delay between those.
+
+509
+00:57:23,519 --> 00:57:25,519
+Yeah, the latency.
+
+510
+00:57:25,519 --> 00:57:28,519
+Yeah.
+
+511
+00:57:28,519 --> 00:57:36,519
+And check it was still productive for me to modify it and then get the step and motor.
+
+512
+00:57:36,519 --> 00:57:40,519
+I will continue to work on that.
+
+513
+00:57:40,519 --> 00:57:42,519
+There.
+
+514
+00:57:42,519 --> 00:57:46,519
+Shouldn't take more than a week.
+
+515
+00:57:46,519 --> 00:57:53,519
+And then we can look at the next.
+
+516
+00:57:53,519 --> 00:58:00,519
+Yeah.
+
+517
+00:58:00,519 --> 00:58:02,519
+Cool.
+
+518
+00:58:02,519 --> 00:58:03,519
+Yeah.
+
+519
+00:58:03,519 --> 00:58:09,519
+Yeah, let's let's do this and we'll learn lessons from this and then we can think of improvements later.
+
+520
+00:58:09,519 --> 00:58:14,519
+Let's get a basic thing to work first.
+
+521
+00:58:14,519 --> 00:58:17,519
+Yeah.
+
+522
+00:58:17,519 --> 00:58:18,519
+Yeah.
+
+523
+00:58:18,519 --> 00:58:19,519
+Cool.
+
+524
+00:58:19,519 --> 00:58:21,519
+Thank you.
+
+525
+00:58:21,519 --> 00:58:24,519
+Thank you.
+
+526
+00:58:24,519 --> 00:58:27,519
+Enjoy.
+
+527
+00:58:27,519 --> 00:58:29,519
+I brought your coffee.
+
+528
+00:58:29,519 --> 00:58:32,519
+I'll bring it to the office now.
+
+529
+00:58:32,519 --> 00:58:34,519
+Oh, thank you.
+
+530
+00:58:34,519 --> 00:58:38,519
+So you are how did you reach work today with the strike?
+
+531
+00:58:38,519 --> 00:58:41,519
+Yeah, there were strikes and then luckily I escaped it.
+
+532
+00:58:41,519 --> 00:58:44,519
+And then it's trying to start from 12 to 12.
+
+533
+00:58:44,519 --> 00:58:47,519
+So the way home I will I will have trouble.
+
+534
+00:58:47,519 --> 00:58:48,519
+Okay.
+
+535
+00:58:48,519 --> 00:58:50,519
+But the train is okay, right?
+
+536
+00:58:50,519 --> 00:58:52,519
+It's just the tube, right?
+
+537
+00:58:52,519 --> 00:58:53,519
+It's just a tube.
+
+538
+00:58:53,519 --> 00:58:54,519
+Yeah.
+
+539
+00:58:54,519 --> 00:59:00,519
+Maybe I had to find a way to get to what loop us 10 then.
+
+540
+00:59:00,519 --> 00:59:01,519
+Yeah.
+
+541
+00:59:01,519 --> 00:59:05,519
+I'll get the train.
+
+542
+00:59:05,519 --> 00:59:08,519
+Yeah, I will cycle.
+
+543
+00:59:08,519 --> 00:59:09,519
+I don't know.
+
+544
+00:59:09,519 --> 00:59:11,519
+All right.
+
+545
+00:59:11,519 --> 00:59:12,519
+Enjoy.
+
+546
+00:59:12,519 --> 00:59:13,519
+Oh, yeah, see.
+
+547
+00:59:13,519 --> 00:59:15,519
+He will work.
+
+548
+00:59:15,519 --> 00:59:19,519
+Yeah, but he's cycle to work every day.
+
+549
+00:59:19,519 --> 00:59:21,519
+Yeah, yeah, it's not the best.
+
+550
+00:59:21,519 --> 00:59:22,519
+The end of bicycle.
+
+551
+00:59:22,519 --> 00:59:23,519
+But I don't know.
+
+552
+00:59:23,519 --> 00:59:27,519
+I'm.
+
+553
+00:59:27,519 --> 00:59:29,519
+Must act my atmosphere.
+
+554
+00:59:29,519 --> 00:59:30,519
+I want you to borrow.
+
+555
+00:59:30,519 --> 00:59:33,519
+Okay, cool.
+
+556
+00:59:33,519 --> 00:59:35,519
+Otherwise, that walk.
+
+557
+00:59:35,519 --> 00:59:37,519
+Walk to what a loop.
+
+558
+00:59:37,519 --> 00:59:39,519
+Oh, I got how long you throw.
+
+559
+00:59:39,519 --> 00:59:41,519
+It's far right?
+
+560
+00:59:41,519 --> 00:59:44,519
+The I think I mean, there's buses as well.
+
+561
+00:59:44,519 --> 00:59:46,519
+Yeah, there are better buses.
+
+562
+00:59:46,519 --> 00:59:49,519
+I think we're 14 and then.
+
+563
+00:59:49,519 --> 00:59:50,519
+That's another one.
+
+564
+00:59:50,519 --> 00:59:51,519
+I can't remember.
+
+565
+00:59:51,519 --> 00:59:52,519
+Yeah, I'll.
+
+566
+00:59:52,519 --> 00:59:53,519
+Cool.
+
+567
+00:59:53,519 --> 00:59:55,519
+So I'll be in the coffee.
+
+568
+00:59:55,519 --> 00:59:56,519
+Okay.
+
+569
+00:59:56,519 --> 00:59:57,519
+See you.
+
+570
+00:59:57,519 --> 00:59:59,519
+Thank you.
+

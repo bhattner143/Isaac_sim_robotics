@@ -102,6 +102,12 @@ State ordering is **physics-driven**, not alphabetical:
   α = pitch, β = roll (gimbal angles)
 - **Extended System** (14D): adds `[F_x, F_y, x_ref, y_ref, ẋ_ref, ẏ_ref]`  
   Muscle forces + ZFT reference mass states
+- **SEA Cable Manipulator — Torque mode** (6D): `[q₁, q₂, q̇₁, q̇₂ | θ_m, θ̇_m]`  
+  Plant (4D): q₁ = shoulder (link1_base), q₂ = elbow (link2_link1)  
+  Motor (2D): θ_m = motor-side angle, θ̇_m = motor-side velocity  
+  Spring extension: δ = r_p·(θ_m/N − q₂), cable force: F = k_s·δ + b_c·δ̇
+- **SEA Cable Manipulator — Position mode** (5D): `[q₁, q₂, q̇₁, q̇₂ | l_m]`  
+  Motor (1D): l_m = cable displacement [m], servo: l̇_m = ω_m·(l_m_des − l_m)
 
 ### Linearization Method
 Use Drake's **automatic Jacobian** (NOT manual formulas):

@@ -84,8 +84,8 @@ class ComputedTorqueController(LeafSystem):
         self,
         plant: MultibodyPlant,
         manipulator: "CupManipulatorTendon",
-        Kp: float   = 400.0,   # position gain  [s⁻²]  → ωn = 20 rad/s
-        Kd: float   = 40.0,    # velocity gain  [s⁻¹]  → ζ = 1 (critically damped)
+        Kp   = 400.0,   # position gain  [s⁻²]  — scalar or (2,) array
+        Kd   = 40.0,    # velocity gain  [s⁻¹]  — scalar or (2,) array
         tau_max: float = 10.0, # torque saturation  [Nm]
     ) -> None:
         super().__init__()
@@ -93,8 +93,8 @@ class ComputedTorqueController(LeafSystem):
         self._manip    = manipulator
         self._ik       = manipulator.ik
         self._r_p      = manipulator.PULLEY_RADIUS
-        self._Kp       = float(Kp)
-        self._Kd       = float(Kd)
+        self._Kp       = np.atleast_1d(np.asarray(Kp, dtype=float))
+        self._Kd       = np.atleast_1d(np.asarray(Kd, dtype=float))
         self._tau_max  = float(tau_max)
 
         # Private plant context for kinematics / inverse-dynamics queries.
@@ -326,8 +326,8 @@ class SEACableController(LeafSystem):
         self._k_s      = float(k_s)
         self._b_c      = float(b_c)
         self._omega_m  = float(omega_m)
-        self._Kp       = float(Kp)
-        self._Kd       = float(Kd)
+        self._Kp       = np.atleast_1d(np.asarray(Kp, dtype=float))
+        self._Kd       = np.atleast_1d(np.asarray(Kd, dtype=float))
         self._tau_max  = float(tau_max)
         self._dt       = float(dt)
         self._r_p      = manipulator.PULLEY_RADIUS

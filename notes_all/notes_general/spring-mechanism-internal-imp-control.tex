@@ -1,0 +1,158 @@
+\section*{Simple Explanation of the Paper}
+
+The main idea of the paper is that a robot can improve its perception of its own body by changing its internal stiffness. This is called \textbf{internal impedance control}. In simple words, impedance means how stiff or compliant a joint is when it moves or interacts with the environment.
+
+In this work, the authors study a two-link robot arm with a variable-stiffness joint. The goal is to estimate the joint angle \( \theta_2 \) of the upper link by using only the torque measured at the base, denoted by \( \tau_f \).
+
+\subsection*{Why stiffness matters}
+
+If the joint is too stiff, changes in motion may not produce enough useful variation in the sensed signal. If the joint is too soft, the motion may become less reliable or too noisy. Therefore, there can exist an \textbf{optimal stiffness} that makes the torque signal more informative about the true joint angle.
+
+So the idea is:
+
+\[
+\text{Choose stiffness} \;\rightarrow\; \text{get better torque signal} \;\rightarrow\; \text{estimate angle more accurately}
+\]
+
+\subsection*{Robot setup}
+
+The robot has:
+\begin{itemize}
+    \item a base link of length \( l_1 \),
+    \item an upper link of length \( l_2 \),
+    \item a variable-stiffness joint between them,
+    \item springs whose pre-tension is adjusted by changing the anchor position \( x \).
+\end{itemize}
+
+Changing \( x \) changes the stiffness of the joint. The robot measures:
+\begin{itemize}
+    \item base torque \( \tau_f \),
+    \item actual joint angle \( \theta_2 \) for validation.
+\end{itemize}
+
+\subsection*{Basic intuition}
+
+The robot wants to know the angle \( \theta_2 \), but it does not directly use the angle sensor for estimation. Instead, it tries to infer the angle from the torque at the base.
+
+This means the robot depends on the relationship
+
+\[
+\tau_f = f(\theta_2, x)
+\]
+
+where \( x \) is the stiffness setting.
+
+For some values of \( x \), this relationship is more informative than for others. If different angles produce very similar torque values, then estimation becomes difficult. If each angle gives a more distinct torque value, then estimation becomes easier.
+
+\subsection*{Simple example}
+
+Suppose the robot uses two different stiffness settings.
+
+\paragraph{Case 1: poor stiffness setting}
+Let \( x = 6 \,\text{cm} \). Assume:
+\[
+\theta_2 = -5^\circ \Rightarrow \tau_f \approx 10
+\]
+\[
+\theta_2 = -2^\circ \Rightarrow \tau_f \approx 10
+\]
+\[
+\theta_2 = -8^\circ \Rightarrow \tau_f \approx 11
+\]
+
+In this case, similar torque values correspond to different angles. So if the sensor reads \( \tau_f = 10 \), the robot cannot estimate \( \theta_2 \) accurately.
+
+\paragraph{Case 2: better stiffness setting}
+Let \( x = 4.8 \,\text{cm} \). Assume:
+\[
+\theta_2 = -5^\circ \Rightarrow \tau_f = 10
+\]
+\[
+\theta_2 = -2^\circ \Rightarrow \tau_f = 6
+\]
+\[
+\theta_2 = -8^\circ \Rightarrow \tau_f = 14
+\]
+
+Now the torque values are much more distinguishable. So if the robot measures \( \tau_f = 10 \), it can more confidently estimate that the angle is near \( -5^\circ \).
+
+Therefore, \( x = 4.8 \,\text{cm} \) gives better perception than \( x = 6 \,\text{cm} \).
+
+\subsection*{Static memory primitives}
+
+The authors first calibrate the robot in static conditions. For each stiffness setting \( x \), they record the relationship between torque and angle. These stored relationships are called \textbf{static memory primitives}.
+
+You can think of them as lookup curves:
+
+\[
+x=4 \Rightarrow \tau_f = f_1(\theta_2)
+\]
+\[
+x=5 \Rightarrow \tau_f = f_2(\theta_2)
+\]
+\[
+x=6 \Rightarrow \tau_f = f_3(\theta_2)
+\]
+
+Later, during movement, the robot compares the measured torque with these stored curves to estimate the angle.
+
+\subsection*{Information gain}
+
+The paper uses \textbf{transfer entropy} to measure how much useful information the torque signal provides about the angle.
+
+The information gain is written as
+
+\[
+G = P(\tau_f \mid x, \theta_2)\log
+\frac{P(\tau_f \mid x, \theta_2)}
+{P(\tau_f \mid x_{ini}, \theta_2)}
+\]
+
+where:
+\begin{itemize}
+    \item \( G \) is the information gain,
+    \item \( x \) is a candidate stiffness setting,
+    \item \( x_{ini} \) is the initial stiffness setting,
+    \item \( \tau_f \) is the torque signal,
+    \item \( \theta_2 \) is the joint angle.
+\end{itemize}
+
+A larger value of \( G \) means that the chosen stiffness gives more useful information for estimating the joint angle.
+
+\subsection*{Optimization idea}
+
+The robot searches for the best stiffness value
+
+\[
+x_{best} = \arg\max_x G
+\]
+
+This means it chooses the stiffness that maximizes information gain.
+
+After finding \( x_{best} \), the robot uses the corresponding static memory primitive to estimate the angle:
+
+\[
+\theta_2^{pred}
+\]
+
+from the measured torque \( \tau_f \).
+
+\subsection*{Human analogy}
+
+This is similar to how humans handle an object. If we want to estimate the weight or shape of something, we do not keep our arm completely rigid or completely loose. Instead, we adjust our muscle stiffness and move slightly so that the sensory feedback becomes more informative.
+
+Thus, the same principle is applied here:
+
+\[
+\text{better body stiffness} \Rightarrow \text{better sensory information}
+\]
+
+\subsection*{Conclusion}
+
+The paper shows that internal impedance is not only useful for motion control, but also for perception. By adjusting joint stiffness, the robot can gain more information from its sensors and estimate its internal state more accurately.
+
+In short, the central message is:
+
+\[
+\boxed{\text{A robot can improve proprioception by choosing the stiffness that maximizes information gain.}}
+\]

@@ -1,0 +1,233 @@
+{
+  "name": "manipulator_cable",
+  "urdf_path": "model_using_onshape_to_robot/manipulator_cable/manipulator_cable_obj.urdf",
+  "L1_m": 0.334804,
+  "L2_m": 0.19000000000000006,
+  "ee_offset_in_link2_m": [
+    0.19,
+    0.0,
+    0.0515
+  ],
+  "ee_position_in_world_at_q0_m": [
+    0.524804,
+    -3.1223442947989566e-16,
+    0.3215489999999999
+  ],
+  "pulley_pitch_radius_m": 0.0477464829275686,
+  "links": [
+    {
+      "name": "base_mate",
+      "mass_kg": 0.896478,
+      "com_in_body_m": [
+        7.86381e-05,
+        -0.054697,
+        0.0143065
+      ],
+      "inertia_about_com_kg_m2": {
+        "Ixx": 0.007331006122365097,
+        "Iyy": 0.0009386810231322149,
+        "Izz": 0.007775534186784522,
+        "Ixy": 3.736356273685625e-06,
+        "Ixz": -2.502660003171717e-06,
+        "Iyz": 0.000673711122745379
+      }
+    },
+    {
+      "name": "pulley_htd_5m_60t",
+      "mass_kg": 5.31309,
+      "com_in_body_m": [
+        0.0455629,
+        -2.16864e-06,
+        0.158199
+      ],
+      "inertia_about_com_kg_m2": {
+        "Ixx": 0.16689859754022454,
+        "Iyy": 0.23311325470435051,
+        "Izz": 0.07173555721410087,
+        "Ixy": 2.21517839122312e-05,
+        "Ixz": -0.05719318043892184,
+        "Iyz": 7.121737274340822e-06
+      }
+    },
+    {
+      "name": "link2_tendon",
+      "mass_kg": 0.519667,
+      "com_in_body_m": [
+        0.109246,
+        -1.38742e-06,
+        -0.0156533
+      ],
+      "inertia_about_com_kg_m2": {
+        "Ixx": 0.00036986182387142836,
+        "Iyy": 0.009038455599915275,
+        "Izz": 0.008822673778044495,
+        "Ixy": 9.192687152798844e-08,
+        "Ixz": 0.0007010009640188705,
+        "Iyz": -2.802929727781252e-07
+      }
+    }
+  ],
+  "joints": [
+    {
+      "name": "link1_base",
+      "type": "revolute",
+      "damping_Nm_s_per_rad": 0.1,
+      "default_angle_rad": 0.0,
+      "position_in_world_at_q0_m": [
+        4.04133e-18,
+        -1.79471e-33,
+        0.048
+      ],
+      "rpy_in_world_at_q0_rad": [
+        -2.9582283945787943e-31,
+        3.45127e-31,
+        -4.4062e-16
+      ]
+    },
+    {
+      "name": "link2_link1",
+      "type": "revolute",
+      "damping_Nm_s_per_rad": 0.1,
+      "default_angle_rad": 0.0,
+      "position_in_world_at_q0_m": [
+        0.334804,
+        -2.1533273847999992e-16,
+        0.270049
+      ],
+      "rpy_in_world_at_q0_rad": [
+        -2.0249073360891847e-27,
+        4.4408900000000036e-16,
+        -5.100089e-16
+      ]
+    }
+  ],
+  "pulleys": [
+    {
+      "name": "drive_pulley",
+      "parent_body": "pulley_htd_5m_60t",
+      "position_in_parent_body_m": [
+        0.0141884,
+        0.0,
+        0.266049
+      ],
+      "position_in_world_at_q0_m": [
+        0.014188400000000004,
+        -6.251692807999923e-18,
+        0.31404899999999997
+      ],
+      "pitch_radius_m": 0.0477464829275686,
+      "belt_teeth": 60,
+      "belt_pitch_m": 0.005
+    },
+    {
+      "name": "idler_left",
+      "parent_body": "pulley_htd_5m_60t",
+      "position_in_parent_body_m": [
+        0.253146,
+        0.0165029,
+        0.198249
+      ],
+      "position_in_world_at_q0_m": [
+        0.253146,
+        0.01650289999999989,
+        0.246249
+      ],
+      "pitch_radius_m": 0.0,
+      "belt_teeth": 0,
+      "belt_pitch_m": 0.0
+    },
+    {
+      "name": "idler_right",
+      "parent_body": "pulley_htd_5m_60t",
+      "position_in_parent_body_m": [
+        0.256914,
+        -0.015,
+        0.201849
+      ],
+      "position_in_world_at_q0_m": [
+        0.256914,
+        -0.015000000000000112,
+        0.249849
+      ],
+      "pitch_radius_m": 0.0,
+      "belt_teeth": 0,
+      "belt_pitch_m": 0.0
+    },
+    {
+      "name": "big_pulley",
+      "parent_body": "link2_tendon",
+      "position_in_parent_body_m": [
+        0.0,
+        0.0,
+        0.00450711
+      ],
+      "position_in_world_at_q0_m": [
+        0.334804,
+        -2.153327384799908e-16,
+        0.27455610999999996
+      ],
+      "pitch_radius_m": 0.0477464829275686,
+      "belt_teeth": 60,
+      "belt_pitch_m": 0.005
+    }
+  ],
+  "cable_anchors": [
+    {
+      "name": "cable_start_right_green",
+      "parent_body": "pulley_htd_5m_60t",
+      "position_in_parent_body_m": [
+        -0.0238116,
+        0.0,
+        0.203849
+      ],
+      "position_in_world_at_q0_m": [
+        -0.023811599999999995,
+        1.0491867192000059e-17,
+        0.251849
+      ]
+    },
+    {
+      "name": "cable_start_left_red",
+      "parent_body": "pulley_htd_5m_60t",
+      "position_in_parent_body_m": [
+        -0.0238116,
+        0.0,
+        0.200249
+      ],
+      "position_in_world_at_q0_m": [
+        -0.023811599999999995,
+        1.0491867192000057e-17,
+        0.248249
+      ]
+    },
+    {
+      "name": "cable_end_left",
+      "parent_body": "link2_tendon",
+      "position_in_parent_body_m": [
+        0.12,
+        0.05,
+        -0.0182
+      ],
+      "position_in_world_at_q0_m": [
+        0.454804,
+        0.049999999999999725,
+        0.25184899999999993
+      ]
+    },
+    {
+      "name": "cable_end_right",
+      "parent_body": "link2_tendon",
+      "position_in_parent_body_m": [
+        0.12,
+        -0.05,
+        -0.0218
+      ],
+      "position_in_world_at_q0_m": [
+        0.45480399999999993,
+        -0.05000000000000028,
+        0.24824899999999994
+      ]
+    }
+  ],
+  "motor": null
+}

@@ -50,6 +50,38 @@
             "cwd": "${workspaceFolder}"
         },
         {
+            "name": "🦿 Exo+SEA: Deactivated (passive)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_exo_pydrake.py",
+            "python": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "--duration", "10.0",
+                "--num-laps", "3"
+            ],
+            "env": { "KMP_DUPLICATE_LIB_OK": "TRUE" },
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "🦿 Exo+SEA: Activated at 5s",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_exo_pydrake.py",
+            "python": "/opt/anaconda3/envs/pydrake/bin/python",
+            "args": [
+                "--exo-activate",
+                "--exo-activate-time", "5.0",
+                "--duration", "10.0",
+                "--num-laps", "3"
+            ],
+            "env": { "KMP_DUPLICATE_LIB_OK": "TRUE" },
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
             "name": "🦾 Isaac 5.1: Cart-Pendulum Controller",
             "type": "debugpy",
             "request": "launch",

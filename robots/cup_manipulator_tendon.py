@@ -16,12 +16,13 @@ Dependency direction (no cycle):
     cup_manipulator_tendon  ->  test_drive_pulley  ->  robots.cup_manipulator
 """
 
+import json
 import re
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 
 # Ensure project root is on sys.path so this file can be run directly
 # via the VS Code play button (cwd = workspaceFolder).
@@ -52,10 +53,90 @@ from cable import (
     PulleyBase,
     BigPulley,
     CableRig,
+    DrivePulley,
+    IdlerL,
+    IdlerR,
+    CableStartPointR,
+    CableStartPointL,
+    CableEndPointL,
+    CableEndPointR,
     _parse_urdf_part_origins,
 )
 
 from termcolor import colored
+
+
+# ── Config export dataclasses ───────────────────────────────────────────
+
+@dataclass
+class LinkExport:
+    """Link mass / inertia properties extracted from Drake MultibodyPlant."""
+    name: str
+    mass_kg: float
+    com_in_body_m: List[float]
+    inertia_about_com_kg_m2: Dict[str, float]
+
+
+@dataclass
+class JointExport:
+    """Joint type, damping, and world-frame pose at zero configuration."""
+    name: str
+    type: str
+    damping_Nm_s_per_rad: float
+    default_angle_rad: float
+    position_in_world_at_q0_m: List[float]
+    rpy_in_world_at_q0_rad: List[float]
+
+
+@dataclass
+class PulleyExport:
+    """Pulley geometry: body-frame and world-frame positions, belt specs."""
+    name: str
+    parent_body: str
+    position_in_parent_body_m: List[float]
+    position_in_world_at_q0_m: List[float]
+    pitch_radius_m: float
+    belt_teeth: int
+    belt_pitch_m: float
+
+
+@dataclass
+class CableAnchorExport:
+    """Cable start / end anchor: body-frame and world-frame positions."""
+    name: str
+    parent_body: str
+    position_in_parent_body_m: List[float]
+    position_in_world_at_q0_m: List[float]
+
+
+@dataclass
+class MotorExport:
+    """Motor model parameters (gear ratio, inertia, torque limits)."""
+    name: str
+    gear_ratio: float
+    peak_torque_joint_Nm: float
+    continuous_torque_joint_Nm: float
+    rotor_inertia_motor_kg_m2: float
+    reflected_inertia_joint_kg_m2: float
+    viscous_damping_joint_Nm_s_per_rad: float
+
+
+@dataclass
+class RobotConfigExport:
+    """Full robot configuration for JSON export."""
+    name: str
+    urdf_path: str
+    L1_m: float
+    L2_m: float
+    ee_offset_in_link2_m: List[float]
+    ee_position_in_world_at_q0_m: List[float]
+    pulley_pitch_radius_m: float
+    links: List[LinkExport]
+    joints: List[JointExport]
+    pulleys: List[PulleyExport]
+    cable_anchors: List[CableAnchorExport]
+    motor: Optional[MotorExport]
+
 
 class CupManipulatorTendon(RobotBase):
     """Cable-driven (tendon) 2-DOF manipulator for Drake.
@@ -379,6 +460,177 @@ class CupManipulatorTendon(RobotBase):
             start_idx = 0
         seg_pts = pts[start_idx:]
         return float(np.sum(np.linalg.norm(np.diff(seg_pts, axis=0), axis=1)))
+
+    # ── Config export ───────────────────────────────────────────────────────
+
+    def export_config_json(
+        self,
+        plant: MultibodyPlant,
+        output_path: Optional[str] = None,
+    ) -> dict:
+        """Export all robot properties to a JSON config file.
+
+        Extracts link masses / inertias, joint properties, pulley geometry,
+        cable anchor positions, motor parameters, and frame transforms at
+        zero configuration (q1 = q2 = 0).  Positions are given in **both**
+        the parent body frame and the world frame.
+
+        Must be called **after** the plant is finalised.
+
+        Args:
+            plant:       Finalised MultibodyPlant.
+            output_path: Override JSON file path.  Defaults to
+                         ``<urdf_dir>/config_json/config_cup_manipulator_tendon.json``.
+
+        Returns:
+            dict — the exported config (also written to disk).
+        """
+        ctx = plant.CreateDefaultContext()
+        nq  = plant.num_positions(self.model_instance)
+        plant.SetPositions(ctx, self.model_instance, np.zeros(nq))
+        world = plant.world_frame()
+
+        # ── Link properties ──────────────────────────────────────────────
+        link_exports: List[LinkExport] = []
+        for body_name in [self.BASE_LINK_NAME, "pulley_htd_5m_60t", self.LINK2_NAME]:
+            body = plant.GetBodyByName(body_name, self.model_instance)
+            M    = body.CalcSpatialInertiaInBodyFrame(ctx)
+            mass = float(M.get_mass())
+            com  = M.get_com()               # p_BoBcm_B
+            G    = M.get_unit_inertia()      # about CoM, body frame
+            mom  = G.get_moments()           # [Gxx, Gyy, Gzz]
+            prod = G.get_products()          # [Gxy, Gxz, Gyz]
+            link_exports.append(LinkExport(
+                name=body_name,
+                mass_kg=mass,
+                com_in_body_m=[float(c) for c in com],
+                inertia_about_com_kg_m2={
+                    "Ixx": mass * float(mom[0]),
+                    "Iyy": mass * float(mom[1]),
+                    "Izz": mass * float(mom[2]),
+                    "Ixy": mass * float(prod[0]),
+                    "Ixz": mass * float(prod[1]),
+                    "Iyz": mass * float(prod[2]),
+                },
+            ))
+
+        # ── Joint properties + world-frame poses at q=0 ─────────────────
+        joint_exports: List[JointExport] = []
+        for jname in self.joint_names:
+            joint = self.get_joint_by_name(plant, jname)
+            cfg   = self.config.joint_configs.get(jname)
+            damping = cfg.damping if cfg else 0.0
+            if self.motor is not None:
+                damping = self.motor.viscous_damping_joint
+            X_WJ = plant.CalcRelativeTransform(ctx, world, joint.frame_on_child())
+            rpy  = RollPitchYaw(X_WJ.rotation())
+            joint_exports.append(JointExport(
+                name=jname,
+                type="revolute",
+                damping_Nm_s_per_rad=float(damping),
+                default_angle_rad=float(cfg.position) if cfg else 0.0,
+                position_in_world_at_q0_m=X_WJ.translation().tolist(),
+                rpy_in_world_at_q0_rad=[
+                    float(rpy.roll_angle()),
+                    float(rpy.pitch_angle()),
+                    float(rpy.yaw_angle()),
+                ],
+            ))
+
+        # ── Pulley geometry ──────────────────────────────────────────────
+        _pulley_specs = [
+            (DrivePulley, "drive_pulley"),
+            (IdlerL,      "idler_left"),
+            (IdlerR,      "idler_right"),
+            (BigPulley,   "big_pulley"),
+        ]
+        pulley_exports: List[PulleyExport] = []
+        for cls, label in _pulley_specs:
+            body = plant.GetBodyByName(cls.body_name, self.model_instance)
+            p_B  = np.array(cls.vis_xyz).reshape(3, 1)
+            p_W  = plant.CalcPointsPositions(ctx, body.body_frame(), p_B, world)
+            pulley_exports.append(PulleyExport(
+                name=label,
+                parent_body=cls.body_name,
+                position_in_parent_body_m=list(cls.vis_xyz),
+                position_in_world_at_q0_m=p_W.ravel().tolist(),
+                pitch_radius_m=float(getattr(cls, 'pitch_radius', 0.0)),
+                belt_teeth=int(getattr(cls, 'belt_teeth', 0)),
+                belt_pitch_m=float(getattr(cls, 'belt_pitch_m', 0.0)),
+            ))
+
+        # ── Cable anchors ────────────────────────────────────────────────
+        _anchor_specs = [
+            (CableStartPointR, "cable_start_right_green"),
+            (CableStartPointL, "cable_start_left_red"),
+            (CableEndPointL,   "cable_end_left"),
+            (CableEndPointR,   "cable_end_right"),
+        ]
+        anchor_exports: List[CableAnchorExport] = []
+        for cls, label in _anchor_specs:
+            body = plant.GetBodyByName(cls.body_name, self.model_instance)
+            p_B  = np.array(cls.vis_xyz).reshape(3, 1)
+            p_W  = plant.CalcPointsPositions(ctx, body.body_frame(), p_B, world)
+            anchor_exports.append(CableAnchorExport(
+                name=label,
+                parent_body=cls.body_name,
+                position_in_parent_body_m=list(cls.vis_xyz),
+                position_in_world_at_q0_m=p_W.ravel().tolist(),
+            ))
+
+        # ── Motor ────────────────────────────────────────────────────────
+        motor_export: Optional[MotorExport] = None
+        if self.motor is not None:
+            m = self.motor
+            motor_export = MotorExport(
+                name=type(m).__name__,
+                gear_ratio=float(m.gear_ratio),
+                peak_torque_joint_Nm=float(m.peak_torque_joint),
+                continuous_torque_joint_Nm=float(m.continuous_torque_joint),
+                rotor_inertia_motor_kg_m2=float(m.rotor_inertia_motor),
+                reflected_inertia_joint_kg_m2=float(m.reflected_inertia_joint),
+                viscous_damping_joint_Nm_s_per_rad=float(m.viscous_damping_joint),
+            )
+
+        # ── EE world position at q=0 ────────────────────────────────────
+        ee_frame = self.get_end_effector_frame(plant)
+        ee_pos   = plant.CalcPointsPositions(
+            ctx, ee_frame, np.zeros((3, 1)), world,
+        ).ravel().tolist()
+
+        # ── Link lengths ─────────────────────────────────────────────────
+        L1, L2 = self.ik.get_link_lengths(plant)
+
+        # ── Assemble ─────────────────────────────────────────────────────
+        config = RobotConfigExport(
+            name=self.config.name,
+            urdf_path=str(self.config.urdf_path),
+            L1_m=float(L1),
+            L2_m=float(L2),
+            ee_offset_in_link2_m=self.EE_XYZ_LINK2.tolist(),
+            ee_position_in_world_at_q0_m=ee_pos,
+            pulley_pitch_radius_m=float(self.PULLEY_RADIUS),
+            links=link_exports,
+            joints=joint_exports,
+            pulleys=pulley_exports,
+            cable_anchors=anchor_exports,
+            motor=motor_export,
+        )
+        result = asdict(config)
+
+        # ── Save to disk ─────────────────────────────────────────────────
+        if output_path is None:
+            out_dir = Path(self.config.urdf_path).parent / "config_json"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            output_path = str(out_dir / "config_cup_manipulator_tendon.json")
+        else:
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_path, "w") as f:
+            json.dump(result, f, indent=2)
+
+        print(colored(f"✓ Robot config exported → {output_path}", "green"))
+        return result
 
 class CupManipulatorIK:
     """Inverse kinematics and Jacobian solver for the CupManipulatorTendon.

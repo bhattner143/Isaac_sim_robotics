@@ -172,6 +172,21 @@ _sim.add_argument("--move-duration",  type=float, default=3.0,
                   help="Move-to-start preamble duration [s].  0 to disable.")
 _sim.add_argument("--no-meshcat",     action="store_true",
                   help="Disable Meshcat 3-D visualisation")
+_sim.add_argument("--num-laps",       type=int, default=0, metavar="N",
+                  help="Number of laps before auto-stopping (0 = infinite, Ctrl-C to stop).")
+
+_dist = parser.add_argument_group("disturbance (collision)")
+_dist.add_argument("--disturbance",      action="store_true", default=False,
+                   help="Inject a disturbance to simulate collision.")
+_dist.add_argument("--disturbance-time", type=float, default=7.0, metavar="T_DIST",
+                   help="Time [s] at which the disturbance is applied.")
+_dist.add_argument("--disturbance-mode", choices=["vel", "pos"], default="vel",
+                   help="Disturbance type: 'vel'=velocity impulse Δq̇₂ (link strikes object) [default], "
+                        "'pos'=position jump Δq₂.")
+_dist.add_argument("--disturbance-dqdot", type=float, default=60.0, metavar="DQDOT_DEGS",
+                   help="Velocity impulse Δq̇₂ [deg/s]. Used when --disturbance-mode=vel.")
+_dist.add_argument("--disturbance-dq",   type=float, default=15.0, metavar="DQ_DEG",
+                   help="Position jump Δq₂ [deg]. Used when --disturbance-mode=pos.")
 
 _rob = parser.add_argument_group("robot mount")
 _rob.add_argument("--tilt-roll",       type=float, default=0.0)
@@ -544,6 +559,8 @@ def run_simulation(
     _chunk         = 0.1
     _lap_prev      = 0
     _move_reported = args.move_duration <= 0.0
+    _dist_applied  = not args.disturbance       # skip if not requested
+    _max_laps      = args.num_laps              # 0 = infinite
     try:
         while True:
             t_now = sim_ctx.get_time()
@@ -553,10 +570,47 @@ def run_simulation(
                     f"  ✓ Move-to-start complete at t={t_now:.2f} s — trajectory tracking begins.",
                     "green",
                 ))
+            # ── Disturbance injection ──────────────────────────────────
+            if not _dist_applied and t_now >= args.disturbance_time:
+                _dist_applied = True
+                _pc = plant.GetMyMutableContextFromRoot(sim_ctx)
+                if args.disturbance_mode == "vel":
+                    _dqdot_rad = np.deg2rad(args.disturbance_dqdot)
+                    _v_before = manipulator.get_velocities_user_order(plant, _pc)
+                    _v_after = _v_before.copy()
+                    _v_after[1] += _dqdot_rad
+                    manipulator.set_velocities_user_order(plant, _pc, _v_after)
+                    print(colored(
+                        f"  💥 DISTURBANCE at t={t_now:.2f} s  "
+                        f"q̇₂: {np.rad2deg(_v_before[1]):.1f} → "
+                        f"{np.rad2deg(_v_after[1]):.1f} °/s "
+                        f"(Δq̇₂ = +{args.disturbance_dqdot:.1f}°/s) [vel impulse]",
+                        "red",
+                    ))
+                else:
+                    _dq_rad = np.deg2rad(args.disturbance_dq)
+                    _q_before = manipulator.get_positions_user_order(plant, _pc)
+                    _q_after = _q_before.copy()
+                    _q_after[1] += _dq_rad        # q₂ jump
+                    manipulator.set_positions_user_order(plant, _pc, _q_after)
+                    print(colored(
+                        f"  💥 DISTURBANCE at t={t_now:.2f} s  "
+                        f"q₂: {np.rad2deg(_q_before[1]):.1f}° → "
+                        f"{np.rad2deg(_q_after[1]):.1f}° "
+                        f"(Δq₂ = +{args.disturbance_dq:.1f}°) [pos jump]",
+                        "red",
+                    ))
             _lap_now = int(max(0.0, t_now - args.move_duration) / args.duration)
             if _lap_now > _lap_prev:
                 _lap_prev = _lap_now
                 print(colored(f"  Lap {_lap_now} complete  (t={t_now:.1f} s)", "cyan"))
+                if _max_laps > 0 and _lap_now >= _max_laps:
+                    print(colored(
+                        f"\n  ✓ {_max_laps} lap(s) done — auto-stopping."
+                        f"\n  Generating plots...",
+                        "yellow",
+                    ))
+                    break
             simulator.AdvanceTo(t_now + _chunk)
             _viz_tick()
     except KeyboardInterrupt:
@@ -619,6 +673,7 @@ def run_simulation(
         k_s=ks, omega_m=omega_m, b_c=b_c, label=label,
         r_p=manipulator.PULLEY_RADIUS, nq=nq,
         L1=L1, L2=L2,
+        t_disturbance=args.disturbance_time if args.disturbance else None,
     )
 
 
@@ -699,6 +754,13 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
     zeta = args.ct_kd / (2.0 * wn) if wn > 0 else 0.0
     ks_label = f"k_s = {d_s['k_s']:.0f} N/m"
     rid_info = f"  vs  k_s = {data_rigid['k_s']:.0f} N/m (rigid)" if data_rigid else ""
+
+    t_dist = d_s.get("t_disturbance", None)
+
+    def _dist_vline(ax):
+        """Draw a red vertical line at the disturbance time, if present."""
+        if t_dist is not None:
+            ax.axvline(t_dist, color="r", ls="-", lw=1.5, alpha=0.7)
 
     def _pct_ylim(*arrays, pct=99.0, margin=0.15):
         all_vals = np.concatenate([a.ravel() for a in arrays])
@@ -809,6 +871,12 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
     ax.set_aspect('equal')
     ax.set_title('EE Path'); ax.set_xlabel('X [m]'); ax.set_ylabel('Y [m]')
     ax.legend(fontsize=7); ax.grid(True, alpha=0.4)
+
+    # Disturbance markers on all time-series axes (skip EE path [2,2])
+    for row in range(3):
+        for col in range(3):
+            if not (row == 2 and col == 2):  # skip XY path plot
+                _dist_vline(axes1[row, col])
 
     fig1.tight_layout()
 
@@ -969,6 +1037,11 @@ def plot_sea_results(data_spring: dict, data_rigid: dict = None):
     axes2[5][1].set_title("EE tracking error |p_act − p_ref|")
     axes2[5][1].set_ylabel("[mm]"); axes2[5][1].set_xlabel("Time [s]")
     axes2[5][1].legend(fontsize=7); axes2[5][1].grid(True, alpha=0.4)
+
+    # Disturbance markers on all time-series axes in fig2
+    for row in range(6):
+        for col in range(2):
+            _dist_vline(axes2[row][col])
 
     fig2.tight_layout(rect=[0, 0, 1, 0.95])
 

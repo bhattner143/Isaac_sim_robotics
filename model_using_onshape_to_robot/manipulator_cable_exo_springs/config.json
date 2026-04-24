@@ -1,0 +1,20 @@
+{
+    // OnShape assembly URL
+    "url": "https://cad.onshape.com/documents/b39b411822989851cca3e813/w/467ae2e9d0332de97ab9273b/e/7c7c756798b0544d5800e865",
+    
+    // Output format: "urdf" or "mujoco"
+    "output_format": "urdf",
+    
+    // Output filename (extension added automatically)
+    "output_filename": "manipulator_cable_exo_springs",
+    
+    // Directory where STL/mesh files are stored
+    "assets_directory": "assets",
+    
+    // Robot name used in URDF
+    "robot_name": "manipulator_cable_exo_springs",
+    
+
+    
+
+}
