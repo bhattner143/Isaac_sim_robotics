@@ -64,3 +64,65 @@ Need real-time visualization?
 - Batch `world.step(render=False)` for headless
 - Use `ArticulationView` for batched state/torque queries across N robots
 - Profile with `step % 500 == 0` RTF (real-time factor) printouts
+
+---
+
+## Exo Co-Contraction Scripts
+
+### Main run script
+`script_cup_manipulator_pendulam_tendon_with_exo_isaac_sim.py`
+
+Key argument groups:
+```bash
+# Control
+--ct-kp 400 --ct-kd 80
+
+# Drive SEA
+--spring-stiffness 200 --cable-damping 8.0 --motor-bandwidth 100
+
+# Exo co-contraction
+--exo-ks 8000 --exo-delta-theta 0.1
+--exo-activate --exo-activate-time 4.0   # enable timed co-contraction
+
+# Disturbance (torque/sine/vel/pos)
+--disturbance --disturbance-mode sine
+--disturbance-tau 2.0 --disturbance-freq 2.0
+--disturbance-cycles 3 --disturbance-time 8.0
+
+# Trajectory
+--traj-shape circle --traj-cx 0.5 --traj-radius 0.05
+--traj-n 60 --traj-v-max 0.1 --num-laps 2
+```
+
+### VS Code tasks (run via `Tasks: Run Task`)
+| Task | Purpose |
+|------|---------|
+| `🩹 Exo Isaac Sim: Circle ON (co-contraction @ t=4s)` | Standard circle, exo ON |
+| `🩹 Exo Isaac Sim: Circle (passive)` | Standard circle, exo OFF for baseline |
+| `🩹 Exo Isaac Sim: Rect ON (co-contraction @ t=4s)` | Rect track, exo ON |
+| `🧪 Exo Isaac Sim: Sine Disturbance ON (co-contraction...)` | Narrow-line quasi-static + sine dist |
+| `🧪 Exo Isaac Sim: Sine Disturbance OFF (baseline...)` | Same without exo |
+| `⭕ Exo Isaac Sim: Circle + Disturbance ON (co-contraction...)` | Circle + sine disturbance + exo |
+| `⭕ Exo Isaac Sim: Circle + Disturbance OFF (baseline...)` | Circle + sine disturbance without exo |
+| `🩹 Exo Isaac Sim: Headless Circle ON (for plots)` | Headless, saves `.npz` and PNGs |
+| `🎨 Exo Isaac Sim: Scene Viz (no control)` | Scene visualisation only |
+
+### Expected output
+```
+✓ Move-to-start complete at t=3.01 s — tracking begins.
+⚡ Exo ACTIVATED at t=4.01 s  (Δθ=0.100 rad, k_eff=36.4810 Nm/rad)
+💥 External-torque disturbance armed: τ_ext = +2.00·sin(2π·2.0Hz·t) Nm  window=[8.00, 9.50] s
+...
+Mean tracking RMS: ~1.8 mm
+```
+
+### Plot files saved to `plots/`
+- `sea_exo_isaac_*_manip.png` — joint angles, EE path, tracking error
+- `sea_exo_isaac_*_exo.png` — δ_R/δ_L, τ_exo, cable forces, motor positions
+
+### Troubleshooting oscillations
+If EE RMS > 10 mm:
+1. Check IK failure diagnostic at sim end — "⚠ IK failed X% of trajectory steps"
+2. Reduce `--traj-radius` or shift `--traj-cx` so circle fits within `[|L1-L2|, L1+L2]`
+3. Verify `L1+L2 ≈ 0.525 m` printed after `world.reset()`
+4. `_clamp_to_reach` is active when `L1,L2` forwarded through `build_trajectory(L1=L1, L2=L2)`

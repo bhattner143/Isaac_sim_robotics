@@ -25,6 +25,35 @@ from typing import Tuple, Optional
 from scipy.interpolate import CubicSpline
 
 
+def _clamp_to_reach(
+    ee_x: np.ndarray,
+    ee_y: np.ndarray,
+    r_max: float,
+    r_min: float,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Clamp EE waypoints to the reachable annulus [r_min, r_max].
+
+    Ports ``controller/trajectory_drake._clamp_to_reach`` so the pure-NumPy
+    trajectories used by Isaac Sim share the PyDrake clamping behaviour.
+    Without this, circles whose radius exceeds ``L1+L2`` would push the IK
+    into a failure region, freezing ``q_des`` and exciting the SEA/exo
+    springs about a stale anchor → visible high-frequency oscillation.
+    """
+    ee_x = np.asarray(ee_x, dtype=float).copy()
+    ee_y = np.asarray(ee_y, dtype=float).copy()
+    _r = np.hypot(ee_x, ee_y)
+    _far = _r > r_max
+    if _far.any():
+        ee_x[_far] *= r_max * 0.97 / _r[_far]
+        ee_y[_far] *= r_max * 0.97 / _r[_far]
+    _close = _r < r_min + 0.01
+    if _close.any():
+        _r_c = np.maximum(_r[_close], 1e-6)
+        ee_x[_close] *= (r_min + 0.01) / _r_c
+        ee_y[_close] *= (r_min + 0.01) / _r_c
+    return ee_x, ee_y
+
+
 class LoopingCubicTrajectory:
     """C² cubic spline trajectory that loops with period T.
 
@@ -139,7 +168,13 @@ class RectTrajectory:
 
 
 class CircleTrajectory:
-    """Circular trajectory in XY plane."""
+    """Circular trajectory in XY plane.
+
+    If ``L1`` and ``L2`` are supplied, waypoints are clamped to the
+    reachable annulus ``[|L1-L2|, L1+L2]`` so the Isaac-Sim trajectory
+    matches the PyDrake-side ``build_circle_trajectory`` behaviour and
+    IK never fails silently along the path.
+    """
 
     def __init__(
         self,
@@ -148,6 +183,8 @@ class CircleTrajectory:
         radius: float = 0.1,
         N: int = 60,
         lap_duration: float = 10.0,
+        L1: Optional[float] = None,
+        L2: Optional[float] = None,
     ):
         self.N = N
         self.lap_duration = lap_duration
@@ -155,6 +192,11 @@ class CircleTrajectory:
         angles = np.linspace(0, 2 * np.pi, N + 1, endpoint=True)
         ee_x = cx + radius * np.cos(angles)
         ee_y = cy + radius * np.sin(angles)
+
+        if L1 is not None and L2 is not None:
+            r_max = float(L1 + L2)
+            r_min = float(abs(L1 - L2))
+            ee_x, ee_y = _clamp_to_reach(ee_x, ee_y, r_max, r_min)
 
         self.ee_x_tgt = ee_x[:N]
         self.ee_y_tgt = ee_y[:N]
@@ -183,12 +225,19 @@ class LineTrajectory:
         radius: float = 0.1,
         N: int = 60,
         lap_duration: float = 10.0,
+        L1: Optional[float] = None,
+        L2: Optional[float] = None,
     ):
         self.N = N
         self.lap_duration = lap_duration
 
         ee_x = np.linspace(cx - radius, cx + radius, N)
         ee_y = np.full(N, cy)
+
+        if L1 is not None and L2 is not None:
+            r_max = float(L1 + L2)
+            r_min = float(abs(L1 - L2))
+            ee_x, ee_y = _clamp_to_reach(ee_x, ee_y, r_max, r_min)
 
         self.ee_x_tgt = ee_x
         self.ee_y_tgt = ee_y

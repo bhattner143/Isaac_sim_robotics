@@ -173,6 +173,9 @@ _sim.add_argument("--move-duration", type=float, default=3.0,
 _sim.add_argument("--no-meshcat", action="store_true", help="Disable Meshcat 3-D visualisation")
 _sim.add_argument("--no-show", action="store_true",
                   help="Do not block on plt.show() (for sweeps / headless runs).")
+_sim.add_argument("--log-npz", type=str, default=None,
+                  help="Optional path to dump simulation logs as .npz (for "
+                       "pydrake-vs-Isaac comparison via compare_exo_pydrake_vs_isaac.py).")
 
 # Robot
 _rob = parser.add_argument_group("robot mount")
@@ -1410,6 +1413,21 @@ def main():
         print(colored(f"  Meshcat: {meshcat.web_url()}", "green"))
 
     data = run_simulation(meshcat)
+
+    # Optional log dump for pydrake-vs-Isaac comparison.
+    if args.log_npz:
+        from pathlib import Path as _P
+        out = _P(args.log_npz).expanduser()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        _np_dump = {k: v for k, v in data.items() if isinstance(v, np.ndarray)}
+        _np_dump["t_disturbance"] = np.array([
+            data["t_disturbance"] if data["t_disturbance"] is not None else -1.0
+        ])
+        _np_dump["r_p"] = np.array([data["r_p"]])
+        _np_dump["r_exo"] = np.array([data["r_exo"]])
+        np.savez(str(out), **_np_dump)
+        print(colored(f"  💾 PyDrake logs saved: {out}", "green"))
+
     plot_results(data)
 
 
