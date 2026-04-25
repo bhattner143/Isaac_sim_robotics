@@ -845,6 +845,7 @@
                 "--disturbance", "--disturbance-mode", "sine",
                 "--disturbance-tau", "2.0", "--disturbance-freq", "1",
                 "--disturbance-cycles", "1", "--disturbance-time", "8.0",
+                "--exo-dist-sync",
                 "--exo-ks", "8000", "--exo-delta-theta", "0.1",
                 "--exo-activate-time", "4.0", "--exo-activate",
                 "--num-laps", "1"
@@ -919,6 +920,7 @@
                 "--disturbance-cycles", "3", "--disturbance-time", "8.0",
                 "--exo-ks", "8000", "--exo-delta-theta", "0.5",
                 "--exo-activate-time", "4.0", "--exo-activate", 
+                "--exo-dist-sync",
                 "--num-laps", "1"
             ],
             "options": {
@@ -984,7 +986,9 @@
                 "--disturbance-tau", "2.0", "--disturbance-freq", "2.0",
                 "--disturbance-cycles", "3", "--disturbance-time", "8.0",
                 "--exo-ks", "8000", "--exo-delta-theta", "0.1",
-                "--exo-activate-time", "4.0", "--no-exo-activate"
+                "--exo-activate-time", "4.0", "--no-exo-activate", 
+                "--exo-dist-sync"
+
             ],
             "options": {
                 "cwd": "${workspaceFolder}",

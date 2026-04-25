@@ -149,6 +149,10 @@ _exo.add_argument("--exo-e-off", type=float, default=2.0, metavar="DEG",
                   help="Reactive mode: elbow error threshold to deactivate [deg]. Default: 2°")
 _exo.add_argument("--exo-t-hold", type=float, default=0.5, metavar="T_HOLD",
                   help="Reactive mode: seconds error must stay below e_off before deactivating. Default: 0.5")
+_exo.add_argument("--exo-dist-sync", action="store_true", default=False,
+                  help="Disturbance-sync mode: exo activates exactly at --disturbance-time "
+                       "and returns to transparency when the disturbance window ends. "
+                       "Requires --disturbance.")
 
 # CT gains
 _ct = parser.add_argument_group("computed-torque gains")
@@ -448,6 +452,49 @@ class _ExoReactiveSource(LeafSystem):
             out.SetFromVector(np.array([0.0, 0.0]))
 
 
+# ─── _ExoDisturbanceSyncSource ───────────────────────────────────────────────
+# PURPOSE:
+#   Disturbance-synchronised exosuit command source.  Activates co-contraction
+#   exactly when the disturbance begins and returns to transparency
+#   (encoder-tracking) as soon as the disturbance window closes.
+#   Models a system with perfect foreknowledge of when a collision or external
+#   load occurs (e.g. a scripted test or a known impact time).
+#
+# USED IN CURRENT IMPLEMENTATION: CONDITIONAL — only when --exo-dist-sync is
+#   passed on the CLI.  Named 'ExoCmd_dist_sync' in the diagram.
+#
+# SIGNAL FLOW:
+#   _ExoDisturbanceSyncSource → SEAExoActuator.activate_cmd
+#
+# BEHAVIOUR:
+#   • t < t_dist or t ≥ t_dist + dist_dur:
+#       output = [0.0, 0.0]   → transparency (motors track encoder)
+#   • t_dist ≤ t < t_dist + dist_dur:
+#       output = [1.0, Δθ]    → co-contraction active
+#
+# OUTPUT PORT:
+#   'cmd'  [2]  [activated (0/1), Δθ (rad)]
+class _ExoDisturbanceSyncSource(LeafSystem):
+    """Exo command source that mirrors the disturbance window exactly.
+
+    Outputs [1.0, delta_theta] during [t_dist, t_dist + dist_dur],
+    and [0.0, 0.0] otherwise (transparency / encoder-tracking mode).
+    """
+    def __init__(self, t_dist: float, dist_dur: float, delta_theta: float):
+        super().__init__()
+        self._t_on   = float(t_dist)
+        self._t_off  = float(t_dist) + float(dist_dur)
+        self._dtheta = float(delta_theta)
+        self.DeclareVectorOutputPort("cmd", 2, self._calc)
+
+    def _calc(self, ctx, out):
+        t = ctx.get_time()
+        if self._t_on <= t < self._t_off:
+            out.SetFromVector(np.array([1.0, self._dtheta]))
+        else:
+            out.SetFromVector(np.array([0.0, 0.0]))
+
+
 # ─── _ActuationSum ───────────────────────────────────────────────────────────
 # PURPOSE:
 #   Final torque mixer before the plant.  Combines three independent torque
@@ -707,7 +754,7 @@ def run_simulation(meshcat) -> dict:
     )
     ext_tau_src.set_name("ExtTorque")
 
-    # Exo command source — reactive (error-triggered) or timed
+    # Exo command source — reactive (error-triggered), dist-sync, or timed
     if args.exo_reactive:
         exo_cmd = builder.AddSystem(
             _ExoReactiveSource(
@@ -719,6 +766,15 @@ def run_simulation(meshcat) -> dict:
             ),
         )
         exo_cmd.set_name("ExoCmd_reactive")
+    elif args.exo_dist_sync:
+        exo_cmd = builder.AddSystem(
+            _ExoDisturbanceSyncSource(
+                t_dist=args.disturbance_time,
+                dist_dur=args.disturbance_dur,
+                delta_theta=args.exo_delta_theta,
+            ),
+        )
+        exo_cmd.set_name("ExoCmd_dist_sync")
     else:
         exo_cmd = builder.AddSystem(
             _ExoCommandSource(
@@ -1076,7 +1132,7 @@ def plot_results(data: dict):
     r_p      = data["r_p"]
     r_exo    = data["r_exo"]
 
-    t_act  = args.exo_activate_time
+    t_act  = args.disturbance_time if args.exo_dist_sync else args.exo_activate_time
     t_dist = data.get("t_disturbance", None)
 
     # ── Derived signals ──────────────────────────────────────────────────
@@ -1123,6 +1179,11 @@ def plot_results(data: dict):
     if args.exo_reactive:
         _exo_label = "EXO: REACTIVE"
         _exo_tag   = "exo_reactive"
+    elif args.exo_dist_sync:
+        _exo_label = (f"EXO: DIST-SYNC  "
+                      f"(t={args.disturbance_time:.1f}\u2013"
+                      f"{args.disturbance_time + args.disturbance_dur:.1f} s)")
+        _exo_tag   = "exo_dist_sync"
     elif not args.no_exo_activate:
         _exo_label = f"EXO: ON  (t_act={args.exo_activate_time:.1f} s)"
         _exo_tag   = "exo_on"
