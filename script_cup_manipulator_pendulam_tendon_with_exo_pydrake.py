@@ -175,6 +175,10 @@ _sim.add_argument("--num-laps", type=int, default=3, metavar="N",
 _sim.add_argument("--move-duration", type=float, default=3.0,
                   help="Move-to-start preamble [s]. 0 to disable.")
 _sim.add_argument("--no-meshcat", action="store_true", help="Disable Meshcat 3-D visualisation")
+_sim.add_argument("--record", action="store_true", default=False,
+                  help="Record robot body poses for Meshcat replay (note: cable geometry "
+                       "is not captured in the recording and will appear frozen during replay). "
+                       "Default: off — live visualization only.")
 _sim.add_argument("--no-show", action="store_true",
                   help="Do not block on plt.show() (for sweeps / headless runs).")
 _sim.add_argument("--log-npz", type=str, default=None,
@@ -196,26 +200,31 @@ _dist.add_argument("--disturbance", action="store_true", default=False,
                    help="Inject a disturbance to simulate collision.")
 _dist.add_argument("--disturbance-time", type=float, default=7.0, metavar="T_DIST",
                    help="Time [s] at which the disturbance is applied.")
-_dist.add_argument("--disturbance-mode", choices=["vel", "pos", "torque", "sine"], default="vel",
+_dist.add_argument("--disturbance-mode",
+                   choices=["vel", "pos", "torque", "sine", "pulse", "square"], default="vel",
                    help="Disturbance type: 'vel'=velocity impulse Δq̇₂ (brief kick), "
                         "'pos'=position jump Δq₂, "
                         "'torque'=sustained external torque (push-and-hold, best for showing exo stiffness), "
-                        "'sine'=sinusoidal external torque (high-frequency, shows passive bandwidth).")
+                        "'sine'=sinusoidal external torque (high-frequency, shows passive bandwidth), "
+                        "'pulse'=single short rectangular pulse of width --disturbance-pulse-width, "
+                        "'square'=alternating square wave at --disturbance-freq for --disturbance-dur (or N cycles).")
 _dist.add_argument("--disturbance-dqdot", type=float, default=60.0, metavar="DQDOT_DEGS",
                    help="Velocity impulse Δq̇₂ [deg/s]. Used when --disturbance-mode=vel.")
 _dist.add_argument("--disturbance-dq", type=float, default=15.0, metavar="DQ_DEG",
                    help="Position jump Δq₂ [deg]. Used when --disturbance-mode=pos.")
 _dist.add_argument("--disturbance-tau", type=float, default=2.0, metavar="TAU_EXT",
-                   help="External torque amplitude [Nm] on joint 2. Used for --disturbance-mode=torque|sine.")
+                   help="External torque amplitude [Nm] on joint 2. Used for torque|sine|pulse|square.")
 _dist.add_argument("--disturbance-dur", type=float, default=1.5, metavar="T_DUR",
-                   help="Duration [s] the external torque is applied (torque/sine modes). "
+                   help="Duration [s] the external torque is applied (torque/sine/square modes). "
                         "Overridden by --disturbance-cycles when both are supplied.")
 _dist.add_argument("--disturbance-freq", type=float, default=3.0, metavar="F_HZ",
-                   help="Sinusoid frequency [Hz] for --disturbance-mode=sine.")
+                   help="Frequency [Hz] for sine|square modes.")
 _dist.add_argument("--disturbance-cycles", type=float, default=1, metavar="N_CYCLES",
-                   help="Number of sine cycles to apply (sine mode). "
+                   help="Number of cycles to apply (sine|square modes). "
                         "Sets disturbance-dur = N_CYCLES / disturbance-freq, "
                         "overriding --disturbance-dur.")
+_dist.add_argument("--disturbance-pulse-width", type=float, default=0.1, metavar="T_PULSE",
+                   help="Width [s] of a single rectangular pulse for --disturbance-mode=pulse.")
 
 # Trajectory
 _traj = parser.add_argument_group("trajectory")
@@ -237,9 +246,12 @@ _traj.add_argument("--traj-corner-blend", type=float, default=0.35)
 
 args = parser.parse_args()
 
-# --disturbance-cycles overrides --disturbance-dur for sine mode
-if args.disturbance_cycles is not None:
+# --disturbance-cycles overrides --disturbance-dur for sine/square modes
+if args.disturbance_cycles is not None and args.disturbance_mode in ("sine", "square"):
     args.disturbance_dur = args.disturbance_cycles / args.disturbance_freq
+# pulse mode uses --disturbance-pulse-width as its duration
+if args.disturbance_mode == "pulse":
+    args.disturbance_dur = args.disturbance_pulse_width
 
 # ─── Expand per-joint CT gains ──────────────────────────────────────
 # Accept 1 value (broadcast) or 2 values [shoulder, elbow]
@@ -580,27 +592,32 @@ class _ExternalTorqueSource(LeafSystem):
     """Time-windowed external torque applied to joint 2 (the elbow).
 
     Represents an external disturbance (e.g. someone pushing the forearm,
-    a payload bumping the arm).  Supports two shapes:
+    a payload bumping the arm).  Supports four shapes:
 
     * ``torque``: constant amplitude τ_ext for t ∈ [t_start, t_start+dur].
       Best for showing co-contraction stiffness — steady-state deflection
       under load is τ/(k_CT_eff + k_exo_eff).
     * ``sine``:   τ_ext · sin(2π f t) for t ∈ [t_start, t_start+dur].
       Best for showing passive bandwidth advantage above CT cutoff.
+    * ``pulse``:  single short rectangular pulse of width ``duration``.
+      Equivalent to ``torque`` but conceptually a brief impact.
+    * ``square``: τ_ext · sign(sin(2π f t)) — alternating square wave
+      for t ∈ [t_start, t_start+dur]. Sharp edges excite high-frequency
+      modes; useful as a harsher periodic test than ``sine``.
 
     If ``enabled=False`` the port outputs 0 at all times.
     """
     def __init__(
         self,
         enabled:   bool,
-        shape:     str,         # 'torque' or 'sine'
+        shape:     str,         # 'torque' | 'sine' | 'pulse' | 'square'
         amplitude: float,       # [Nm]
         t_start:   float,       # [s]
         duration:  float,       # [s]
-        freq_hz:   float = 0.0, # used for 'sine'
+        freq_hz:   float = 0.0, # used for 'sine' and 'square'
     ):
         super().__init__()
-        self._on     = bool(enabled) and shape in ("torque", "sine")
+        self._on     = bool(enabled) and shape in ("torque", "sine", "pulse", "square")
         self._shape  = shape
         self._amp    = float(amplitude)
         self._t0     = float(t_start)
@@ -613,8 +630,14 @@ class _ExternalTorqueSource(LeafSystem):
         if (not self._on) or (t < self._t0) or (t >= self._t1):
             out.SetFromVector(np.array([0.0]))
             return
-        if self._shape == "torque":
+        if self._shape in ("torque", "pulse"):
             out.SetFromVector(np.array([self._amp]))
+        elif self._shape == "square":
+            s = np.sign(np.sin(self._omega * (t - self._t0)))
+            # np.sign(0)=0; treat as +1 so the wave starts with a positive edge
+            if s == 0.0:
+                s = 1.0
+            out.SetFromVector(np.array([self._amp * s]))
         else:  # sine
             out.SetFromVector(np.array([
                 self._amp * np.sin(self._omega * (t - self._t0))
@@ -741,7 +764,7 @@ def run_simulation(meshcat) -> dict:
     # For 'torque'/'sine' modes, this system applies the load itself.
     # For 'vel'/'pos' modes, state is kicked in the run loop and this source
     # is silent (outputs 0).
-    _ext_on    = args.disturbance and args.disturbance_mode in ("torque", "sine")
+    _ext_on    = args.disturbance and args.disturbance_mode in ("torque", "sine", "pulse", "square")
     ext_tau_src = builder.AddSystem(
         _ExternalTorqueSource(
             enabled=_ext_on,
@@ -869,7 +892,7 @@ def run_simulation(meshcat) -> dict:
 
     simulator.set_target_realtime_rate(1.0)
     simulator.Initialize()
-    if _visualizer is not None:
+    if _visualizer is not None and args.record:
         _visualizer.StartRecording()
 
     # ── 8. Cable visualisation ───────────────────────────────────────────────
@@ -939,19 +962,25 @@ def run_simulation(meshcat) -> dict:
         "cyan",
     ))
 
-    _chunk         = 0.1
+    _chunk         = _DT     # match plant timestep so cable viz updates every sim step
     _lap_prev      = 0
     _move_reported = args.move_duration <= 0.0
     _exo_reported  = args.no_exo_activate or args.exo_reactive  # reactive prints its own msgs
     _exo_was_active = False  # for reactive mode logging
     _dist_applied  = not args.disturbance       # skip if not requested
-    # torque/sine disturbances are applied by _ExternalTorqueSource; don't
-    # inject state impulses in the run loop for those modes.
-    if args.disturbance and args.disturbance_mode in ("torque", "sine"):
+    # torque/sine/pulse/square disturbances are applied by _ExternalTorqueSource;
+    # don't inject state impulses in the run loop for those modes.
+    if args.disturbance and args.disturbance_mode in ("torque", "sine", "pulse", "square"):
         _dist_applied = True
-        _ext_label = (f"τ_ext = {args.disturbance_tau:+.2f} Nm (const)"
-                      if args.disturbance_mode == "torque"
-                      else f"τ_ext = {args.disturbance_tau:.2f}·sin(2π·{args.disturbance_freq:.1f}Hz·t) Nm")
+        if args.disturbance_mode == "torque":
+            _ext_label = f"τ_ext = {args.disturbance_tau:+.2f} Nm (const, dur={args.disturbance_dur:.2f}s)"
+        elif args.disturbance_mode == "sine":
+            _ext_label = f"τ_ext = {args.disturbance_tau:.2f}·sin(2π·{args.disturbance_freq:.1f}Hz·t) Nm"
+        elif args.disturbance_mode == "pulse":
+            _ext_label = f"τ_ext = {args.disturbance_tau:+.2f} Nm pulse (width={args.disturbance_pulse_width:.3f}s)"
+        else:  # square
+            _ext_label = (f"τ_ext = {args.disturbance_tau:.2f}·sgn(sin(2π·{args.disturbance_freq:.1f}Hz·t)) Nm"
+                          f"  (dur={args.disturbance_dur:.2f}s)")
         print(colored(
             f"  💥 External-torque disturbance armed: {_ext_label}  "
             f"window=[{args.disturbance_time:.2f}, {args.disturbance_time + args.disturbance_dur:.2f}] s",
@@ -1046,7 +1075,7 @@ def run_simulation(meshcat) -> dict:
         ))
         signal.signal(signal.SIGINT, signal.default_int_handler)
 
-    if _visualizer is not None:
+    if _visualizer is not None and args.record:
         _visualizer.StopRecording()
         _visualizer.PublishRecording()
 
