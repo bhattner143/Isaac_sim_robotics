@@ -5,3 +5,6 @@
 [submodule "contraction-theory"]
 	path = contraction-theory
 	url = https://github.com/bhattner143/contraction-theory.git
+[submodule "exo-actuator-sensor-drivers"]
+	path = exo-actuator-sensor-drivers
+	url = https://github.com/bhattner143/exo-actuator-sensor-drivers.git
