@@ -1,13 +1,42 @@
 {
     "version": "0.2.0",
     "configurations": [
+        {
+            "name": "▶ Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "python": "/opt/anaconda3/envs/pydrake_cursor/bin/python",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "KMP_DUPLICATE_LIB_OK": "TRUE",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": false
+        },
+        {
+            "name": "🔌 MHP Cable Routing Viz",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "cable.test_mhp_cable_routing_actual_viz",
+            "python": "/opt/anaconda3/envs/pydrake_cursor/bin/python",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "args": ["--no-matplotlib"],
+            "env": {
+                "KMP_DUPLICATE_LIB_OK": "TRUE",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": false
+        },
         
         {
             "name": "🤖 LQR: Both Cart + Manip",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/script_cup_manipulator_pendulam_lqr_min_effort_2d.py",
-            "python": "/opt/anaconda3/envs/pydrake/bin/python",
+            "python": "/opt/anaconda3/envs/pydrake_cursor/bin/python",
             "args": [
                 "--mode", "lqr-applied-to-both-cart-manip",
                 "--duration", "10.0",
@@ -24,7 +53,7 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/script_cup_manipulator_pendulam_lqr_min_effort_2d.py",
-            "python": "/opt/anaconda3/envs/pydrake/bin/python",
+            "python": "/opt/anaconda3/envs/pydrake_cursor/bin/python",
             "args": [
                 "--mode", "lqr-applied-to-cart-manip-following-cart",
                 "--duration", "10.0",
@@ -41,7 +70,7 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/script_cup_manipulator_pendulam_lqr_min_effort_2d.py",
-            "python": "/opt/anaconda3/envs/pydrake/bin/python",
+            "python": "/opt/anaconda3/envs/pydrake_cursor/bin/python",
             "args": [
                 "--mode", "scene-viz"
             ],
@@ -54,7 +83,7 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_exo_pydrake.py",
-            "python": "/opt/anaconda3/envs/pydrake/bin/python",
+            "python": "/opt/anaconda3/envs/pydrake_cursor/bin/python",
             "args": [
                 "--duration", "10.0",
                 "--num-laps", "3"
@@ -69,7 +98,7 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/script_cup_manipulator_pendulam_tendon_with_exo_pydrake.py",
-            "python": "/opt/anaconda3/envs/pydrake/bin/python",
+            "python": "/opt/anaconda3/envs/pydrake_cursor/bin/python",
             "args": [
                 "--exo-activate",
                 "--exo-activate-time", "5.0",
