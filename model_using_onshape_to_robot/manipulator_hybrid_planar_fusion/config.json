@@ -1,0 +1,11 @@
+{
+    // with upperarm cables and all bearings
+    //"url":"https://cad.onshape.com/documents/d58e86cef5be79d382f367a3/w/5bb0358bed519b08151e8f06/e/cd597aa65de9ad8811f5a1b9",
+    // without cables and most bearings
+    //"url": "https://cad.onshape.com/documents/d58e86cef5be79d382f367a3/w/5bb0358bed519b08151e8f06/e/ccdd31871fadde30ce9345a4",
+    "url": "https://cad.onshape.com/documents/d58e86cef5be79d382f367a3/w/5bb0358bed519b08151e8f06/e/1e5f804c123e0ab17862d090",
+    "output_format": "urdf",
+    "output_filename": "manipulator_hybrid_planar_fusion",
+    "assets_directory": "assets",
+    "robot_name": "manipulator_hybrid_planar_fusion"
+}

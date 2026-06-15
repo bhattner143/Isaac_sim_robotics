@@ -1,0 +1,1344 @@
+<?xml version="1.0" ?>
+<!-- Generated using onshape-to-robot -->
+<!-- Onshape https://cad.onshape.com/documents/d58e86cef5be79d382f367a3/w/5bb0358bed519b08151e8f06/e/1e5f804c123e0ab17862d090 -->
+<robot name="manipulator_hybrid_planar_fusion">
+  <!-- Link base_link_aka_shoulder_transmission -->
+  <link name="base_link_aka_shoulder_transmission">
+    <inertial>
+      <origin xyz="0.08 0 0.13" rpy="0 0 0"/>
+      <mass value="2.0"/>
+      <!-- Motor + transmission assembly, CoM shifted toward motor -->
+      <inertia ixx="0.0170" ixy="0" ixz="0" iyy="0.0170" iyz="0" izz="0.0050"/>
+    </inertial>
+    <!-- Part m5_threaded_shaft -->
+    <visual>
+      <origin xyz="0.27 -1.90933e-09 0.2518" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/m5_threaded_shaft.obj"/>
+      </geometry>
+      <material name="m5_threaded_shaft_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.27 -1.90933e-09 0.2518" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/m5_threaded_shaft.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part 6000_2z_c3_1___10_mm_id_26_mm_od -->
+    <visual>
+      <origin xyz="0.045 -1.90933e-09 0.004" rpy="-3.08149e-33 -3.08149e-33 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/6000_2z_c3_1___10_mm_id_26_mm_od.obj"/>
+      </geometry>
+      <material name="6000_2z_c3_1___10_mm_id_26_mm_od_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.045 -1.90933e-09 0.004" rpy="-3.08149e-33 -3.08149e-33 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/6000_2z_c3_1___10_mm_id_26_mm_od.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part m10_threaded_shaft -->
+    <visual>
+      <origin xyz="0.27 -1.90933e-09 0.2518" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/m10_threaded_shaft.obj"/>
+      </geometry>
+      <material name="m10_threaded_shaft_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.27 -1.90933e-09 0.2518" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/m10_threaded_shaft.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part 6000_2z_c3_1___10_mm_id_26_mm_od_2 -->
+    <visual>
+      <origin xyz="0.045 -1.90933e-09 0.1169" rpy="5.97809e-31 -4.67219e-31 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/6000_2z_c3_1___10_mm_id_26_mm_od__2.obj"/>
+      </geometry>
+      <material name="6000_2z_c3_1___10_mm_id_26_mm_od_2_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.045 -1.90933e-09 0.1169" rpy="5.97809e-31 -4.67219e-31 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/6000_2z_c3_1___10_mm_id_26_mm_od__2.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part axles -->
+    <visual>
+      <origin xyz="-0.43 -1.90933e-09 0.2518" rpy="6.93889e-17 -6.16298e-33 4.05605e-50"/>
+      <geometry>
+        <mesh filename="package://assets/axles.obj"/>
+      </geometry>
+      <material name="axles_material">
+        <color rgba="0.627451 0.627451 0.627451 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.43 -1.90933e-09 0.2518" rpy="6.93889e-17 -6.16298e-33 4.05605e-50"/>
+      <geometry>
+        <mesh filename="package://assets/axles.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part shoulder_tranmission_system -->
+    <visual>
+      <origin xyz="0.27 -1.90933e-09 0.2518" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/shoulder_tranmission_system.obj"/>
+      </geometry>
+      <material name="shoulder_tranmission_system_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.27 -1.90933e-09 0.2518" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/shoulder_tranmission_system.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part shoulder_tranmission_system_2 -->
+    <visual>
+      <origin xyz="0.27 -1.90933e-09 0.2518" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/shoulder_tranmission_system__2.obj"/>
+      </geometry>
+      <material name="shoulder_tranmission_system_2_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.27 -1.90933e-09 0.2518" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/shoulder_tranmission_system__2.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od -->
+    <visual>
+      <origin xyz="0.045 -1.90933e-09 0.1229" rpy="5.97809e-31 -4.67219e-31 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od.obj"/>
+      </geometry>
+      <material name="ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.045 -1.90933e-09 0.1229" rpy="5.97809e-31 -4.67219e-31 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part 6000_2z_c3_1___10_mm_id_26_mm_od_3 -->
+    <visual>
+      <origin xyz="-0.08 -1.90933e-09 0.0707" rpy="-1.38778e-17 -1.16805e-31 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/6000_2z_c3_1___10_mm_id_26_mm_od__2.obj"/>
+      </geometry>
+      <material name="6000_2z_c3_1___10_mm_id_26_mm_od_3_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.08 -1.90933e-09 0.0707" rpy="-1.38778e-17 -1.16805e-31 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/6000_2z_c3_1___10_mm_id_26_mm_od__2.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part 3d_ak80_8 -->
+    <visual>
+      <origin xyz="-0.08 -1.90933e-09 0.0079" rpy="-3.14159 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/3d_ak80_8.obj"/>
+      </geometry>
+      <material name="3d_ak80_8_material">
+        <color rgba="0.235294 0.235294 0.235294 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.08 -1.90933e-09 0.0079" rpy="-3.14159 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/3d_ak80_8.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part shoulder_tranmission_system_3 -->
+    <visual>
+      <origin xyz="0.27 -1.90933e-09 0.2518" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/shoulder_tranmission_system__3.obj"/>
+      </geometry>
+      <material name="shoulder_tranmission_system_3_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.27 -1.90933e-09 0.2518" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/shoulder_tranmission_system__3.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part t5_16mm_width__100mm_centre__2x_30t -->
+    <visual>
+      <origin xyz="-0.0796146 -1.90933e-09 0.0933004" rpy="2.39014e-16 -9.86076e-32 4.996e-16"/>
+      <geometry>
+        <mesh filename="package://assets/t5_16mm_width__100mm_centre__2x_30t.obj"/>
+      </geometry>
+      <material name="t5_16mm_width__100mm_centre__2x_30t_material">
+        <color rgba="0.964706 0.964706 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0796146 -1.90933e-09 0.0933004" rpy="2.39014e-16 -9.86076e-32 4.996e-16"/>
+      <geometry>
+        <mesh filename="package://assets/t5_16mm_width__100mm_centre__2x_30t.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part t5_timing_pulley_16mm_30t -->
+    <visual>
+      <origin xyz="-0.08 -1.90933e-09 0.0768" rpy="-1.19507e-16 1.2326e-31 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/t5_timing_pulley_16mm_30t.obj"/>
+      </geometry>
+      <material name="t5_timing_pulley_16mm_30t_material">
+        <color rgba="0.960784 0.960784 0.964706 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.08 -1.90933e-09 0.0768" rpy="-1.19507e-16 1.2326e-31 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/t5_timing_pulley_16mm_30t.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part m5_threaded_shaft_2 -->
+    <visual>
+      <origin xyz="0.27 -1.90933e-09 0.2518" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/m5_threaded_shaft__2.obj"/>
+      </geometry>
+      <material name="m5_threaded_shaft_2_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.27 -1.90933e-09 0.2518" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/m5_threaded_shaft__2.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part 6000_2z_c3_1___10_mm_id_26_mm_od_4 -->
+    <visual>
+      <origin xyz="-0.08 -1.90933e-09 0.1169" rpy="2.98904e-31 -2.3361e-31 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/6000_2z_c3_1___10_mm_id_26_mm_od__2.obj"/>
+      </geometry>
+      <material name="6000_2z_c3_1___10_mm_id_26_mm_od_4_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.08 -1.90933e-09 0.1169" rpy="2.98904e-31 -2.3361e-31 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/6000_2z_c3_1___10_mm_id_26_mm_od__2.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part t5_timing_pulley_16mm_30t_2 -->
+    <visual>
+      <origin xyz="0.0453854 -1.90933e-09 0.078282" rpy="-1.07556e-15 5.16126e-31 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/t5_timing_pulley_16mm_30t.obj"/>
+      </geometry>
+      <material name="t5_timing_pulley_16mm_30t_2_material">
+        <color rgba="0.960784 0.960784 0.964706 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0453854 -1.90933e-09 0.078282" rpy="-1.07556e-15 5.16126e-31 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/t5_timing_pulley_16mm_30t.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part m10_threaded_shaft_2 -->
+    <visual>
+      <origin xyz="0.27 -1.90933e-09 0.2518" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/m10_threaded_shaft__2.obj"/>
+      </geometry>
+      <material name="m10_threaded_shaft_2_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.27 -1.90933e-09 0.2518" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/m10_threaded_shaft__2.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od_2 -->
+    <visual>
+      <origin xyz="0.045 -1.90933e-09 0.1229" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od__2.obj"/>
+      </geometry>
+      <material name="ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od_2_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.045 -1.90933e-09 0.1229" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od__2.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od_3 -->
+    <visual>
+      <origin xyz="0.045 -1.90933e-09 0.1229" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od__3.obj"/>
+      </geometry>
+      <material name="ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od_3_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.045 -1.90933e-09 0.1229" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/ntb2035as_thrust_20_mm_id_roller_bearing__35_mm_od__3.obj"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link upper_arm -->
+  <link name="upper_arm">
+    <inertial>
+      <origin xyz="0.325 0.015 0.065" rpy="0 0 0"/>
+      <mass value="0.8"/>
+      <!-- Arm structure centered with pulleys and bearings distributed -->
+      <inertia ixx="0.0006" ixy="0" ixz="0" iyy="0.0137" iyz="0" izz="0.0137"/>
+    </inertial>
+    <!-- Part steel_v_groove_guide_pulley___4x13x6mm -->
+    <visual>
+      <origin xyz="0.360376 -0.0226536 0.0476" rpy="4.1131e-17 1.09736e-32 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/steel_v_groove_guide_pulley___4x13x6mm.obj"/>
+      </geometry>
+      <material name="steel_v_groove_guide_pulley___4x13x6mm_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.360376 -0.0226536 0.0476" rpy="4.1131e-17 1.09736e-32 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/steel_v_groove_guide_pulley___4x13x6mm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm -->
+    <visual>
+      <origin xyz="0.3306 0.0400001 0.0324999" rpy="-1.66533e-16 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.3306 0.0400001 0.0324999" rpy="-1.66533e-16 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_elbow_roller_enter -->
+    <visual>
+      <origin xyz="0.397114 0.00722337 0.0324999" rpy="-0.0872665 -1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_elbow_roller_enter.obj"/>
+      </geometry>
+      <material name="ball_cable_elbow_roller_enter_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.397114 0.00722337 0.0324999" rpy="-0.0872665 -1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_elbow_roller_enter.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_2 -->
+    <visual>
+      <origin xyz="0.353245 0.0110614 0.0324999" rpy="0.0872665 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_2_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.353245 0.0110614 0.0324999" rpy="0.0872665 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part mhp_arm_00_elbow_spool_v2 -->
+    <visual>
+      <origin xyz="0.225 7.44463e-24 0.1268" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/mhp_arm_00_elbow_spool_v2.obj"/>
+      </geometry>
+      <material name="mhp_arm_00_elbow_spool_v2_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.225 7.44463e-24 0.1268" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/mhp_arm_00_elbow_spool_v2.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_3 -->
+    <visual>
+      <origin xyz="-0.045 1.90933e-09 -0.1249" rpy="-1.2326e-32 -8.17547e-48 -2.53013e-80"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_3_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.045 1.90933e-09 -0.1249" rpy="-1.2326e-32 -8.17547e-48 -2.53013e-80"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_4 -->
+    <visual>
+      <origin xyz="-0.045 1.90933e-09 -0.1249" rpy="-1.2326e-32 -8.17547e-48 -2.53013e-80"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_4_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.045 1.90933e-09 -0.1249" rpy="-1.2326e-32 -8.17547e-48 -2.53013e-80"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_5 -->
+    <visual>
+      <origin xyz="-0.0438212 -0.0387601 0.0475001" rpy="0.681581 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_5_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0438212 -0.0387601 0.0475001" rpy="0.681581 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part 626_2rs___6mm_id_19mm_od -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.0689" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od.obj"/>
+      </geometry>
+      <material name="626_2rs___6mm_id_19mm_od_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.0689" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_6 -->
+    <visual>
+      <origin xyz="0.335406 0.0372251 0.0324999" rpy="-2.0944 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_6_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.335406 0.0372251 0.0324999" rpy="-2.0944 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part upper__arm_v4 -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4.obj"/>
+      </geometry>
+      <material name="upper__arm_v4_material">
+        <color rgba="0.627451 0.627451 0.627451 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part upper__arm_v4_2 -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__2.obj"/>
+      </geometry>
+      <material name="upper__arm_v4_2_material">
+        <color rgba="0.960784 0.960784 0.964706 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__2.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_7 -->
+    <visual>
+      <origin xyz="-0.045 1.90933e-09 -0.1249" rpy="-1.2326e-32 -8.17547e-48 -2.53013e-80"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_7_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.045 1.90933e-09 -0.1249" rpy="-1.2326e-32 -8.17547e-48 -2.53013e-80"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_8 -->
+    <visual>
+      <origin xyz="-0.0306504 -0.00392625 -0.123853" rpy="-1.2326e-32 -8.17547e-48 -2.53013e-80"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_8_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0306504 -0.00392625 -0.123853" rpy="-1.2326e-32 -8.17547e-48 -2.53013e-80"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_9 -->
+    <visual>
+      <origin xyz="0.350166 -0.0400001 0.0475001" rpy="3.20855e-16 -1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_9_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.350166 -0.0400001 0.0475001" rpy="3.20855e-16 -1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part upper__arm_v4_3 -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__3.obj"/>
+      </geometry>
+      <material name="upper__arm_v4_3_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__3.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_spool_upper_arm_start -->
+    <visual>
+      <origin xyz="-0.0795 1.76602e-13 0.0645" rpy="1.5708 -1.05301e-16 6.44783e-33"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_spool_upper_arm_start.obj"/>
+      </geometry>
+      <material name="ball_cable_spool_upper_arm_start_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0795 1.76602e-13 0.0645" rpy="1.5708 -1.05301e-16 6.44783e-33"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_spool_upper_arm_start.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part upper_cables -->
+    <visual>
+      <origin xyz="0.4006 0.0470712 0.0399999" rpy="-9.97052e-18 -5.55112e-17 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper_cables.obj"/>
+      </geometry>
+      <material name="upper_cables_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4006 0.0470712 0.0399999" rpy="-9.97052e-18 -5.55112e-17 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper_cables.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_10 -->
+    <visual>
+      <origin xyz="0.365068 -0.0264032 0.0475001" rpy="1.5708 -4.1368e-17 -0.741765"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_10_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.365068 -0.0264032 0.0475001" rpy="1.5708 -4.1368e-17 -0.741765"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part upper__arm_v4_4 -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__4.obj"/>
+      </geometry>
+      <material name="upper__arm_v4_4_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__4.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_11 -->
+    <visual>
+      <origin xyz="0.348922 0.0138153 0.0324999" rpy="-2.0944 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_11_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.348922 0.0138153 0.0324999" rpy="-2.0944 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_spool_upper_arm_start_2 -->
+    <visual>
+      <origin xyz="-0.0795 1.76602e-13 0.0155" rpy="-1.5708 1.05301e-16 6.44783e-33"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_spool_upper_arm_start.obj"/>
+      </geometry>
+      <material name="ball_cable_spool_upper_arm_start_2_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0795 1.76602e-13 0.0155" rpy="-1.5708 1.05301e-16 6.44783e-33"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_spool_upper_arm_start.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_12 -->
+    <visual>
+      <origin xyz="-0.0438212 0.0387601 0.0324999" rpy="-0.681581 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_12_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0438212 0.0387601 0.0324999" rpy="-0.681581 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part upper__arm_v4_5 -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__5.obj"/>
+      </geometry>
+      <material name="upper__arm_v4_5_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__5.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_13 -->
+    <visual>
+      <origin xyz="0.354258 -0.0381996 0.0475001" rpy="1.5708 -4.1368e-17 -0.741765"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_13_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.354258 -0.0381996 0.0475001" rpy="1.5708 -4.1368e-17 -0.741765"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part steel_v_groove_guide_pulley___4x13x6mm_2 -->
+    <visual>
+      <origin xyz="-0.0409243 -0.03445 0.0475" rpy="4.2432e-17 1.11254e-32 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/steel_v_groove_guide_pulley___4x13x6mm.obj"/>
+      </geometry>
+      <material name="steel_v_groove_guide_pulley___4x13x6mm_2_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0409243 -0.03445 0.0475" rpy="4.2432e-17 1.11254e-32 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/steel_v_groove_guide_pulley___4x13x6mm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part 626_2rs___6mm_id_19mm_od_2 -->
+    <visual>
+      <origin xyz="-0.0595 1.76605e-13 0.0722" rpy="1.2326e-32 8.17547e-48 -6.46792e-79"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od__2.obj"/>
+      </geometry>
+      <material name="626_2rs___6mm_id_19mm_od_2_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0595 1.76605e-13 0.0722" rpy="1.2326e-32 8.17547e-48 -6.46792e-79"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od__2.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_14 -->
+    <visual>
+      <origin xyz="-0.0403245 0.0400001 0.0324999" rpy="-3.88578e-16 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_14_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0403245 0.0400001 0.0324999" rpy="-3.88578e-16 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_15 -->
+    <visual>
+      <origin xyz="-0.0403245 -0.0400001 0.0475001" rpy="1.84015e-16 -1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_15_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0403245 -0.0400001 0.0475001" rpy="1.84015e-16 -1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part 626_2rs___6mm_id_19mm_od_3 -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.0111" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od.obj"/>
+      </geometry>
+      <material name="626_2rs___6mm_id_19mm_od_3_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.0111" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part upper__arm_v4_6 -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__6.obj"/>
+      </geometry>
+      <material name="upper__arm_v4_6_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__6.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_spool_upper_arm_exit -->
+    <visual>
+      <origin xyz="-0.0718787 0.0159976 0.0324999" rpy="-0.681581 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_spool_upper_arm_exit.obj"/>
+      </geometry>
+      <material name="ball_cable_spool_upper_arm_exit_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0718787 0.0159976 0.0324999" rpy="-0.681581 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_spool_upper_arm_exit.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part steel_v_groove_guide_pulley___4x13x6mm_3 -->
+    <visual>
+      <origin xyz="0.349567 -0.03445 0.0476" rpy="4.1131e-17 1.09736e-32 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/steel_v_groove_guide_pulley___4x13x6mm.obj"/>
+      </geometry>
+      <material name="steel_v_groove_guide_pulley___4x13x6mm_3_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.349567 -0.03445 0.0476" rpy="4.1131e-17 1.09736e-32 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/steel_v_groove_guide_pulley___4x13x6mm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part mhp_arm_00_elbow_spool_v2_2 -->
+    <visual>
+      <origin xyz="0.225 7.44463e-24 0.1268" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/mhp_arm_00_elbow_spool_v2__2.obj"/>
+      </geometry>
+      <material name="mhp_arm_00_elbow_spool_v2_2_material">
+        <color rgba="0.627451 0.627451 0.627451 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.225 7.44463e-24 0.1268" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/mhp_arm_00_elbow_spool_v2__2.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part 626_2rs___6mm_id_19mm_od_4 -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.0034" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od.obj"/>
+      </geometry>
+      <material name="626_2rs___6mm_id_19mm_od_4_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.0034" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part steel_v_groove_guide_pulley___4x13x6mm_4 -->
+    <visual>
+      <origin xyz="-0.0409243 0.03445 0.0325" rpy="4.1131e-17 1.09736e-32 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/steel_v_groove_guide_pulley___4x13x6mm.obj"/>
+      </geometry>
+      <material name="steel_v_groove_guide_pulley___4x13x6mm_4_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0409243 0.03445 0.0325" rpy="4.1131e-17 1.09736e-32 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/steel_v_groove_guide_pulley___4x13x6mm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part 626_2rs___6mm_id_19mm_od_5 -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.0766" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od.obj"/>
+      </geometry>
+      <material name="626_2rs___6mm_id_19mm_od_5_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.0766" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part upper__arm_v4_7 -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__7.obj"/>
+      </geometry>
+      <material name="upper__arm_v4_7_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__7.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_16 -->
+    <visual>
+      <origin xyz="0.366505 -0.0221699 0.0475001" rpy="1.5708 5.33675e-18 0.0872665"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_16_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.366505 -0.0221699 0.0475001" rpy="1.5708 5.33675e-18 0.0872665"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part 626_2rs___6mm_id_19mm_od_6 -->
+    <visual>
+      <origin xyz="-0.0595 1.79204e-13 0.0078" rpy="-1.2326e-32 -8.15784e-48 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od__2.obj"/>
+      </geometry>
+      <material name="626_2rs___6mm_id_19mm_od_6_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0595 1.79204e-13 0.0078" rpy="-1.2326e-32 -8.15784e-48 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/626_2rs___6mm_id_19mm_od__2.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_pulleys_upper_arm_17 -->
+    <visual>
+      <origin xyz="-0.045 1.90933e-09 -0.1249" rpy="-1.2326e-32 -8.17547e-48 -2.53013e-80"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+      <material name="ball_cable_pulleys_upper_arm_17_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.045 1.90933e-09 -0.1249" rpy="-1.2326e-32 -8.17547e-48 -2.53013e-80"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_pulleys_upper_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_elbow_roller_enter_2 -->
+    <visual>
+      <origin xyz="0.360752 0.0435847 0.0475001" rpy="1.5708 5.33675e-18 0.0872665"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_elbow_roller_enter.obj"/>
+      </geometry>
+      <material name="ball_cable_elbow_roller_enter_2_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.360752 0.0435847 0.0475001" rpy="1.5708 5.33675e-18 0.0872665"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_elbow_roller_enter.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_spool_upper_arm_exit_2 -->
+    <visual>
+      <origin xyz="-0.0718787 -0.0159976 0.0475001" rpy="0.681581 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_spool_upper_arm_exit.obj"/>
+      </geometry>
+      <material name="ball_cable_spool_upper_arm_exit_2_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0718787 -0.0159976 0.0475001" rpy="0.681581 1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_spool_upper_arm_exit.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part upper__arm_v4_8 -->
+    <visual>
+      <origin xyz="0.4 0.0471711 0.04" rpy="-1.2326e-32 -5.10769e-48 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__8.obj"/>
+      </geometry>
+      <material name="upper__arm_v4_8_material">
+        <color rgba="0.964706 0.964706 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0471711 0.04" rpy="-1.2326e-32 -5.10769e-48 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__8.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part steel_v_groove_guide_pulley___4x13x6mm_5 -->
+    <visual>
+      <origin xyz="0.33 0.03445 0.0324" rpy="4.1131e-17 1.09736e-32 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/steel_v_groove_guide_pulley___4x13x6mm.obj"/>
+      </geometry>
+      <material name="steel_v_groove_guide_pulley___4x13x6mm_5_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.33 0.03445 0.0324" rpy="4.1131e-17 1.09736e-32 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/steel_v_groove_guide_pulley___4x13x6mm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part upper__arm_v4_9 -->
+    <visual>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__9.obj"/>
+      </geometry>
+      <material name="upper__arm_v4_9_material">
+        <color rgba="0.964706 0.964706 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4 0.0470711 0.04" rpy="0 -0 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper__arm_v4__9.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part steel_v_groove_guide_pulley___4x13x6mm_6 -->
+    <visual>
+      <origin xyz="0.353129 0.0165902 0.0324" rpy="4.1131e-17 1.09736e-32 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/steel_v_groove_guide_pulley___4x13x6mm.obj"/>
+      </geometry>
+      <material name="steel_v_groove_guide_pulley___4x13x6mm_6_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.353129 0.0165902 0.0324" rpy="4.1131e-17 1.09736e-32 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/steel_v_groove_guide_pulley___4x13x6mm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part upper_cables_2 -->
+    <visual>
+      <origin xyz="0.4006 0.047071 0.0400001" rpy="9.97052e-18 -5.55112e-17 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper_cables__2.obj"/>
+      </geometry>
+      <material name="upper_cables_2_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.4006 0.047071 0.0400001" rpy="9.97052e-18 -5.55112e-17 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/upper_cables__2.obj"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link lower_arm -->
+  <link name="lower_arm">
+    <inertial>
+      <origin xyz="0.125 0 0.01" rpy="0 0 0"/>
+      <mass value="0.4"/>
+      <!-- End-effector arm with roller, centered along length. Adjusted ixx to satisfy triangle inequality -->
+      <inertia ixx="0.0004" ixy="0" ixz="0" iyy="0.0021" iyz="0" izz="0.0023"/>
+    </inertial>
+    <!-- Part mhp_arm_00_elbow_roller_v1 -->
+    <visual>
+      <origin xyz="5.55112e-16 0 0.0259" rpy="7.39557e-32 5.34586e-47 -5.66678e-56"/>
+      <geometry>
+        <mesh filename="package://assets/mhp_arm_00_elbow_roller_v1.obj"/>
+      </geometry>
+      <material name="mhp_arm_00_elbow_roller_v1_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="5.55112e-16 0 0.0259" rpy="7.39557e-32 5.34586e-47 -5.66678e-56"/>
+      <geometry>
+        <mesh filename="package://assets/mhp_arm_00_elbow_roller_v1.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part lower_arm -->
+    <visual>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm.obj"/>
+      </geometry>
+      <material name="lower_arm_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part lower_arm_2 -->
+    <visual>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__2.obj"/>
+      </geometry>
+      <material name="lower_arm_2_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__2.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part lower_arm_3 -->
+    <visual>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__3.obj"/>
+      </geometry>
+      <material name="lower_arm_3_material">
+        <color rgba="0.964706 0.964706 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__3.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part lower_arm_4 -->
+    <visual>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__4.obj"/>
+      </geometry>
+      <material name="lower_arm_4_material">
+        <color rgba="0.960784 0.960784 0.964706 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__4.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part lower_arm_5 -->
+    <visual>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__5.obj"/>
+      </geometry>
+      <material name="lower_arm_5_material">
+        <color rgba="0.964706 0.964706 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__5.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_mount_lower_arm_enter -->
+    <visual>
+      <origin xyz="0.037261 -0.0333478 0.033401" rpy="-0.00090923 0.000856194 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_mount_lower_arm_enter.obj"/>
+      </geometry>
+      <material name="ball_cable_mount_lower_arm_enter_material">
+        <color rgba="0.972549 0.529412 0.00392157 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.037261 -0.0333478 0.033401" rpy="-0.00090923 0.000856194 3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_mount_lower_arm_enter.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_mount_lower_arm_exit -->
+    <visual>
+      <origin xyz="0.0655164 -0.0660097 0.0334" rpy="2.68093 -1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_mount_lower_arm_exit.obj"/>
+      </geometry>
+      <material name="ball_cable_mount_lower_arm_exit_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0655164 -0.0660097 0.0334" rpy="2.68093 -1.5708 0"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_mount_lower_arm_exit.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part lower_arm_6 -->
+    <visual>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__6.obj"/>
+      </geometry>
+      <material name="lower_arm_6_material">
+        <color rgba="0.247059 0.247059 0.247059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__6.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part lower_arm_7 -->
+    <visual>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__7.obj"/>
+      </geometry>
+      <material name="lower_arm_7_material">
+        <color rgba="0.964706 0.964706 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__7.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_mount_lower_arm_enter_2 -->
+    <visual>
+      <origin xyz="0.0333444 -0.0372498 0.0183897" rpy="-1.56249 -0.00974952 3.14151"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_mount_lower_arm_enter.obj"/>
+      </geometry>
+      <material name="ball_cable_mount_lower_arm_enter_2_material">
+        <color rgba="0.972549 0.529412 0.00392157 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0333444 -0.0372498 0.0183897" rpy="-1.56249 -0.00974952 3.14151"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_mount_lower_arm_enter.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part lower_arm_8 -->
+    <visual>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__8.obj"/>
+      </geometry>
+      <material name="lower_arm_8_material">
+        <color rgba="0.796078 0.796078 0.796078 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__8.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part lower_arm_9 -->
+    <visual>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__9.obj"/>
+      </geometry>
+      <material name="lower_arm_9_material">
+        <color rgba="0.964706 0.964706 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0259" rpy="0 -0 -3.14159"/>
+      <geometry>
+        <mesh filename="package://assets/lower_arm__9.obj"/>
+      </geometry>
+    </collision>
+    <!-- Part ball_cable_mount_lower_arm_exit_2 -->
+    <visual>
+      <origin xyz="0.0613398 -0.012071 0.0184" rpy="1.5708 2.03185e-17 2.61799"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_mount_lower_arm_exit.obj"/>
+      </geometry>
+      <material name="ball_cable_mount_lower_arm_exit_2_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0613398 -0.012071 0.0184" rpy="1.5708 2.03185e-17 2.61799"/>
+      <geometry>
+        <mesh filename="package://assets/ball_cable_mount_lower_arm_exit.obj"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Joint from upper_arm to lower_arm -->
+  <joint name="jt_lower_upper" type="revolute">
+    <origin xyz="0.4 0.0470711 0.0141" rpy="-6.16298e-33 -5.50908e-48 -2.83339e-56"/>
+    <parent link="upper_arm"/>
+    <child link="lower_arm"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+  <!-- Joint from base_link_aka_shoulder_transmission to upper_arm -->
+  <joint name="jt_upper_base" type="revolute">
+    <origin xyz="0.045 -1.90933e-09 0.1249" rpy="-1.2326e-32 -8.17547e-48 -2.53013e-80"/>
+    <parent link="base_link_aka_shoulder_transmission"/>
+    <child link="upper_arm"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+</robot>

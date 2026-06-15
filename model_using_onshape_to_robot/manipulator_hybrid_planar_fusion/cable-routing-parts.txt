@@ -1,0 +1,71 @@
+<link name="base_link_aka_shoulder_transmission">
+    <inertial>
+      <origin xyz="0.08 0 0.13" rpy="0 0 0"/>
+      <mass value="2.0"/>
+      <!-- Motor + transmission assembly, CoM shifted toward motor -->
+      <inertia ixx="0.0170" ixy="0" ixz="0" iyy="0.0170" iyz="0" izz="0.0050"/>
+    </inertial>
+
+<!-- Link upper_arm -->
+  <link name="upper_arm">
+    <inertial>
+      <origin xyz="0.325 0.015 0.065" rpy="0 0 0"/>
+      <mass value="0.8"/>
+      <!-- Arm structure centered with pulleys and bearings distributed -->
+      <inertia ixx="0.0006" ixy="0" ixz="0" iyy="0.0137" iyz="0" izz="0.0137"/>
+    </inertial>
+
+
+<!-- Link lower_arm -->
+  <link name="lower_arm">
+    <inertial>
+      <origin xyz="0.125 0 0.01" rpy="0 0 0"/>
+      <mass value="0.4"/>
+      <!-- End-effector arm with roller, centered along length. Adjusted ixx to satisfy triangle inequality -->
+      <inertia ixx="0.0004" ixy="0" ixz="0" iyy="0.0021" iyz="0" izz="0.0023"/>
+    </inertial>
+
+<!-- Joint from upper_arm to lower_arm -->
+  <joint name="jt_lower_upper" type="revolute">
+    <origin xyz="0.4 0.0470711 0.0141" rpy="-6.16298e-33 -5.50908e-48 -2.83339e-56"/>
+    <parent link="upper_arm"/>
+    <child link="lower_arm"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+  <!-- Joint from base_link_aka_shoulder_transmission to upper_arm -->
+  <joint name="jt_upper_base" type="revolute">
+    <origin xyz="0.045 -1.90933e-09 0.1249" rpy="-1.2326e-32 -8.17547e-48 -2.53013e-80"/>
+    <parent link="base_link_aka_shoulder_transmission"/>
+    <child link="upper_arm"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
+  </joint>
+</robot>
+
+
+
+
+lower cable
+
+jt1 loc                                       (0.045, -1.90933e-09, 0.1249)
+
+small_ball.obj                                (-0.0795, 1.76602e-13, 0.0155)
+mhp_arm_00_elbow_spool_v2                     0.225 5.79026e-24 0.1268            diameter 40 mm
+steel_v_groove_guide_pulley___4x13x6mm.obj.    -0.0409243 0.03445 0.0325          diameter 10 mm
+steel_v_groove_guide_pulley___4x13x6mm.obj.    0.33 0.03445 0.0324                diameter 10 mm
+steel_v_groove_guide_pulley___4x13x6mm.obj.    0.353129 0.0165902 0.0324          diameter 10 mm
+mhp_arm_00_elbow_roller_v1                     6.10623e-16 6.93889e-18 0.0259     diameter 78.8 mm, outer diameter 85.44 mm
+
+
+
+jt2 loc                       0.4         0.0470711   0.0141
+
+
+
+upper cable
+small_ball.obj                                -0.0795 1.76602e-13 0.0645          diameter 10 mm
+steel_v_groove_guide_pulley___4x13x6mm.obj -0.0409243 -0.03445 0.0475             diameter 10 mm
+steel_v_groove_guide_pulley___4x13x6mm.obj  0.349567 -0.03445   0.0476            diameter 10 mm
+steel_v_groove_guide_pulley___4x13x6mm.obj. 0.360376 -0.0226536 0.0476            diameter 10 mm
+mhp_arm_00_elbow_roller_v1                  6.10623e-16 6.93889e-18 0.0259        diameter 78.8 mm, outer diameter 85.44 mm

@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cable Components Table</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: #dbe3ee;
+      --head: #eaf1fb;
+      --accent: #2563eb;
+      --pill1: #eef2ff;
+      --pill2: #ecfeff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+      padding: 24px;
+    }
+
+    .wrap {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      color: var(--accent);
+    }
+
+    p.lead {
+      margin: 0 0 20px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+      margin-bottom: 24px;
+    }
+
+    .card-header {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(to right, #f8fbff, #eef5ff);
+    }
+
+    .card-header h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1100px;
+    }
+
+    thead th {
+      background: var(--head);
+      color: #111827;
+      text-align: left;
+      font-size: 14px;
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      white-space: nowrap;
+    }
+
+    tbody td {
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      font-size: 14px;
+    }
+
+    tbody tr:nth-child(even) {
+      background: #fbfdff;
+    }
+
+    tbody tr:hover {
+      background: #f3f8ff;
+    }
+
+    .mono {
+      font-family: Consolas, Monaco, monospace;
+      font-size: 13px;
+      word-break: break-word;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .pill.physical {
+      background: var(--pill1);
+      color: #4338ca;
+    }
+
+    .pill.path {
+      background: var(--pill2);
+      color: #0f766e;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 700px) {
+      body {
+        padding: 12px;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+
+      .card-header h2 {
+        font-size: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Cable Components</h1>
+    <p class="lead">
+      Physical components and cable path markers for the lower cable routing.
+    </p>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Physical Components</h2>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Category</th>
+              <th>Name</th>
+              <th>File</th>
+              <th>Link</th>
+              <th>Position X</th>
+              <th>Position Y</th>
+              <th>Position Z</th>
+              <th>Diameter (mm)</th>
+              <th>Role</th>
+              <th>Cable</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td><span class="pill physical">Physical</span></td>
+              <td>Shoulder spool (source)</td>
+              <td class="mono">mhp_arm_00_elbow_spool_v2.obj</td>
+              <td class="mono">upper_arm</td>
+              <td class="mono">-0.0595</td>
+              <td class="mono">1.76602e-13</td>
+              <td class="mono">0.0125</td>
+              <td>40.0</td>
+              <td class="mono">spool</td>
+              <td class="mono">lower</td>
+              <td>Drive spool cable-exit point — arm entry from housing, before J1 in world X</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td><span class="pill physical">Physical</span></td>
+              <td>Guide pulley 1 (+Y)</td>
+              <td class="mono">steel_v_groove_guide_pulley___4x13x6mm.obj</td>
+              <td class="mono">upper_arm</td>
+              <td class="mono">-0.0409243</td>
+              <td class="mono">0.03445</td>
+              <td class="mono">0.0325</td>
+              <td>10.0</td>
+              <td class="mono">guide_pulley</td>
+              <td class="mono">lower</td>
+              <td>First guide pulley, +Y side</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td><span class="pill physical">Physical</span></td>
+              <td>Guide pulley 2 (+Y)</td>
+              <td class="mono">steel_v_groove_guide_pulley___4x13x6mm.obj</td>
+              <td class="mono">upper_arm</td>
+              <td class="mono">0.33</td>
+              <td class="mono">0.03445</td>
+              <td class="mono">0.0324</td>
+              <td>10.0</td>
+              <td class="mono">guide_pulley</td>
+              <td class="mono">lower</td>
+              <td>Mid-span guide pulley, +Y side</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td><span class="pill physical">Physical</span></td>
+              <td>Guide pulley 3 (+Y)</td>
+              <td class="mono">steel_v_groove_guide_pulley___4x13x6mm.obj</td>
+              <td class="mono">upper_arm</td>
+              <td class="mono">0.353129</td>
+              <td class="mono">0.0165902</td>
+              <td class="mono">0.0324</td>
+              <td>10.0</td>
+              <td class="mono">guide_pulley</td>
+              <td class="mono">lower</td>
+              <td>Pre-elbow guide pulley</td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td><span class="pill physical">Physical</span></td>
+              <td>Elbow roller (shared)</td>
+              <td class="mono">mhp_arm_00_elbow_roller_v1.obj</td>
+              <td class="mono">lower_arm</td>
+              <td class="mono">6.10623e-16</td>
+              <td class="mono">6.93889e-18</td>
+              <td class="mono">0.0259</td>
+              <td>85.44</td>
+              <td class="mono">elbow_roller</td>
+              <td class="mono">shared</td>
+              <td>Driven elbow roller, OD=85.44 mm (inner 78.8 mm)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Path Markers</h2>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Category</th>
+              <th>Name</th>
+              <th>File</th>
+              <th>Link</th>
+              <th>Position X</th>
+              <th>Position Y</th>
+              <th>Position Z</th>
+              <th>Diameter (mm)</th>
+              <th>Role</th>
+              <th>Cable</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td><span class="pill path">Path</span></td>
+              <td>Spool start</td>
+              <td class="mono">ball_cable_spool_upper_arm_start.obj</td>
+              <td class="mono">upper_arm</td>
+              <td class="mono">-0.0795</td>
+              <td class="mono">1.76602e-13</td>
+              <td class="mono">0.0155</td>
+              <td>5.0</td>
+              <td class="mono">ball_marker</td>
+              <td class="mono">lower</td>
+              <td>First contact point at cable exit from housing</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td><span class="pill path">Path</span></td>
+              <td>Spool exit</td>
+              <td class="mono">ball_cable_spool_upper_arm_exit.obj</td>
+              <td class="mono">upper_arm</td>
+              <td class="mono">-0.0718787</td>
+              <td class="mono">0.0159976</td>
+              <td class="mono">0.0324999</td>
+              <td>5.0</td>
+              <td class="mono">ball_marker</td>
+              <td class="mono">lower</td>
+              <td class="small">—</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td><span class="pill path">Path</span></td>
+              <td>Pulley A3</td>
+              <td class="mono">ball_cable_pulleys_upper_arm.obj</td>
+              <td class="mono">upper_arm</td>
+              <td class="mono">-0.0438212</td>
+              <td class="mono">0.0387601</td>
+              <td class="mono">0.0324999</td>
+              <td>5.0</td>
+              <td class="mono">ball_marker</td>
+              <td class="mono">lower</td>
+              <td class="small">—</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td><span class="pill path">Path</span></td>
+              <td>Pulley A4</td>
+              <td class="mono">ball_cable_pulleys_upper_arm.obj</td>
+              <td class="mono">upper_arm</td>
+              <td class="mono">-0.0403245</td>
+              <td class="mono">0.0400001</td>
+              <td class="mono">0.0324999</td>
+              <td>5.0</td>
+              <td class="mono">ball_marker</td>
+              <td class="mono">lower</td>
+              <td class="small">—</td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td><span class="pill path">Path</span></td>
+              <td>Pulley A5</td>
+              <td class="mono">ball_cable_pulleys_upper_arm.obj</td>
+              <td class="mono">upper_arm</td>
+              <td class="mono">0.3306</td>
+              <td class="mono">0.0400001</td>
+              <td class="mono">0.0324999</td>
+              <td>5.0</td>
+              <td class="mono">ball_marker</td>
+              <td class="mono">lower</td>
+              <td class="small">—</td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td><span class="pill path">Path</span></td>
+              <td>Pulley A6</td>
+              <td class="mono">ball_cable_pulleys_upper_arm.obj</td>
+              <td class="mono">upper_arm</td>
+              <td class="mono">0.335406</td>
+              <td class="mono">0.0372251</td>
+              <td class="mono">0.0324999</td>
+              <td>5.0</td>
+              <td class="mono">ball_marker</td>
+              <td class="mono">lower</td>
+              <td class="small">—</td>
+            </tr>
+            <tr>
+              <td>7</td>
+              <td><span class="pill path">Path</span></td>
+              <td>Pulley A7</td>
+              <td class="mono">ball_cable_pulleys_upper_arm.obj</td>
+              <td class="mono">upper_arm</td>
+              <td class="mono">0.348922</td>
+              <td class="mono">0.0138153</td>
+              <td class="mono">0.0324999</td>
+              <td>5.0</td>
+              <td class="mono">ball_marker</td>
+              <td class="mono">lower</td>
+              <td class="small">—</td>
+            </tr>
+            <tr>
+              <td>8</td>
+              <td><span class="pill path">Path</span></td>
+              <td>Pulley A8</td>
+              <td class="mono">ball_cable_pulleys_upper_arm.obj</td>
+              <td class="mono">upper_arm</td>
+              <td class="mono">0.353245</td>
+              <td class="mono">0.0110614</td>
+              <td class="mono">0.0324999</td>
+              <td>5.0</td>
+              <td class="mono">ball_marker</td>
+              <td class="mono">lower</td>
+              <td class="small">—</td>
+            </tr>
+            <tr>
+              <td>9</td>
+              <td><span class="pill path">Path</span></td>
+              <td>Elbow roller enter</td>
+              <td class="mono">ball_cable_elbow_roller_enter.obj</td>
+              <td class="mono">upper_arm</td>
+              <td class="mono">0.397114</td>
+              <td class="mono">0.00722337</td>
+              <td class="mono">0.0324999</td>
+              <td>5.0</td>
+              <td class="mono">ball_marker</td>
+              <td class="mono">lower</td>
+              <td class="small">—</td>
+            </tr>
+            <tr>
+              <td>10</td>
+              <td><span class="pill path">Path</span></td>
+              <td>Lower arm entry</td>
+              <td class="mono">ball_cable_mount_lower_arm_enter.obj</td>
+              <td class="mono">lower_arm</td>
+              <td class="mono">0.0333444</td>
+              <td class="mono">-0.0372498</td>
+              <td class="mono">0.0183897</td>
+              <td>5.0</td>
+              <td class="mono">ball_marker</td>
+              <td class="mono">lower</td>
+              <td>Z=18.4 mm (lower groove)</td>
+            </tr>
+            <tr>
+              <td>11</td>
+              <td><span class="pill path">Path</span></td>
+              <td>Lower arm exit</td>
+              <td class="mono">ball_cable_mount_lower_arm_exit.obj</td>
+              <td class="mono">lower_arm</td>
+              <td class="mono">0.0613398</td>
+              <td class="mono">-0.012071</td>
+              <td class="mono">0.0184</td>
+              <td>5.0</td>
+              <td class="mono">ball_marker</td>
+              <td class="mono">lower</td>
+              <td>Z=18.4 mm (lower groove)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
