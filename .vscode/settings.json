@@ -1,4 +1,8 @@
 {
+    "python.defaultInterpreterPath": "/opt/anaconda3/envs/pydrake_cursor/bin/python",
+    "python.condaPath": "/opt/anaconda3/bin/conda",
+    "python.terminal.activateEnvironment": true,
+    "python.terminal.executeInFileDir": false,
     "python-envs.defaultEnvManager": "ms-python.python:conda",
     "python-envs.defaultPackageManager": "ms-python.python:conda",
     "python.envFile": "${workspaceFolder}/.env.isaacsim",
