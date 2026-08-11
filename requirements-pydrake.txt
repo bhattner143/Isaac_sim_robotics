@@ -1,0 +1,20 @@
+# CPU-only PyDrake development stack for Cloud Agents.
+#
+# This installs everything needed to run the repository's PyDrake scripts
+# (script_*_pydrake.py, demo_*.py, and the cable/*_mhp.py modules) on a
+# machine WITHOUT an NVIDIA GPU.
+#
+# The Isaac Sim path (test_*.py / *_isaac_sim.py, isaacsim==5.1.0.0) is NOT
+# installed here: it requires an NVIDIA RTX GPU + a ~50 GB Isaac Sim install
+# and cannot run in a CPU-only Cloud Agent VM. Use requirements_env_isaacsim.txt
+# on GPU hardware for that path.
+#
+# Pinned to versions validated end-to-end in the Cloud Agent environment.
+
+drake==1.55.0
+numpy==1.26.4
+scipy==1.17.1
+matplotlib==3.11.1
+termcolor==3.3.0
+PyYAML==6.0.3
+pydot==4.0.1
